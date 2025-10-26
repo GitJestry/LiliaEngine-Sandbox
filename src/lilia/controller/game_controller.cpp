@@ -26,6 +26,13 @@ namespace lilia::controller {
 namespace {
 inline bool isValid(core::Square sq) { return sq != core::NO_SQUARE; }
 
+core::Color sideFromFen(const std::string &fen) {
+  const auto firstSpace = fen.find(' ');
+  if (firstSpace == std::string::npos || firstSpace + 1 >= fen.size()) return core::Color::White;
+  const char c = fen[firstSpace + 1];
+  return (c == 'b' || c == 'B') ? core::Color::Black : core::Color::White;
+}
+
 inline std::string resultToString(core::GameResult res,
                                   core::Color sideToMove) {
   switch (res) {
@@ -211,6 +218,75 @@ void GameController::startGame(const std::string &fen, bool whiteIsBot,
 
   m_game_view.setDefaultCursor();
   m_next_action = NextAction::None;
+}
+
+void GameController::loadPreloadedGame(const model::PgnGame &game) {
+  if (game.fenHistory.empty()) return;
+
+  m_premove_queue.clear();
+  m_premove_suspended = false;
+
+  m_fen_history = game.fenHistory;
+  m_fen_index = m_fen_history.size() - 1;
+
+  m_eval_history.assign(m_fen_history.size(), 0);
+  m_eval_cp.store(0);
+  m_game_view.updateEval(0);
+
+  m_move_history.clear();
+  m_move_history.reserve(game.moves.size());
+
+  // Rebuild move list
+  for (const auto &entry : game.moves) {
+    view::sound::Effect fx;
+    if (entry.gaveCheck)
+      fx = view::sound::Effect::Check;
+    else if (entry.move.promotion() != core::PieceType::None)
+      fx = view::sound::Effect::Promotion;
+    else if (entry.move.isCapture())
+      fx = view::sound::Effect::Capture;
+    else if (entry.move.castle() != model::CastleSide::None)
+      fx = view::sound::Effect::Castle;
+    else
+      fx = view::sound::Effect::PlayerMove;
+
+    m_move_history.push_back({entry.move, entry.mover, entry.captured, fx, 0});
+    m_game_view.addMove(entry.san);
+  }
+
+  if (!game.result.empty()) {
+    m_game_view.addResult(game.result);
+  }
+
+  const std::string &finalFen = m_fen_history.back();
+  m_game_view.setBoardFen(finalFen);
+  m_game_view.updateFen(finalFen);
+  m_game_view.selectMove(m_fen_index ? m_fen_index - 1 : static_cast<std::size_t>(-1));
+
+  if (!game.moves.empty()) {
+    const auto &last = game.moves.back();
+    m_selection_manager.setLastMove(last.move.from(), last.move.to());
+    m_selection_manager.highlightLastMove();
+  } else {
+    m_selection_manager.clearLastMoveHighlight();
+  }
+
+  m_time_controller.reset();
+  m_game_view.setClocksVisible(false);
+
+  m_time_history.clear();
+  m_time_history.reserve(m_fen_history.size());
+  core::Color stm = sideFromFen(m_fen_history.front());
+  m_time_history.push_back({0.f, 0.f, stm});
+  for (std::size_t i = 1; i < m_fen_history.size(); ++i) {
+    stm = (stm == core::Color::White) ? core::Color::Black : core::Color::White;
+    m_time_history.push_back({0.f, 0.f, stm});
+  }
+
+  m_game_view.clearCapturedPieces();
+  syncCapturedPieces();
+
+  m_chess_game.setPosition(finalFen);
 }
 
 void GameController::handleEvent(const sf::Event &event) {

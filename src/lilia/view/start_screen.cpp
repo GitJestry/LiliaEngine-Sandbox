@@ -7,6 +7,7 @@
 #include <cmath>
 #include <sstream>
 #include <unordered_map>
+#include <utility>
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/view/color_palette_manager.hpp"
@@ -701,8 +702,28 @@ bool StartScreen::handleFenMouse(sf::Vector2f pos, StartConfig& cfg) {
   return false;
 }
 
-bool StartScreen::isValidFen(const std::string& fen) {
-  return basicFenCheck(fen);
+bool StartScreen::isValidGameInput(const std::string& text) {
+  if (text == m_cachedInput) return m_cachedInputValid;
+
+  m_cachedInput = text;
+  m_cachedInputValid = false;
+  m_cachedInputIsPgn = false;
+  m_cachedParsedPgn.reset();
+
+  if (text.empty()) return false;
+
+  if (basicFenCheck(text)) {
+    m_cachedInputValid = true;
+    return true;
+  }
+
+  auto parsed = lilia::model::parsePgn(text);
+  if (parsed.has_value()) {
+    m_cachedInputValid = true;
+    m_cachedInputIsPgn = true;
+    m_cachedParsedPgn = std::move(*parsed);
+  }
+  return m_cachedInputValid;
 }
 
 void StartScreen::processHoldRepeater(HoldRepeater& r, const sf::FloatRect& bounds,
@@ -928,7 +949,7 @@ StartConfig StartScreen::run() {
     }
 
     const bool fenEmpty = m_fenString.empty();
-    const bool fenValid = (!fenEmpty) && isValidFen(m_fenString);
+    const bool fenValid = (!fenEmpty) && isValidGameInput(m_fenString);
 
     // Start (beveled)
     {
@@ -1069,15 +1090,22 @@ StartConfig StartScreen::run() {
           cfg.timeBaseSeconds = m_baseSeconds;
           cfg.timeIncrementSeconds = m_incrementSeconds;
           cfg.timeEnabled = m_timeEnabled;
-          if (m_fenString.empty() || !isValidFen(m_fenString)) {
+          if (m_fenString.empty() || !isValidGameInput(m_fenString)) {
             if (!m_fenString.empty()) {
               toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
               toastVisible = true;
               toastClock.restart();
             }
+            cfg.pgnGame.reset();
             cfg.fen = core::START_FEN;
           } else {
-            cfg.fen = m_fenString;
+            if (m_cachedInputIsPgn && m_cachedParsedPgn.has_value()) {
+              cfg.pgnGame = m_cachedParsedPgn;
+              cfg.fen = cfg.pgnGame->startFen;
+            } else {
+              cfg.pgnGame.reset();
+              cfg.fen = m_fenString;
+            }
           }
           return cfg;
         }
@@ -1124,7 +1152,7 @@ StartConfig StartScreen::run() {
           // Blurring FEN: show toast if user edited & invalid (and not empty)
           if (fenInputActive) {
             fenInputActive = false;
-            if (fenUserEdited && !m_fenString.empty() && !isValidFen(m_fenString)) {
+            if (fenUserEdited && !m_fenString.empty() && !isValidGameInput(m_fenString)) {
               toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
               toastVisible = true;
               toastClock.restart();
@@ -1135,15 +1163,23 @@ StartConfig StartScreen::run() {
             cfg.timeBaseSeconds = m_baseSeconds;
             cfg.timeIncrementSeconds = m_incrementSeconds;
             cfg.timeEnabled = m_timeEnabled;
-            if (m_fenString.empty() || !isValidFen(m_fenString)) {
+            if (m_fenString.empty() || !isValidGameInput(m_fenString)) {
               if (!m_fenString.empty()) {
                 toastMsg = "INCORRECT. STANDARD WILL BE CHOSEN";
                 toastVisible = true;
                 toastClock.restart();
               }
+              cfg.pgnGame.reset();
               cfg.fen = core::START_FEN;
-            } else
-              cfg.fen = m_fenString;
+            } else {
+              if (m_cachedInputIsPgn && m_cachedParsedPgn.has_value()) {
+                cfg.pgnGame = m_cachedParsedPgn;
+                cfg.fen = cfg.pgnGame->startFen;
+              } else {
+                cfg.pgnGame.reset();
+                cfg.fen = m_fenString;
+              }
+            }
             return cfg;
           }
         }
@@ -1238,10 +1274,16 @@ StartConfig StartScreen::run() {
   cfg.timeBaseSeconds = m_baseSeconds;
   cfg.timeIncrementSeconds = m_incrementSeconds;
   cfg.timeEnabled = m_timeEnabled;
-  if (m_fenString.empty() || !isValidFen(m_fenString))
+  if (m_fenString.empty() || !isValidGameInput(m_fenString)) {
+    cfg.pgnGame.reset();
     cfg.fen = core::START_FEN;
-  else
+  } else if (m_cachedInputIsPgn && m_cachedParsedPgn.has_value()) {
+    cfg.pgnGame = m_cachedParsedPgn;
+    cfg.fen = cfg.pgnGame->startFen;
+  } else {
+    cfg.pgnGame.reset();
     cfg.fen = m_fenString;
+  }
   return cfg;
 }
 

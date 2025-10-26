@@ -2,11 +2,13 @@
 
 #include <SFML/Graphics.hpp>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "lilia/bot/bot_info.hpp"
 #include "lilia/constants.hpp"
+#include "lilia/model/pgn_loader.hpp"
 #include "lilia/view/color_palette_manager.hpp"
 
 namespace lilia::view {
@@ -20,6 +22,7 @@ struct StartConfig {
   int timeBaseSeconds{300};     // default 5 minutes
   int timeIncrementSeconds{0};  // default 0s increment
   bool timeEnabled{true};       // whether clocks are used
+  std::optional<lilia::model::PgnGame> pgnGame{};
 };
 
 struct BotOption {
@@ -138,11 +141,16 @@ class StartScreen {
   void applyTheme();
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
   bool handleFenMouse(sf::Vector2f pos, StartConfig &cfg);
-  bool isValidFen(const std::string &fen);
+  bool isValidGameInput(const std::string &text);
   void updateTimeToggle();
   void processHoldRepeater(HoldRepeater &r, const sf::FloatRect &bounds, sf::Vector2f mouse,
                            std::function<void()> stepFn, float initialDelay = 0.35f,
                            float repeatRate = 0.06f);
+
+  std::string m_cachedInput;
+  bool m_cachedInputValid{false};
+  bool m_cachedInputIsPgn{false};
+  std::optional<lilia::model::PgnGame> m_cachedParsedPgn;
 };
 
 }  // namespace lilia::view

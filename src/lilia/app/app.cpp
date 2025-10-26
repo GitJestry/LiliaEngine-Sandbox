@@ -38,7 +38,8 @@ int App::run() {
     auto cfg = startScreen.run();
     bool m_white_is_bot = cfg.whiteIsBot;
     bool m_black_is_bot = cfg.blackIsBot;
-    std::string m_start_fen = cfg.fen;
+    auto preloadGame = cfg.pgnGame;
+    std::string m_start_fen = preloadGame ? preloadGame->startFen : cfg.fen;
     int baseSeconds = cfg.timeBaseSeconds;
     int incrementSeconds = cfg.timeIncrementSeconds;
     bool timeEnabled = cfg.timeEnabled;
@@ -62,6 +63,10 @@ int App::run() {
       gameController.startGame(m_start_fen, m_white_is_bot, m_black_is_bot, whiteThinkMs,
                                whiteDepth, blackThinkMs, blackDepth, timeEnabled, baseSeconds,
                                incrementSeconds);
+
+      if (preloadGame) {
+        gameController.loadPreloadedGame(*preloadGame);
+      }
 
       sf::Clock clock;
       while (window.isOpen() && gameController.getNextAction() ==
