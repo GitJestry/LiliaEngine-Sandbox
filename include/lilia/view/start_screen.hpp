@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics.hpp>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,8 @@ struct StartConfig {
   bool blackIsBot{true};
   BotType blackBot{BotType::Lilia};
   std::string fen{core::START_FEN};
+  std::string pgn{};
+  bool loadFromPgn{false};
   int timeBaseSeconds{300};     // default 5 minutes
   int timeIncrementSeconds{0};  // default 0s increment
   bool timeEnabled{true};       // whether clocks are used
@@ -74,6 +77,12 @@ class StartScreen {
   sf::Text m_startText;
   sf::Text m_creditText;
 
+  // Load game header
+  sf::Text m_loadHeader;
+  sf::Text m_fenLabel;
+  sf::Text m_pgnLabel;
+  sf::Text m_pgnStatusText;
+
   // Palette selection UI
   sf::RectangleShape m_paletteButton;
   sf::Text m_paletteText;
@@ -88,14 +97,30 @@ class StartScreen {
   sf::RectangleShape m_fenPopup;
   sf::RectangleShape m_fenInputBox;
   sf::Text m_fenInputText;
+  sf::RectangleShape m_pgnInputBox;
+  sf::Text m_pgnInputText;
   sf::RectangleShape m_fenBackBtn;
   sf::RectangleShape m_fenContinueBtn;
   sf::Text m_fenBackText;
   sf::Text m_fenContinueText;
   sf::Text m_fenErrorText;
   std::string m_fenString;
+  std::string m_pgnString;
   sf::Clock m_errorClock;
   bool m_showError{false};
+
+  // Warning popup when invalid load data is supplied
+  bool m_showLoadWarning{false};
+  bool m_warnFenInvalid{false};
+  bool m_warnPgnInvalid{false};
+  sf::RectangleShape m_warningBackdrop;
+  sf::RectangleShape m_warningPanel;
+  sf::Text m_warningTitle;
+  sf::Text m_warningMessage;
+  sf::RectangleShape m_warningCancelBtn;
+  sf::RectangleShape m_warningProceedBtn;
+  sf::Text m_warningCancelText;
+  sf::Text m_warningProceedText;
 
   // time control state
   int m_baseSeconds{300};
@@ -139,6 +164,7 @@ class StartScreen {
   bool handleMouse(sf::Vector2f pos, StartConfig &cfg);
   bool handleFenMouse(sf::Vector2f pos, StartConfig &cfg);
   bool isValidFen(const std::string &fen);
+  void updateWarningMessage();
   void updateTimeToggle();
   void processHoldRepeater(HoldRepeater &r, const sf::FloatRect &bounds, sf::Vector2f mouse,
                            std::function<void()> stepFn, float initialDelay = 0.35f,
