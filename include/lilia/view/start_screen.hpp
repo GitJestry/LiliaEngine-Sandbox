@@ -48,6 +48,13 @@ class StartScreen {
   sf::Text m_devByText;    // "@Developed by Julian Meyer" bottom-right
   sf::Text m_fenInfoText;  // subtle hint below FEN box
 
+  sf::RectangleShape m_whiteSectionBg;
+  sf::RectangleShape m_blackSectionBg;
+  sf::RectangleShape m_setupSectionBg;
+  sf::Text m_setupTitle;
+  sf::Text m_setupDescription;
+  sf::Text m_fenLabel;
+
   sf::RectangleShape m_whitePlayerBtn;
   sf::RectangleShape m_whiteBotBtn;
   sf::Text m_whitePlayerText;
