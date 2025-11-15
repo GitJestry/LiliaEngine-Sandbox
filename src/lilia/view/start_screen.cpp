@@ -331,47 +331,122 @@ void StartScreen::setupUI() {
   m_startText.setFillColor(constant::COL_DARK_TEXT);
 
   // Layout anchors
-  float x0 = (ws.x - PANEL_W) * 0.5f;
-  float y0 = (ws.y - PANEL_H) * 0.5f;
+  const float x0 = (ws.x - PANEL_W) * 0.5f;
+  const float y0 = (ws.y - PANEL_H) * 0.5f;
+  const float sectionInset = 40.f;
+  const float playerCardWidth = BTN_W + 120.f;
+  const float playerCardHeight = 190.f;
+  const float playerBlockTop = y0 + 110.f;
 
-  m_whiteLabel.setPosition(snapf(x0 + 80.f), snapf(y0 + 100.f));
-  m_blackLabel.setPosition(snapf(x0 + PANEL_W - 80.f - m_blackLabel.getLocalBounds().width),
-                           snapf(y0 + 100.f));
+  auto initCard = [&](sf::RectangleShape& card, sf::Vector2f pos) {
+    card.setSize({playerCardWidth, playerCardHeight});
+    card.setPosition(snap(pos));
+    card.setOutlineThickness(1.f);
+  };
+  initCard(m_whiteSectionBg, {x0 + sectionInset, playerBlockTop});
+  initCard(m_blackSectionBg,
+           {x0 + PANEL_W - sectionInset - playerCardWidth, playerBlockTop});
 
-  m_whitePlayerBtn.setPosition(snapf(x0 + 60.f), snapf(y0 + 150.f));
-  m_whiteBotBtn.setPosition(snapf(x0 + 60.f), snapf(y0 + 208.f));
+  const float cardPadding = 20.f;
+  const float playerBtnOffsetY = 64.f;
 
-  m_blackPlayerBtn.setPosition(snapf(x0 + PANEL_W - 60.f - BTN_W), snapf(y0 + 150.f));
-  m_blackBotBtn.setPosition(snapf(x0 + PANEL_W - 60.f - BTN_W), snapf(y0 + 208.f));
+  m_whiteLabel.setPosition(snapf(m_whiteSectionBg.getPosition().x + cardPadding),
+                           snapf(playerBlockTop + 18.f));
+  m_blackLabel.setPosition(snapf(m_blackSectionBg.getPosition().x + cardPadding),
+                           snapf(playerBlockTop + 18.f));
 
-  m_startBtn.setPosition(snapf(x0 + (PANEL_W - m_startBtn.getSize().x) / 2.f),
-                         snapf(y0 + PANEL_H - 120.f));
-  centerText(m_startText, m_startBtn.getGlobalBounds());
+  m_whitePlayerBtn.setPosition(
+      snap({m_whiteSectionBg.getPosition().x + cardPadding, playerBlockTop + playerBtnOffsetY}));
+  m_whiteBotBtn.setPosition(snap({m_whitePlayerBtn.getPosition().x,
+                                  m_whitePlayerBtn.getPosition().y + BTN_H + 12.f}));
 
-  // FEN error hint above Start button
-  m_fenErrorText.setFont(m_font);
-  m_fenErrorText.setString("STANDARD FEN");
-  m_fenErrorText.setCharacterSize(14);
-  m_fenErrorText.setFillColor(colInvalid);
-  centerText(m_fenErrorText, m_startBtn.getGlobalBounds(), -(m_startBtn.getSize().y / 2.f + 15.f));
+  m_blackPlayerBtn.setPosition(
+      snap({m_blackSectionBg.getPosition().x + cardPadding, playerBlockTop + playerBtnOffsetY}));
+  m_blackBotBtn.setPosition(snap({m_blackPlayerBtn.getPosition().x,
+                                  m_blackPlayerBtn.getPosition().y + BTN_H + 12.f}));
 
-  // -------- Inline FEN (50% smaller height) --------
-  const float fenW = PANEL_W * 0.95f;
-  const float fenH = 22.f;  // 44 * 0.5
-  const float fenY = m_startBtn.getPosition().y + m_startBtn.getSize().y + 25.f;
-  const float fenX = x0 + (PANEL_W - fenW) * 0.5f;
+  // Central game setup section (time + position)
+  const float setupWidth = PANEL_W - 2.f * sectionInset;
+  const float setupHeight = 270.f;
+  const float setupTop = playerBlockTop + playerCardHeight + 28.f;
+  m_setupSectionBg.setSize({setupWidth, setupHeight});
+  m_setupSectionBg.setPosition(snap({x0 + sectionInset, setupTop}));
+  m_setupSectionBg.setOutlineThickness(1.f);
 
-  m_fenInputBox.setSize({fenW, fenH});
+  m_setupTitle.setFont(m_font);
+  m_setupTitle.setString("Game details");
+  m_setupTitle.setCharacterSize(20);
+  m_setupTitle.setPosition(
+      snap({m_setupSectionBg.getPosition().x + cardPadding, setupTop + 16.f}));
+
+  m_setupDescription.setFont(m_font);
+  m_setupDescription.setString("Group time, increments and starting positions in one place.");
+  m_setupDescription.setCharacterSize(14);
+  m_setupDescription.setPosition(
+      snap({m_setupSectionBg.getPosition().x + cardPadding, setupTop + 42.f}));
+
+  const float sectionPad = 24.f;
+  const float columnGap = 32.f;
+  const float columnWidth = (setupWidth - (2.f * sectionPad) - columnGap) / 2.f;
+  const float columnsTop = setupTop + 64.f;
+  const float leftColumnX = m_setupSectionBg.getPosition().x + sectionPad;
+  const float rightColumnX = leftColumnX + columnWidth + columnGap;
+
+  m_timeToggleBtn.setSize({columnWidth, TOGGLE_H});
+  m_timeToggleBtn.setPosition(snap({leftColumnX, columnsTop}));
+  m_timeToggleBtn.setOutlineThickness(0.f);
+  m_timeToggleText.setFont(m_font);
+  m_timeToggleText.setCharacterSize(16);
+
+  m_timePanel.setSize({columnWidth, TIME_H});
+  m_timePanel.setPosition(
+      snap({leftColumnX, columnsTop + m_timeToggleBtn.getSize().y + 12.f}));
+  m_timePanel.setFillColor(ColorPaletteManager::get().palette().COL_HEADER);
+  m_timePanel.setOutlineThickness(1.f);
+  m_timePanel.setOutlineColor(colPanelBorder);
+
+  m_timeTitle.setFont(m_font);
+  m_timeTitle.setCharacterSize(14);
+  m_timeTitle.setFillColor(colSubtle);
+  m_timeTitle.setString("Time Control");
+  m_timeTitle.setPosition(
+      snap({m_timePanel.getPosition().x + 10.f, m_timePanel.getPosition().y + 8.f}));
+
+  // FEN column
+  m_fenLabel.setFont(m_font);
+  m_fenLabel.setString("Starting Position (optional)");
+  m_fenLabel.setCharacterSize(14);
+  m_fenLabel.setPosition(snap({rightColumnX, columnsTop - 8.f}));
+
+  m_fenInputBox.setSize({columnWidth, 42.f});
   m_fenInputBox.setFillColor(colInput);
   m_fenInputBox.setOutlineThickness(2.f);
   m_fenInputBox.setOutlineColor(colInputBorder);
-  m_fenInputBox.setPosition(snapf(fenX), snapf(fenY));
+  m_fenInputBox.setPosition(snap({rightColumnX, columnsTop + 18.f}));
 
   m_fenInputText.setFont(m_font);
   m_fenInputText.setCharacterSize(15);
   m_fenInputText.setFillColor(colText);
   m_fenInputText.setString(m_fenString);
-  leftCenterText(m_fenInputText, m_fenInputBox.getGlobalBounds(), 8.f);
+
+  m_fenInfoText.setFont(m_font);
+  m_fenInfoText.setString("Leave blank for the standard chess opening.");
+  m_fenInfoText.setCharacterSize(13);
+  m_fenInfoText.setPosition(
+      snap({rightColumnX, m_fenInputBox.getPosition().y + m_fenInputBox.getSize().y + 8.f}));
+
+  m_fenErrorText.setFont(m_font);
+  m_fenErrorText.setString("Invalid FEN – default start will be used.");
+  m_fenErrorText.setCharacterSize(13);
+  m_fenErrorText.setFillColor(colInvalid);
+  m_fenErrorText.setPosition(
+      snap({rightColumnX, m_fenInfoText.getPosition().y + 18.f}));
+
+  // Start button below the setup section
+  const float startTop = m_setupSectionBg.getPosition().y + m_setupSectionBg.getSize().y + 30.f;
+  m_startBtn.setPosition(
+      snap({x0 + (PANEL_W - m_startBtn.getSize().x) * 0.5f, startTop}));
+  centerText(m_startText, m_startBtn.getGlobalBounds());
 
   // Build bot option lists
   auto bots = availableBots();
@@ -397,27 +472,6 @@ void StartScreen::setupUI() {
             m_blackBotBtn.getPosition().y + BTN_H);
 
   // Time block
-  const float timeX = x0 + (PANEL_W - TIME_W) * 0.5f;
-  const float timeY = y0 + (PANEL_H - TIME_H) * 0.5f;
-
-  m_timeToggleBtn.setSize({TOGGLE_W, TOGGLE_H});
-  m_timeToggleBtn.setPosition(snap({x0 + (PANEL_W - TOGGLE_W) * 0.5f, timeY - 56.f}));
-  m_timeToggleBtn.setOutlineThickness(0.f);
-  m_timeToggleText.setFont(m_font);
-  m_timeToggleText.setCharacterSize(16);
-
-  m_timePanel.setSize({TIME_W, TIME_H});
-  m_timePanel.setPosition(snap({timeX, timeY}));
-  m_timePanel.setFillColor(ColorPaletteManager::get().palette().COL_HEADER);
-  m_timePanel.setOutlineThickness(1.f);
-  m_timePanel.setOutlineColor(colPanelBorder);
-
-  m_timeTitle.setFont(m_font);
-  m_timeTitle.setCharacterSize(14);
-  m_timeTitle.setFillColor(colSubtle);
-  m_timeTitle.setString("Time Control");
-  m_timeTitle.setPosition(snap({timeX + 10.f, timeY + 8.f}));
-
   m_timeMain.setFont(m_font);
   m_timeMain.setCharacterSize(22);
   m_timeMain.setFillColor(colText);
@@ -475,11 +529,12 @@ void StartScreen::setupUI() {
 
   auto layoutTimeControls = [&]() {
     const sf::Vector2f p = m_timePanel.getPosition();
+    const sf::Vector2f panelSize = m_timePanel.getSize();
     float row1Y = p.y + 42.f;
     const float gap = 10.f, mw = m_timeMinusBtn.getSize().x, pw = m_timePlusBtn.getSize().x;
     auto mb = m_timeMain.getLocalBounds();
     float totalW = mw + gap + mb.width + gap + pw;
-    float left = p.x + (TIME_W - totalW) * 0.5f;
+    float left = p.x + (panelSize.x - totalW) * 0.5f;
 
     m_timeMinusBtn.setPosition(snap({left, row1Y - m_timeMinusBtn.getSize().y * 0.5f}));
     m_timePlusBtn.setPosition(
@@ -491,9 +546,9 @@ void StartScreen::setupUI() {
     centerText(m_minusTxt, m_timeMinusBtn.getGlobalBounds());
     centerText(m_plusTxt, m_timePlusBtn.getGlobalBounds());
 
-    float row2Y = p.y + 80.f;
+    float row2Y = p.y + panelSize.y - 32.f;
     m_incLabel.setPosition(snap({p.x + 10.f, row2Y - 9.f}));
-    const float incRight = p.x + TIME_W - 10.f;
+    const float incRight = p.x + panelSize.x - 10.f;
     m_incPlusBtn.setPosition(
         snap({incRight - m_incPlusBtn.getSize().x, row2Y - m_incPlusBtn.getSize().y * 0.5f}));
     m_incMinusBtn.setPosition(snap({m_incPlusBtn.getPosition().x - 6.f - m_incMinusBtn.getSize().x,
@@ -504,9 +559,9 @@ void StartScreen::setupUI() {
     centerText(m_incMinusTxt, m_incMinusBtn.getGlobalBounds());
     centerText(m_incPlusTxt, m_incPlusBtn.getGlobalBounds());
 
-    float yChips = p.y + TIME_H + 12.f;
+    float yChips = p.y + panelSize.y + 18.f;
     float chipsTotalW = 3.f * m_presets[0].box.getSize().x + 2.f * CHIP_GAP;
-    float chipsLeft = p.x + (TIME_W - chipsTotalW) * 0.5f;
+    float chipsLeft = p.x + (panelSize.x - chipsTotalW) * 0.5f;
     for (std::size_t i = 0; i < m_presets.size(); ++i) {
       float x = chipsLeft + i * (m_presets[i].box.getSize().x + CHIP_GAP);
       m_presets[i].box.setPosition(snap({x, yChips}));
@@ -527,6 +582,17 @@ void StartScreen::applyTheme() {
     opt.box.setFillColor(colButton);
     opt.label.setFillColor(colText);
   }
+
+  m_whiteSectionBg.setFillColor(colTextPanel);
+  m_whiteSectionBg.setOutlineColor(colPanelBorder);
+  m_blackSectionBg.setFillColor(colTextPanel);
+  m_blackSectionBg.setOutlineColor(colPanelBorder);
+  m_setupSectionBg.setFillColor(colTextPanel);
+  m_setupSectionBg.setOutlineColor(colPanelBorder);
+  m_setupTitle.setFillColor(colText);
+  m_setupDescription.setFillColor(colSubtle);
+  m_fenLabel.setFillColor(colText);
+  m_fenInfoText.setFillColor(colSubtle);
 
   m_whiteLabel.setFillColor(colText);
   m_blackLabel.setFillColor(colText);
@@ -805,7 +871,18 @@ StartConfig StartScreen::run() {
     subtitle.setPosition(snapf(panelPos.x + 24.f), snapf(panelPos.y + 52.f));
     m_window.draw(subtitle);
 
-    // Sections
+    // Section cards
+    auto drawCard = [&](const sf::RectangleShape& card) {
+      m_window.draw(card);
+    };
+    drawCard(m_whiteSectionBg);
+    drawCard(m_blackSectionBg);
+    drawCard(m_setupSectionBg);
+
+    m_window.draw(m_setupTitle);
+    m_window.draw(m_setupDescription);
+
+    // Section headings
     m_window.draw(m_whiteLabel);
     m_window.draw(m_blackLabel);
 
@@ -937,10 +1014,10 @@ StartConfig StartScreen::run() {
       drawBevelButton3D(m_window, r, colAccent, hov, false);
       centerText(m_startText, r);
       m_window.draw(m_startText);
-      if (!fenEmpty && !fenValid) m_window.draw(m_fenErrorText);
     }
 
     // -------- FEN field --------
+    m_window.draw(m_fenLabel);
     m_fenInputBox.setOutlineColor(fenEmpty ? colInputBorder : (fenValid ? colValid : colInvalid));
     m_window.draw(m_fenInputBox);
 
@@ -975,6 +1052,9 @@ StartConfig StartScreen::run() {
         m_window.draw(caret);
       }
     }
+
+    m_window.draw(m_fenInfoText);
+    if (!fenEmpty && !fenValid) m_window.draw(m_fenErrorText);
 
     // Toast (bottom center)
     if (toastVisible) {
