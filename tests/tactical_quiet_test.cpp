@@ -190,6 +190,16 @@ int main() {
     }
   }
 
+  // Regression: quiet sacrifice should be explored (Stockfish-style Bc5)
+  {
+    model::ChessGame game;
+    game.setPosition("3k1b1r/Q5pp/1r2p3/8/1n1Pq3/8/PP1B1KPP/R4B1R b - - 4 23");
+    auto res = bot.findBestMove(game, 5, 0);
+    assert(res.bestMove);
+    model::Move expected(sq('f', 8), sq('c', 5));
+    assert(*res.bestMove == expected);
+  }
+
   // Regression: avoid mate blunder in tactical FEN (should play Na5b3)
   {
     model::ChessGame game;

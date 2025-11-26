@@ -1360,6 +1360,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     // --- Always detect true checks for quiet moves (even if threat signals are gated) ---
     int pawn_sig = 0, piece_sig = 0;
     bool wouldCheck = false;
+    bool quietSacrifice = false;
     if (isQuiet) {
       const auto signals = compute_quiet_signals(pos, m);
       piece_sig = signals.pieceSignal;  // detects direct checks (==2)
@@ -1378,11 +1379,25 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
           pawn_sig = std::max(pawn_sig, 2);
         }
       }
+
+      if (!wouldCheck) {
+        quietSacrifice = !pos.see(m);
+        if (quietSacrifice) {
+          const auto them = core::Color(~us);
+          const auto toBB = lilia::model::bb::sq_bb(m.to());
+          lilia::model::bb::Bitboard pawnAttackers =
+              (them == core::Color::White)
+                  ? (lilia::model::bb::sw(toBB) | lilia::model::bb::se(toBB))
+                  : (lilia::model::bb::nw(toBB) | lilia::model::bb::ne(toBB));
+          pawnAttackers &= board.getPieces(them, core::PieceType::Pawn);
+          if (!pawnAttackers) quietSacrifice = false;
+        }
+      }
     }
     if (passed_push) pawn_sig = std::max(pawn_sig, 1);
     const int qp_sig = pawn_sig;
     const int qpc_sig = piece_sig;
-    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0);
+    const bool tacticalQuiet = (qp_sig > 0) || (qpc_sig > 0) || quietSacrifice;
 
     // pre info
     auto moverOpt = board.getPiece(m.from());

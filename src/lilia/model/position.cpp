@@ -243,9 +243,6 @@ bool Position::see(const model::Move& m) const {
   using core::PieceType;
   using core::Square;
 
-  // Trivial non-captures: SEE is used for captures; be permissive for quiets.
-  if (!m.isCapture() && !m.isEnPassant()) return true;
-
   const auto fromP = m_board.getPiece(m.from());
   if (!fromP) return true;
 
@@ -429,6 +426,13 @@ bool Position::see(const model::Move& m) const {
     side = Color(~side);
 
     if (d >= 31) break;  // sanity guard
+  }
+
+  if (!m.isCapture() && !m.isEnPassant()) {
+    if (d == 0) return true;
+    const int lastGain = gain[d - 1];
+    const int net = (d & 1) ? lastGain : -lastGain;
+    return net >= 0;
   }
 
   // Negamax backpropagation
