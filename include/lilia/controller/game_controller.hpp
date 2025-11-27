@@ -17,6 +17,7 @@ class Event;
 #include "../chess_types.hpp"
 #include "../constants.hpp"
 #include "../model/move.hpp"
+#include "../model/pgn_loader.hpp"
 #include "../model/move_generator.hpp"
 #include "../view/audio/sound_manager.hpp"
 #include "../view/game_view.hpp"
@@ -91,6 +92,8 @@ public:
                  int blackThinkTimeMs = 1000, int blackDepth = 5,
                  bool useTimer = true, int baseSeconds = 0,
                  int incrementSeconds = 0);
+
+  void loadPreloadedGame(const model::PgnGame &game);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
