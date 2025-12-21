@@ -33,6 +33,7 @@ class SoundManager {
   void stopBackgroundMusic();
   void setMusicVolume(float volume);
   void setEffectsVolume(float volume);
+  void stopAllEffects();
 
  private:
   void loadEffect(const std::string& name, const std::string& filepath);

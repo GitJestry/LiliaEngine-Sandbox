@@ -133,7 +133,15 @@ GameController::GameController(view::GameView &gView, model::ChessGame &game)
   });
 }
 
-GameController::~GameController() = default;
+GameController::~GameController() {
+  shutdown();
+}
+
+void GameController::shutdown() {
+  if (m_game_manager) m_game_manager->stopGame();
+  m_sound_manager.stopBackgroundMusic();
+  m_sound_manager.stopAllEffects();
+}
 
 void GameController::startGame(const std::string &fen, bool whiteIsBot,
                                bool blackIsBot, int whiteThinkTimeMs,

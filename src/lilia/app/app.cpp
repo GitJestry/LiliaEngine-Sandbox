@@ -65,11 +65,14 @@ int App::run() {
 
       sf::Clock clock;
       while (window.isOpen() && gameController.getNextAction() ==
-                                    lilia::controller::GameController::NextAction::None) {
+        lilia::controller::GameController::NextAction::None) {
         float deltaSeconds = clock.restart().asSeconds();
         sf::Event event;
         while (window.pollEvent(event)) {
-          if (event.type == sf::Event::Closed) window.close();
+          if (event.type == sf::Event::Closed) {
+            gameController.shutdown();
+            window.close();
+          }
           gameController.handleEvent(event);
         }
         gameController.update(deltaSeconds);

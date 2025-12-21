@@ -69,6 +69,9 @@ class GameController {
 
   void handleEvent(const sf::Event& event);
 
+  // Gracefully stop running tasks (bots/audio) when the window closes.
+  void shutdown();
+
   void render();
 
   /**

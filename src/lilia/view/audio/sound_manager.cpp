@@ -76,6 +76,12 @@ void SoundManager::setEffectsVolume(float volume) {
   }
 }
 
+void SoundManager::stopAllEffects() {
+  for (auto& [_, sound] : m_sounds) {
+    sound.stop();
+  }
+}
+
 void SoundManager::loadEffect(const std::string& name, const std::string& filepath) {
   sf::SoundBuffer buffer;
   if (!buffer.loadFromFile(filepath + "/" + name + ".wav")) {

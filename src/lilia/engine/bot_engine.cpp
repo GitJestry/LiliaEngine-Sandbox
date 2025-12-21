@@ -2,6 +2,7 @@
 
 #define LOG 1
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
@@ -33,7 +34,20 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   SearchResult res;
   auto pos = gameState.getPositionRefForBot();
 
-  auto stopFlag = std::make_shared<std::atomic<bool>>(false);
+  // Reuse the external cancel flag when available so search threads respond
+  // immediately to shutdown (e.g., window close) instead of waiting for the
+  // local timer thread to notice.
+  std::shared_ptr<std::atomic<bool>> stopFlag;
+  if (externalCancel) {
+    stopFlag = std::shared_ptr<std::atomic<bool>>(externalCancel, [](std::atomic<bool>*) {});
+  } else {
+    stopFlag = std::make_shared<std::atomic<bool>>(false);
+  }
+
+  if (stopFlag->load()) {
+    res.bestMove.reset();
+    return res;
+  }
 
   std::mutex m;
   std::condition_variable cv;

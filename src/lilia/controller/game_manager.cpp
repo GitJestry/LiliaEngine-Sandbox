@@ -1,6 +1,7 @@
 #include "lilia/controller/game_manager.hpp"
 
 #include <chrono>
+#include <future>
 
 #include "lilia/controller/bot_player.hpp"
 #include "lilia/controller/player.hpp"
@@ -36,8 +37,16 @@ void GameManager::startGame(const std::string &fen, bool whiteIsBot, bool blackI
 }
 
 void GameManager::stopGame() {
-  std::lock_guard lock(m_mutex);
-  m_cancel_bot.store(true);
+  std::future<model::Move> botFuture;
+  {
+    std::lock_guard lock(m_mutex);
+    m_cancel_bot.store(true);
+    if (m_bot_future.valid()) {
+      botFuture = std::move(m_bot_future);
+    }
+  }
+
+  if (botFuture.valid()) botFuture.wait();
 }
 
 void GameManager::update([[maybe_unused]] float dt) {
