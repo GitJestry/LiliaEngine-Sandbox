@@ -13,7 +13,7 @@ namespace lilia::view {
 Board::Board(Entity::Position pos) : Entity(pos), m_flipped(false) {}
 
 void Board::positionLabels(Entity::Position board_offset) {
-  // FILE-Labels wieder unten rechts im Feld der Grundreihe
+  // FILE-Labels bottom right
   for (int file = 0; file < constant::BOARD_SIZE; ++file) {
     auto &label = m_file_labels[m_flipped ? constant::BOARD_SIZE - 1 - file : file];
     auto size = label.getOriginalSize();
@@ -28,17 +28,11 @@ void Board::positionLabels(Entity::Position board_offset) {
         {cx + constant::SQUARE_PX_SIZE * 0.5f - w, cy + constant::SQUARE_PX_SIZE * 0.45f - h});
   }
 
-  // RANK-Labels wieder oben links im linken Randfeld
+  // RANK-Labels top left
   for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
     auto &label = m_rank_labels[m_flipped ? constant::BOARD_SIZE - 1 - rank : rank];
-    auto size = label.getOriginalSize();
-    float scale = (constant::SQUARE_PX_SIZE * 0.25f) / size.x;
-    (void)size;
-    (void)scale;  // nur falls ungenutzt-Warnungen auftreten
-
     float cx = board_offset.x;  // file 0
     float cy = board_offset.y + (constant::BOARD_SIZE - 1 - rank) * constant::SQUARE_PX_SIZE;
-
     label.setPosition(
         {cx - constant::SQUARE_PX_SIZE * 0.5f, cy - constant::SQUARE_PX_SIZE * 0.45f});
   }
@@ -53,7 +47,7 @@ void Board::init(const sf::Texture &textureWhite, const sf::Texture &textureBlac
       getPosition().x - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
       getPosition().y - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
 
-  // Squares aufbauen
+  // build up squares
   for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
     for (int file = 0; file < constant::BOARD_SIZE; ++file) {
       int index = file + rank * constant::BOARD_SIZE;
@@ -153,7 +147,7 @@ void Board::setPosition(const Entity::Position &pos) {
       getPosition().x - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2,
       getPosition().y - constant::WINDOW_PX_SIZE / 2 + constant::SQUARE_PX_SIZE / 2);
 
-  // Squares neu positionieren
+  // reposition Squares
   for (int rank = 0; rank < constant::BOARD_SIZE; ++rank) {
     for (int file = 0; file < constant::BOARD_SIZE; ++file) {
       int index = file + rank * constant::BOARD_SIZE;

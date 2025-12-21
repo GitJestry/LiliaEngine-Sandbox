@@ -7,11 +7,10 @@
 #include <string>
 #include <vector>
 
-#include "lilia/model/core/magic.hpp"  // für getters: rook_magics(), rook_tables(), ...
+#include "lilia/model/core/magic.hpp"
 
 namespace lilia::model::magic {
 
-// Kleine Helfer fürs Format
 static inline void write_u64_hex(std::ostream& os, std::uint64_t v) {
   std::ios::fmtflags f(os.flags());
   os << "0x" << std::hex << std::uppercase << v;
@@ -64,7 +63,6 @@ static inline void write_magic_array(std::ostream& os, const char* name,
   os << "};\n\n";
 }
 
-// packt vector-Tabellen in Arena + Offsets + Längen
 static inline void pack_flat(const std::array<std::vector<std::uint64_t>, 64>& src,
                              std::vector<std::uint32_t>& off, std::vector<std::uint16_t>& len,
                              std::vector<std::uint64_t>& arena) {
@@ -106,10 +104,8 @@ void serialize_magics_to_header(const std::string& outPath) {
   pack_flat(rtab, r_off, r_len, r_arena);
   pack_flat(btab, b_off, b_len, b_arena);
 
-  // Header schreiben
   std::ofstream os(outPath, std::ios::out | std::ios::trunc);
   if (!os) {
-    // bewusst kein Throw/Log: Call-Site bleibt schlank
     return;
   }
 
@@ -143,7 +139,7 @@ struct MagicPacked { std::uint64_t magic; std::uint8_t shift; };
   os << "inline constexpr std::size_t srook_arena_size = " << r_arena.size() << ";\n";
   os << "inline constexpr std::size_t sbishop_arena_size = " << b_arena.size() << ";\n\n";
 
-  // Arenen
+  // Arena
   write_array_u64(os, "srook_arena", r_arena);
   write_array_u64(os, "sbishop_arena", b_arena);
 

@@ -22,7 +22,7 @@ class ThreadPool {
   auto submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>> {
     using R = std::invoke_result_t<F, Args...>;
 
-    // packaged_task in shared_ptr hüllen, damit das Callable kopierbar ist
+    // packaged_task in shared_ptr, so that Callable is copyable
     auto task_ptr = std::make_shared<std::packaged_task<R()>>(
         std::bind(std::forward<F>(f), std::forward<Args>(args)...));
 
@@ -31,7 +31,7 @@ class ThreadPool {
     {
       std::lock_guard<std::mutex> lk(m_);
       q_.emplace([task_ptr]() mutable {
-        // Aufruf; shared_ptr hält die Aufgabe am Leben
+        // shared_ptr keeps the task alive
         (*task_ptr)();
       });
     }
@@ -39,7 +39,6 @@ class ThreadPool {
     return fut;
   }
 
-  // Optional: adjust after first construction (no hard guarantee)
   void maybe_resize(int desired) {
     if (desired <= 0) return;
     std::lock_guard<std::mutex> lk(m_);

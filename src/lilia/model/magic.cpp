@@ -331,12 +331,6 @@ void init_magics() {
     g_bishop_magic[i] = {sbishop_magic[i].magic, sbishop_magic[i].shift};
   }
 
-  // (A) Falls dein Serializer bereits FLAT ausgibt:
-  //   Definiere in der generierten Header-Datei: LILIA_MAGIC_FLAT_CONSTANTS
-  //   und stelle folgende Arrays bereit:
-  //     - srook_off[64], srook_len[64], srook_arena[...]
-  //     - sbishop_off[64], sbishop_len[64], sbishop_arena[...]
-  //   Dann übernehmen wir diese 1:1 ohne Repack.
 #ifdef LILIA_MAGIC_FLAT_CONSTANTS
   for (int i = 0; i < 64; ++i) {
     g_r_off_magic[i] = srook_off[i];
@@ -347,7 +341,6 @@ void init_magics() {
   g_r_arena_magic.assign(srook_arena, srook_arena + srook_arena_size);
   g_b_arena_magic.assign(sbishop_arena, sbishop_arena + sbishop_arena_size);
 #else
-  // (B) Kompatibel zu den alten Vektor-Konstanten:
   for (int i = 0; i < 64; ++i) {
     g_rook_table[i] = srook_table[i];
     g_bishop_table[i] = sbishop_table[i];
@@ -357,12 +350,10 @@ void init_magics() {
 #endif
 
 #else
-  // Ohne Konstanten: Magics suchen + Tabellen bauen, dann packen
   generate_all_magics_and_tables();
   pack_magic_vectors_to_flat(g_rook_table, g_r_off_magic, g_r_len_magic, g_r_arena_magic);
   pack_magic_vectors_to_flat(g_bishop_table, g_b_off_magic, g_b_len_magic, g_b_arena_magic);
 
-  // Optional weiter serialisieren (kannst du beibehalten)
   serialize_magics_to_header("include/lilia/model/generated/magic_constants.hpp");
 #endif
 

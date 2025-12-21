@@ -6,24 +6,24 @@
 
 namespace lilia::model {
 
-// Explizit 8-bit, damit wir sicher in 2 Bits kodieren können
+// Explicit 8-bit so we can safely encode it in 2 bits
 enum class CastleSide : std::uint8_t { None = 0, KingSide = 1, QueenSide = 2 };
 
 /**
- * Move (32-bit, fest gepackt)
+ * Move (32-bit, tightly packed)
  *
  * Layout (LSB -> MSB):
- *  - from:      6 Bit  (0..63)
- *  - to:        6 Bit  (0..63)
- *  - promotion: 4 Bit  (core::PieceType in 0..15)
- *  - capture:   1 Bit
- *  - ep:        1 Bit
- *  - castle:    2 Bit  (CastleSide in 0..3)
- *  - reserved: 12 Bit  (frei für spätere Flags)
+ *  - from:      6 bits  (0..63)
+ *  - to:        6 bits  (0..63)
+ *  - promotion: 4 bits  (core::PieceType in 0..15)
+ *  - capture:   1 bit
+ *  - ep:        1 bit
+ *  - castle:    2 bits  (CastleSide in 0..3)
+ *  - reserved: 12 bits  (free for future flags)
  *
- * WICHTIG:
- *  - Einheitlicher Basistyp (uint32_t) für alle Bitfields -> MSVC bündelt korrekt.
- *  - operator== vergleicht NUR from/to/promotion (TT-16bit-Pack kompatibel).
+ * IMPORTANT:
+ *  - Use a uniform base type (uint32_t) for all bitfields -> MSVC packs correctly.
+ *  - operator== compares ONLY from/to/promotion (compatible with TT 16-bit packing).
  */
 struct Move {
   union {
@@ -39,7 +39,7 @@ struct Move {
     } b;
   };
 
-  // Konstruktoren
+  // Constructors
   constexpr Move() noexcept = default;
 
   constexpr Move(core::Square f, core::Square t, core::PieceType promo = core::PieceType::None,
@@ -53,10 +53,10 @@ struct Move {
     b.reserved = 0u;
   }
 
-  // Fabrikmethoden
+  // Factory helpers
   static constexpr Move null() noexcept { return Move{}; }
 
-  // Accessors (typsicher)
+  // Accessors (type-safe)
   constexpr core::Square from() const noexcept { return static_cast<core::Square>(b.from); }
   constexpr core::Square to() const noexcept { return static_cast<core::Square>(b.to); }
   constexpr core::PieceType promotion() const noexcept {
@@ -66,7 +66,7 @@ struct Move {
   constexpr bool isEnPassant() const noexcept { return b.ep != 0; }
   constexpr CastleSide castle() const noexcept { return static_cast<CastleSide>(b.castle); }
 
-  // Mutators (falls benötigt)
+  // Mutators (if needed)
   constexpr void set_from(core::Square s) noexcept { b.from = static_cast<std::uint32_t>(s); }
   constexpr void set_to(core::Square s) noexcept { b.to = static_cast<std::uint32_t>(s); }
   constexpr void set_promotion(core::PieceType p) noexcept {
@@ -80,7 +80,7 @@ struct Move {
     b.castle = 0u;
   }
 
-  // Komfort
+  // Convenience helpers
   constexpr bool isCastle() const noexcept { return b.castle != 0; }
   constexpr bool isQuiet() const noexcept {
     return !isCapture() && !isEnPassant() && !isCastle() && promotion() == core::PieceType::None;
@@ -91,7 +91,7 @@ struct Move {
            b.ep == 0u && b.castle == 0u && b.reserved == 0u;
   }
 
-  // 16-bit Pack (kompatibel mit operator==)
+  // 16-bit packing (compatible with operator==)
   // [0..5] from, [6..11] to, [12..15] promotion
   constexpr std::uint16_t pack16() const noexcept {
     return static_cast<std::uint16_t>((b.from & 0x3Fu) | ((b.to & 0x3Fu) << 6) |
@@ -109,7 +109,7 @@ struct Move {
     return m;
   }
 
-  // Gleichheit: nur from/to/promotion (Flags bewusst ignoriert)
+  // Equality: from/to/promotion only (flags intentionally ignored)
   friend constexpr bool operator==(const Move& a, const Move& b) noexcept {
     return a.b.from == b.b.from && a.b.to == b.b.to && a.b.promotion == b.b.promotion;
   }

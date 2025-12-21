@@ -9,7 +9,6 @@
 namespace lilia::view {
 
 namespace {
-// Palette in sync with the app (colors come from render_constants.hpp)
 
 // Layout
 constexpr float kIconFrameSize = 32.f;

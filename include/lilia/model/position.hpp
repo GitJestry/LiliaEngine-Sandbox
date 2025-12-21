@@ -19,8 +19,7 @@ class Position {
   GameState& getState() { return m_state; }
   const GameState& getState() const { return m_state; }
 
-  // Vollständigen Hash und pawnKey aus der aktuellen Stellung neu berechnen
-  // header: typsicher & nützlich
+  // Recompute the full hash and pawnKey from the current position
   [[nodiscard]] inline std::uint64_t hash() const noexcept {
     return static_cast<std::uint64_t>(m_hash);
   }
@@ -28,13 +27,12 @@ class Position {
     return !m_history.empty() && m_history.back().gaveCheck != 0;
   }
 
-  // buildHash(): schneller & ohne Square-Loop
+  // buildHash(): fast & without iterating over all squares
   void buildHash() {
-    // Vollhash (inkl. EP-Relevanz!) – ACHTUNG: Zobrist::compute(*this) muss die gleiche EP-Logik
-    // benutzen
+    // Full hash (including EP relevance!) — NOTE: Zobrist::compute(*this) must use the same EP logic
     m_hash = Zobrist::compute(*this);
 
-    // pawnKey neu aufbauen
+    // Rebuild pawnKey
     bb::Bitboard pk = 0;
     for (auto c : {core::Color::White, core::Color::Black}) {
       bb::Bitboard pawns = m_board.getPieces(c, core::PieceType::Pawn);
@@ -52,7 +50,7 @@ class Position {
   bool doNullMove();
   void undoNullMove();
 
-  // Statusabfragen
+  // Status queries
   bool checkInsufficientMaterial();
   bool checkMoveRule();
   bool checkRepetition();
@@ -75,11 +73,11 @@ class Position {
   engine::EvalAcc evalAcc_;
   std::vector<NullState> m_null_history;
 
-  // interne Helfer
+  // Internal helpers
   void applyMove(const Move& m, StateInfo& st);
   void unapplyMove(const StateInfo& st);
 
-  // Zobrist/PawnKey inkrementell
+  // Incremental Zobrist / pawnKey updates
   inline void hashXorPiece(core::Color c, core::PieceType pt, core::Square s) {
     m_hash ^= Zobrist::piece[bb::ci(c)][static_cast<int>(pt)][s];
     if (pt == core::PieceType::Pawn) {
@@ -92,16 +90,16 @@ class Position {
     m_hash ^= Zobrist::castling[next & 0xF];
   }
 
-  // EP-Hash nur dann xoren, wenn EP in der aktuellen State-Kombination relevant ist.
-  // Wichtig: Vor State-Änderungen aufrufen, um "alt" aus dem Hash zu entfernen,
-  // und NACH allen State-Änderungen erneut, um "neu" zu addieren.
+  // XOR the EP hash only if en passant is relevant for the current state.
+  // Important: call this BEFORE state changes to remove the "old" value from the hash,
+  // and call it AGAIN AFTER all state changes to add the "new" value.
   void xorEPRelevant() {
     const auto ep = m_state.enPassantSquare;
     if (ep == core::NO_SQUARE) return;
 
     const auto stm = m_state.sideToMove;
     const bb::Bitboard pawnsSTM = m_board.getPieces(stm, core::PieceType::Pawn);
-    if (!pawnsSTM) return;  // nichts zu tun
+    if (!pawnsSTM) return;  // nothing to do
 
     const int epIdx = static_cast<int>(ep);
     const int file = epIdx & 7;

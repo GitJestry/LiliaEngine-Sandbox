@@ -32,7 +32,7 @@ class MoveGenerator;
 namespace bb {
 struct Piece;
 }
-} // namespace lilia::model
+}  // namespace lilia::model
 
 namespace lilia::controller {
 class GameManager;
@@ -61,41 +61,37 @@ struct TimeView {
 };
 
 class GameController {
-public:
-  explicit GameController(view::GameView &gView, model::ChessGame &game);
+ public:
+  explicit GameController(view::GameView& gView, model::ChessGame& game);
   ~GameController();
 
   void update(float dt);
 
-  void handleEvent(const sf::Event &event);
+  void handleEvent(const sf::Event& event);
 
   void render();
 
-  // game_controller.hpp (in public:)
   /**
-   * @brief Startet ein Spiel über den internen GameManager.
-   * @param fen Start-FEN (default: START_FEN).
-   * @param whiteIsBot true, falls der weiße Spieler ein Bot ist.
-   * @param blackIsBot true, falls der schwarze Spieler ein Bot ist.
-   * @param whiteThinkTimeMs Zeit in Millisekunden, die der weiße Bot maximal
-   *            denken darf.
-   * @param whiteDepth Suchtiefe für den weißen Bot.
-   * @param blackThinkTimeMs Zeit in Millisekunden, die der schwarze Bot maximal
-   *            denken darf.
-   * @param blackDepth Suchtiefe für den schwarzen Bot.
+   * @brief Starts a game via the internal GameManager.
+   * @param fen Starting FEN (default: START_FEN).
+   * @param whiteIsBot true if the white player is a bot.
+   * @param blackIsBot true if the black player is a bot.
+   * @param whiteThinkTimeMs Time in milliseconds that the white bot is allowed
+   *        to think at most.
+   * @param whiteDepth Search depth for the white bot.
+   * @param blackThinkTimeMs Time in milliseconds that the black bot is allowed
+   *        to think at most.
+   * @param blackDepth Search depth for the black bot.
    */
-
-  void startGame(const std::string &fen = core::START_FEN,
-                 bool whiteIsBot = false, bool blackIsBot = true,
-                 int whiteThinkTimeMs = 1000, int whiteDepth = 5,
-                 int blackThinkTimeMs = 1000, int blackDepth = 5,
-                 bool useTimer = true, int baseSeconds = 0,
-                 int incrementSeconds = 0);
+  void startGame(const std::string& fen = core::START_FEN, bool whiteIsBot = false,
+                 bool blackIsBot = true, int whiteThinkTimeMs = 1000, int whiteDepth = 5,
+                 int blackThinkTimeMs = 1000, int blackDepth = 5, bool useTimer = true,
+                 int baseSeconds = 0, int incrementSeconds = 0);
 
   enum class NextAction { None, NewBot, Rematch };
   [[nodiscard]] NextAction getNextAction() const;
 
-private:
+ private:
   bool isHumanPiece(core::Square sq) const;
   bool hasCurrentLegalMove(core::Square from, core::Square to) const;
 
@@ -113,21 +109,17 @@ private:
   void clearPremove();
   bool enqueuePremove(core::Square from, core::Square to);
   void updatePremovePreviews();
-  [[nodiscard]] bool isPseudoLegalPremove(core::Square from,
-                                          core::Square to) const;
+  [[nodiscard]] bool isPseudoLegalPremove(core::Square from, core::Square to) const;
   [[nodiscard]] model::Position getPositionAfterPremoves() const;
-  [[nodiscard]] model::bb::Piece
-  getPieceConsideringPremoves(core::Square sq) const;
+  [[nodiscard]] model::bb::Piece getPieceConsideringPremoves(core::Square sq) const;
   [[nodiscard]] bool hasVirtualPiece(core::Square sq) const;
 
-  void movePieceAndClear(const model::Move &move, bool isPlayerMove,
-                         bool onClick);
+  void movePieceAndClear(const model::Move& move, bool isPlayerMove, bool onClick);
 
   void snapAndReturn(core::Square sq, core::MousePos cur);
 
-  [[nodiscard]] const std::vector<core::Square> &
-  getAttackSquares(core::Square pieceSQ) const;
-  void showAttacks(const std::vector<core::Square> &att);
+  [[nodiscard]] const std::vector<core::Square>& getAttackSquares(core::Square pieceSQ) const;
+  void showAttacks(const std::vector<core::Square>& att);
   [[nodiscard]] bool tryMove(core::Square a, core::Square b);
   [[nodiscard]] bool isPromotion(core::Square a, core::Square b);
   [[nodiscard]] bool isSameColor(core::Square a, core::Square b);
@@ -142,10 +134,10 @@ private:
   void restoreSelectedPiece();
 
   // ---------------- Members ----------------
-  view::GameView &m_game_view;    ///< Responsible for rendering.
-  model::ChessGame &m_chess_game; ///< Game model containing rules and state.
-  InputManager m_input_manager;   ///< Handles raw input processing.
-  view::sound::SoundManager m_sound_manager; ///< Handles sfx and music
+  view::GameView& m_game_view;                // Responsible for rendering.
+  model::ChessGame& m_chess_game;             // Game model containing rules and state.
+  InputManager m_input_manager;               // Handles raw input processing.
+  view::sound::SoundManager m_sound_manager;  // Handles sfx and music
 
   bool m_white_is_bot{false};
   bool m_black_is_bot{false};
@@ -166,8 +158,7 @@ private:
   core::Square m_stashed_selected_square = core::NO_SQUARE;
 
   std::deque<Premove> m_premove_queue;
-  bool m_premove_suspended =
-      false; ///< Premove visuals hidden while browsing history
+  bool m_premove_suspended = false;  // Premove visuals hidden while browsing history
   // Temporary info while waiting for a premove promotion selection
   bool m_pending_premove_promotion = false;
   core::Square m_ppromo_from = core::NO_SQUARE;
@@ -183,7 +174,7 @@ private:
 
   SelectionManager m_selection_manager;
 
-  // ---------------- New: GameManager ----------------
+  // ---------------- GameManager ----------------
   std::unique_ptr<GameManager> m_game_manager;
   std::unique_ptr<TimeController> m_time_controller;
   std::atomic<int> m_eval_cp{0};
@@ -198,10 +189,11 @@ private:
   mutable model::MoveGenerator m_movegen;
   mutable std::vector<model::Move> m_pseudo_buffer;
   mutable std::vector<core::Square> m_attack_buffer;
-  mutable const std::vector<model::Move> *m_cached_moves{nullptr};
+  mutable const std::vector<model::Move>* m_cached_moves{nullptr};
 
+  // cached moves
   void invalidateLegalCache();
   void ensureLegalCache() const;
 };
 
-} // namespace lilia::controller
+}  // namespace lilia::controller

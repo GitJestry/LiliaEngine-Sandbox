@@ -31,20 +31,19 @@ namespace lilia::engine {
 // -----------------------------------------------------------------------------
 // Limits / constants
 // -----------------------------------------------------------------------------
-// Für History-Tabellen: Anzahl nicht-leerer Figurtypen (Pawn..King)
 static constexpr int PIECE_NB = 6;
 static constexpr int SQ_NB = 64;
-static constexpr int CH_LAYERS = 6;  // 1..6 ply wie bei SF
+static constexpr int CH_LAYERS = 6;  // 1..6 ply
 
 struct SearchStoppedException : public std::exception {
   const char* what() const noexcept override { return "Search stopped"; }
 };
 
 // -----------------------------------------------------------------------------
-// SearchStats – robustere Zähler (64-bit), schlanke Ausgabeinfos
+// SearchStats – robust count (64-bit)
 // -----------------------------------------------------------------------------
 struct SearchStats {
-  std::uint64_t nodes = 0;  // 64-bit: vermeidet Overflow
+  std::uint64_t nodes = 0;
   double nps = 0.0;
   std::uint64_t elapsedMs = 0;
   int bestScore = 0;
@@ -53,24 +52,24 @@ struct SearchStats {
   std::vector<model::Move> bestPV;
 };
 
-// Vorwärtsdeklaration
+// Forwarddecleration
 class Evaluator;
 
 // -----------------------------------------------------------------------------
-// Search – ein Instanz-pro-Thread (keine geteilten mutablen Daten)
+// Search – one Instance-per-Thread (no shared mutable Data)
 // -----------------------------------------------------------------------------
 class Search {
  public:
   Search(model::TT5& tt, std::shared_ptr<const Evaluator> eval, const EngineConfig& cfg);
   ~Search() = default;
 
-  // Non-copyable / non-movable – bewusst, um versehentliches Kopieren zu verhindern
+  // Non-copyable / non-movable
   Search(const Search&) = delete;
   Search& operator=(const Search&) = delete;
   Search(Search&&) = delete;
   Search& operator=(Search&&) = delete;
 
-  // Root (iterative deepening, parallel auf Root-Children)
+  // Root (iterative deepening, parallel for Root-Children)
   // maxThreads <= 0 -> use cfg.threads for deterministic thread count
   int search_root_single(model::Position& pos, int maxDepth,
                          std::shared_ptr<std::atomic<bool>> stop, std::uint64_t maxNodes = 0);
@@ -84,25 +83,25 @@ class Search {
   }
 
   [[nodiscard]] const SearchStats& getStats() const noexcept { return stats; }
-  void clearSearchState();  // Killers/History resetten
+  void clearSearchState();  // Killers/History reset
 
   model::TT5& ttRef() noexcept { return tt; }
 
-  // Killers: 2 je Ply
+  // Killers: 2 every Ply
   alignas(64) std::array<std::array<model::Move, 2>, MAX_PLY> killers{};
 
-  // Basishistory (von->nach), bewährt und billig
+  // Basehistory (from->to)
   alignas(64) std::array<std::array<int16_t, SQ_NB>, SQ_NB> history{};
 
-  // Erweiterte Heuristiken (für bessere Move-Order/Cutoffs)
-  // Quiet-History: nach (moverPiece, to)
+  // extended heuristics (for better Move-Order/Cutoffs)
+  // Quiet-History: (moverPiece, to)
   alignas(64) int16_t quietHist[PIECE_NB][SQ_NB] = {};
 
-  // Capture-History: nach (moverPiece, to, capturedPiece)
+  // Capture-History: (moverPiece, to, capturedPiece)
   alignas(64) int16_t captureHist[PIECE_NB][SQ_NB][PIECE_NB] = {};
 
-  // Counter-Move: nach vorigem Zug (from,to) → typischer Antwortzug,
-  // plus Counter-History-Bonus für genau diesen Antwortzug
+  // Counter-Move: (from,to) typical answer
+  // plus Counter-History-Bonus for this exact move
   alignas(64) model::Move counterMove[SQ_NB][SQ_NB] = {};
   alignas(64) int16_t counterHist[SQ_NB][SQ_NB] = {};
   alignas(64) int16_t contHist[CH_LAYERS][PIECE_NB][SQ_NB][PIECE_NB][SQ_NB];
@@ -112,7 +111,6 @@ class Search {
 
  private:
   int thread_id_ = 0;  // 0 = main, >0 helpers
-  // Kernfunktionen
   int negamax(model::Position& pos, int depth, int alpha, int beta, int ply, model::Move& refBest,
               int parentStaticEval = 0, const model::Move* excludedMove = nullptr);
   int quiescence(model::Position& pos, int alpha, int beta, int ply);
@@ -124,14 +122,13 @@ class Search {
   void merge_from(const Search& other);
 
   uint32_t tick_ = 0;
-  static constexpr uint32_t TICK_STEP = 1024;  // 256–2048 ist ok
+  static constexpr uint32_t TICK_STEP = 1024;
 
+  // to reduce exact node count
   inline void fast_tick() {
-    // billiger Hot-Path
     ++tick_;
     if ((tick_ & (TICK_STEP - 1)) != 0) return;
 
-    // seltener Slow-Path
     if (sharedNodes) {
       auto cur = sharedNodes->fetch_add(TICK_STEP, std::memory_order_relaxed) + TICK_STEP;
       if (nodeLimit && cur >= nodeLimit) {
@@ -142,7 +139,7 @@ class Search {
     if (stopFlag && stopFlag->load(std::memory_order_relaxed)) throw SearchStoppedException();
   }
 
-  // optional: damit die letzten <TICK_STEP Restknoten noch gezählt werden
+  // so that the last nodes still count
   inline void flush_tick() {
     if (!sharedNodes) return;
     uint32_t rem = (tick_ & (TICK_STEP - 1));
@@ -150,17 +147,15 @@ class Search {
   }
 
   // ---------------------------------------------------------------------------
-  // Daten
+  // Data
   // ---------------------------------------------------------------------------
   model::TT5& tt;
   model::MoveGenerator mg;
   const EngineConfig& cfg;
   std::shared_ptr<const Evaluator> eval_;
 
-  // Voriger Zug pro Ply (für CounterMove)
   std::array<model::Move, MAX_PLY> prevMove{};
 
-  // Feste, flache Puffer pro Ply:
   model::Move genArr_[MAX_PLY][lilia::engine::MAX_MOVES];
   int genN_[MAX_PLY]{};
 

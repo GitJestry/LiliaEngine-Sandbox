@@ -236,7 +236,7 @@ bool Position::isPseudoLegal(const Move& m) const {
   }
   return false;
 }
-// ------- SEE (Static Exchange Evaluation), Stockfish-style swap -------
+// ------- SEE (Static Exchange Evaluation) -------
 // Returns true if material result of playing 'm' on square 'to' is >= 0.
 bool Position::see(const model::Move& m) const {
   using core::Color;
@@ -473,7 +473,7 @@ bool Position::doMove(const Move& m) {
 
   applyMove(m, st);
 
-  // Illegale Züge (eigener König im Schach oder castle-through-check via generator-guard)
+  // Illegal moves king
   core::Color movedSide = ~m_state.sideToMove;
   const bb::Bitboard kbbAfter = m_board.getPieces(movedSide, core::PieceType::King);
   if (!kbbAfter) {

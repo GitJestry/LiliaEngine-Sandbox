@@ -23,8 +23,7 @@ class HighlightManager {
   void highlightRightClickSquare(core::Square pos);
   void highlightRightClickArrow(core::Square from, core::Square to);
   [[nodiscard]] std::vector<core::Square> getRightClickSquares() const;
-  [[nodiscard]] std::vector<std::pair<core::Square, core::Square>>
-      getRightClickArrows() const;
+  [[nodiscard]] std::vector<std::pair<core::Square, core::Square>> getRightClickArrows() const;
   void clearAllHighlights();
   void clearNonPremoveHighlights();
   void clearAttackHighlights();
@@ -54,8 +53,7 @@ class HighlightManager {
   std::unordered_map<core::Square, Entity> m_hl_hover_squares;
   std::unordered_map<core::Square, Entity> m_hl_premove_squares;
   std::unordered_map<core::Square, Entity> m_hl_rclick_squares;
-  std::unordered_map<unsigned int, std::pair<core::Square, core::Square>>
-      m_hl_rclick_arrows;
+  std::unordered_map<unsigned int, std::pair<core::Square, core::Square>> m_hl_rclick_arrows;
   ColorPaletteManager::ListenerID m_paletteListener{0};
 };
 

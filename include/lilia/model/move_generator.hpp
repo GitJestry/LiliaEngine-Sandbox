@@ -12,19 +12,20 @@ struct Move;
 
 class MoveGenerator {
  public:
-  // Volle Pseudolegal-Gen (Quiet + Captures + Promos + EP + evtl. Castle)
+  // Full pseudo-legal move generation (quiet moves + captures + promotions + en passant + optionally castling)
   void generatePseudoLegalMoves(const Board& b, const GameState& st, std::vector<Move>& out) const;
 
-  // Nur Schläge + Promotions (inkl. EP und Quiet-Promos)
+  // Captures + promotions (including en passant and quiet promotions)
   void generateCapturesOnly(const Board& b, const GameState& st, std::vector<Move>& out) const;
 
-  // Evasions bei Schach: sichere Königszüge plus (bei Single-Check) Checker schlagen / blocken
-  // Pseudolegal – finale Legalität via doMove()
+  // Check evasions: safe king moves plus (in single-check) capturing the checker and/or blocking the check
+  // Pseudo-legal — final legality is verified via doMove()
   void generateEvasions(const Board& b, const GameState& st, std::vector<Move>& out) const;
+
+  // Non-capture promotions only (i.e., quiet promotions)
   void generateNonCapturePromotions(const Board& b, const GameState& st,
                                     std::vector<model::Move>& out) const;
-
-  // Return: Anzahl generierter Züge
+  // Return: num generated moves
   int generatePseudoLegalMoves(const Board&, const GameState&, engine::MoveBuffer& buf);
   int generateCapturesOnly(const Board&, const GameState&, engine::MoveBuffer& buf);
   int generateEvasions(const Board&, const GameState&, engine::MoveBuffer& buf);

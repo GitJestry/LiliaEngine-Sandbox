@@ -13,10 +13,10 @@ class Evaluator final {
   Evaluator() noexcept;
   ~Evaluator() noexcept;
 
-  // Bewertung in cp aus Sicht der Seite am Zug.
+  // evaluation in cp in the view of the one who's turn it is
   int evaluate(model::Position& pos) const;
 
-  // Eval- & Pawn-Caches leeren.
+  // Eval- & Pawn-Caches clearing
   void clearCaches() const noexcept;
 
   Evaluator(const Evaluator&) = delete;

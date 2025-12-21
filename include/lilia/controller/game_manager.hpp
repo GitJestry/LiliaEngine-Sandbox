@@ -56,14 +56,14 @@ public:
 
 private:
   model::ChessGame &m_game;
-  // Players: nullptr bedeutet menschlicher Spieler
+  // Players: nullptr means human player
   std::unique_ptr<IPlayer> m_white_player;
   std::unique_ptr<IPlayer> m_black_player;
 
   // Bot future & cancel token
   std::future<model::Move> m_bot_future;
   IPlayer *m_pending_bot_player =
-      nullptr; // roher pointer auf den aktiven Player
+      nullptr; // raw pointer on active player
   std::atomic<bool> m_cancel_bot{false};
 
   // pending promotion info
@@ -71,8 +71,10 @@ private:
   core::Square m_promotion_from = core::NO_SQUARE;
   core::Square m_promotion_to = core::NO_SQUARE;
 
+  // consistent transactions
   std::mutex m_mutex;
 
+  // what to do when
   MoveCallback onMoveExecuted_;
   PromotionCallback onPromotionRequested_;
   EndCallback onGameEnd_;

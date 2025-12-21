@@ -10,8 +10,8 @@
 
 #include "lilia/engine/config.hpp"
 #include "lilia/engine/eval_acc.hpp"
-#include "lilia/engine/eval_shared.hpp"
 #include "lilia/engine/eval_alias.hpp"
+#include "lilia/engine/eval_shared.hpp"
 #include "lilia/model/core/bitboard.hpp"
 #include "lilia/model/core/magic.hpp"
 #include "lilia/model/position.hpp"
@@ -105,7 +105,7 @@ consteval Masks init_masks() {
     m.bFront[sq] = bf;
     m.frontSpanB[sq] = bf;
 
-    // King-Ring (Chebyshev-Radius parametrierbar)
+    // King-Ring
     Bitboard ring = 0;
     for (int dr = -KING_RING_RADIUS; dr <= KING_RING_RADIUS; ++dr)
       for (int df = -KING_RING_RADIUS; df <= KING_RING_RADIUS; ++df) {
@@ -115,7 +115,7 @@ consteval Masks init_masks() {
       }
     m.kingRing[sq] = ring;
 
-    // Shields je Farbe (parametrierte Tiefe)
+    // Shields per color
     Bitboard shW = 0;
     for (int dr = 1; dr <= KING_SHIELD_DEPTH; ++dr) {
       int nr = r + dr;
@@ -199,7 +199,7 @@ static int space_term(const std::array<Bitboard, 6>& W, const std::array<Bitboar
 
 struct PawnOnly {
   int mg = 0, eg = 0;
-  Bitboard wPass = 0, bPass = 0;  // nur Marker, keine dyn. Adds
+  Bitboard wPass = 0, bPass = 0;
 };
 
 static PawnOnly pawn_structure_pawnhash_only(Bitboard wp, Bitboard bp, Bitboard wPA, Bitboard bPA) {
@@ -507,7 +507,6 @@ static AttInfo mobility(Bitboard occ, Bitboard wocc, Bitboard bocc,
                         Bitboard wPA, Bitboard bPA, AttackMap* A /* optional */) {
   AttInfo ai{};
 
-  // Einmalige Safe-Masken
   const Bitboard safeMaskW = ~wocc & ~bPA;
   const Bitboard safeMaskB = ~bocc & ~wPA;
 
@@ -680,7 +679,6 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
                    const AttackMap& A, Bitboard occ) {
   int sc = 0;
 
-  // Pawn threats (wie gehabt)
   auto pawn_threat_score = [&](Bitboard pa, const std::array<Bitboard, 6>& side) {
     int s = 0;
     if (pa & side[1]) s += THR_PAWN_MINOR;
@@ -692,7 +690,6 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
   sc += pawn_threat_score(A.wPA, B);
   sc -= pawn_threat_score(A.bPA, W);
 
-  // Hänger: Angreifer = (All + PawnAttacks), Verteidiger = (All + PawnAttacks + King)
   int wKsq = lsb_i(W[5]), bKsq = lsb_i(B[5]);
   Bitboard wocc = W[0] | W[1] | W[2] | W[3] | W[4] | W[5];
   Bitboard bocc = B[0] | B[1] | B[2] | B[3] | B[4] | B[5];
@@ -714,7 +711,6 @@ static int threats(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 
   sc += hang_score(bHang, B);
   sc -= hang_score(wHang, W);
 
-  // Minor on Queen: keine Magics nötig
   if ((A.wN | A.wB) & B[4]) sc += MINOR_ON_QUEEN;
   if ((A.bN | A.bB) & W[4]) sc -= MINOR_ON_QUEEN;
 
@@ -771,7 +767,6 @@ static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bi
     if (ksq < 0) return 0;
     Bitboard ring = M.kingRing[ksq];
 
-    // wie vorher: Zählung je Typ
     int cN = popcount((kingIsWhite ? A.bN : A.wN) & ring);
     int cB = popcount((kingIsWhite ? A.bB : A.wB) & ring);
     int cR = popcount((kingIsWhite ? A.bR : A.wR) & ring);
@@ -784,7 +779,7 @@ static int king_safety_raw(const std::array<Bitboard, 6>& W, const std::array<Bi
     int score = unique * KS_RING_BONUS +
                 (power * std::min(unique, KS_POWER_COUNT_CLAMP)) / KS_POWER_COUNT_CLAMP;
 
-    // Shield / offene Datei / Escape wie gehabt (ohne weitere Magics)
+    // Shield / open file / Escape
     Bitboard wp = W[0], bp = B[0];
     Bitboard shield = kingIsWhite ? M.wShield[ksq] : M.bShield[ksq];
     Bitboard ownP = kingIsWhite ? wp : bp;
@@ -871,7 +866,7 @@ static int king_shelter_storm(const std::array<Bitboard, 6>& W, const std::array
 }
 
 // =============================================================================
-// Style terms (teilweise dynamisiert)
+// Style terms
 // =============================================================================
 
 inline bool pawns_on_both_wings(Bitboard pawns) noexcept {
@@ -962,10 +957,8 @@ static int rim_knights(const std::array<Bitboard, 6>& W, const std::array<Bitboa
 }
 
 static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
-                         Bitboard wp, Bitboard bp, Bitboard wPass,
-                         Bitboard bPass,              // NEW use passers from PawnTT
-                         Bitboard wPA, Bitboard bPA,  // for semi-open vs King feature
-                         Bitboard occ, int wK, int bK, const AttackMap* A) {
+                         Bitboard wp, Bitboard bp, Bitboard wPass, Bitboard bPass, Bitboard wPA,
+                         Bitboard bPA, Bitboard occ, int wK, int bK, const AttackMap* A) {
   int s = 0;
   Bitboard wr = W[3], br = B[3];
   if (!wr && !br) return 0;
@@ -1147,7 +1140,6 @@ static int rook_activity(const std::array<Bitboard, 6>& W, const std::array<Bitb
   return s;
 }
 
-// EG-only rook extras: Fortschritt + Königsschnitt
 static int rook_endgame_extras_eg(const std::array<Bitboard, 6>& W,
                                   const std::array<Bitboard, 6>& B, Bitboard wp, Bitboard bp,
                                   Bitboard occ, const AttackMap* A, Bitboard wPass_cached,
@@ -1155,10 +1147,8 @@ static int rook_endgame_extras_eg(const std::array<Bitboard, 6>& W,
   int eg = 0;
   Bitboard wr = W[3], br = B[3];
 
-  // Fortschritts-Skalierung hinter eigenem Passer
   auto add_progress = [&](bool white) {
     Bitboard rooks = white ? wr : br;
-    // Reuse pawn TT passers – do not recompute
     Bitboard pass = white ? wPass_cached : bPass_cached;
     Bitboard t = rooks;
     while (t) {
@@ -1182,7 +1172,6 @@ static int rook_endgame_extras_eg(const std::array<Bitboard, 6>& W,
   add_progress(true);
   add_progress(false);
 
-  // Königsschnitt in Turmendspielen
   auto cut_score = [&](bool white) {
     bool rookEnd =
         (popcnt(W[3]) == 1 && popcnt(B[3]) == 1 && (W[1] | W[2] | W[4] | B[1] | B[2] | B[4]) == 0);
@@ -1279,7 +1268,6 @@ static int king_tropism(const std::array<Bitboard, 6>& W, const std::array<Bitbo
   return sc / TROPISM_EG_DEN;
 }
 
-// King activity (EG): Nähe zu Zentrum e4/d4/e5/d5
 static inline int center_manhattan(int sq) {
   if (sq < 0) return 6;
   int d1 = king_manhattan(sq, 27);  // d4
@@ -1295,7 +1283,7 @@ static int king_activity_eg(const std::array<Bitboard, 6>& W, const std::array<B
   return (center_manhattan(bK) - center_manhattan(wK)) * KING_ACTIVITY_EG_MULT;
 }
 
-// Passed-pawn-race (EG, figurenarm)
+// Passed-pawn-race EG
 static int passed_pawn_race_eg(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
                                const Position& pos) {
   int minorMajor = popcnt(W[1] | W[2] | W[3] | B[1] | B[2] | B[3]);
@@ -1315,7 +1303,7 @@ static int passed_pawn_race_eg(const std::array<Bitboard, 6>& W, const std::arra
     return steps + stmAdj;
   };
 
-  // weiße
+  // white
   Bitboard t = wp;
   while (t) {
     int s = lsb_i(t);
@@ -1327,7 +1315,7 @@ static int passed_pawn_race_eg(const std::array<Bitboard, 6>& W, const std::arra
     int bKETA = king_manhattan(bK, q);
     sc += PASS_RACE_MULT * (bKETA - wETA);
   }
-  // schwarze
+  // black
   t = bp;
   while (t) {
     int s = lsb_i(t);
@@ -1385,7 +1373,7 @@ static int piece_blocking(const std::array<Bitboard, 6>& W, const std::array<Bit
 }
 
 // =============================================================================
-// Endgame scalers (erweitert)
+// Endgame scalers
 // =============================================================================
 static inline int kdist_cheb(int a, int b) {
   if (a < 0 || b < 0) return 7;
@@ -1406,7 +1394,7 @@ static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitb
   auto on_fileH = [&](Bitboard paw) { return (paw & M.file[7]) != 0; };
   auto is_corner_pawn = [&](Bitboard paw) { return on_fileA(paw) || on_fileH(paw); };
 
-  // K + Randbauer vs K mit Verteidiger auf Umwandlungsfeld => Remis
+  // K + Pawn position draw
   if (wP == 1 && bP == 0 && (wN | wB | wR | wQ | bN | bB | bR | bQ) == 0) {
     if (on_fileA(W[0]) && bK == 56 /*a8*/) return SCALE_DRAW;
     if (on_fileH(W[0]) && bK == 63 /*h8*/) return SCALE_DRAW;
@@ -1426,7 +1414,7 @@ static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitb
     if (wLight != bLight) return OPP_BISHOPS_SCALE;
   }
 
-  // Falscher Läufer + Randbauer (K+B+P(a/h) vs K)
+  // wrong bishop + sidepawn (K+B+P(a/h) vs K)
   if (wB == 1 && wP == 1 && is_corner_pawn(W[0]) && (bP | bN | bB | bR | bQ) == 0) {
     int corner = on_fileA(W[0]) ? 56 /*a8*/ : 63 /*h8*/;
     int d = kdist_cheb(bK, corner);
@@ -1442,7 +1430,7 @@ static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitb
     return SCALE_MEDIUM;
   }
 
-  // R+Rand-/Doppelbauer vs R (reduziert)
+  // R+side-/double pawn vs R
   if (wR == 1 && bR == 1 && (wP <= 2) && is_corner_pawn(W[0]) && bP == 0) {
     int corner = on_fileA(W[0]) ? 56 : 63;
     int d = kdist_cheb(bK, corner);
@@ -1454,13 +1442,12 @@ static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitb
     return (d <= 2 ? SCALE_VERY_DRAWISH : SCALE_REDUCED);
   }
 
-  // N+Randbauer vs K (nahezu remis)
+  // N+sidepawn vs K
   if (wN == 1 && wP == 1 && is_corner_pawn(W[0]) && (bN | bB | bR | bQ | bP) == 0)
     return KN_CORNER_PAWN_SCALE;
   if (bN == 1 && bP == 1 && is_corner_pawn(B[0]) && (wN | wB | wR | wQ | wP) == 0)
     return KN_CORNER_PAWN_SCALE;
 
-  // ---------- NEW: Insufficient/minor-only endings ----------
   // No pawns, no heavy pieces -> scale strongly toward draw in bare-minor cases.
   if (wP == 0 && bP == 0 && wR == 0 && bR == 0 && wQ == 0 && bQ == 0) {
     int wMin = wN + wB, bMin = bN + bB;
@@ -1477,7 +1464,7 @@ static int endgame_scale(const std::array<Bitboard, 6>& W, const std::array<Bitb
 }
 
 // =============================================================================
-// Extra: castles & center (wie gehabt; parametriert)
+// Extra: castles & center
 // =============================================================================
 static void castling_and_center(const std::array<Bitboard, 6>& W, const std::array<Bitboard, 6>& B,
                                 int& mg_add, int& eg_add) {
@@ -1530,7 +1517,7 @@ static void castling_and_center(const std::array<Bitboard, 6>& W, const std::arr
   int eqmB = early_queen_malus(B, false);
   mg_add += -eqmW + eqmB;
 
-  // “nicht rochiert” Heuristik bei Damen auf dem Brett
+  // not castled heuristic
   if (queensOn) {
     bool wUncastled = (wK == 4) && rook_on_start_square(W[3], true);
     bool bUncastled = (bK == 60) && rook_on_start_square(B[3], false);
@@ -1552,10 +1539,10 @@ struct alignas(64) PawnEntry {
   std::atomic<uint64_t> key{0};
   std::atomic<int32_t> mg{0};
   std::atomic<int32_t> eg{0};
-  std::atomic<uint64_t> wPA{0};    // NEW
-  std::atomic<uint64_t> bPA{0};    // NEW
-  std::atomic<uint64_t> wPass{0};  // NEW
-  std::atomic<uint64_t> bPass{0};  // NEW
+  std::atomic<uint64_t> wPA{0};
+  std::atomic<uint64_t> bPA{0};
+  std::atomic<uint64_t> wPass{0};
+  std::atomic<uint64_t> bPass{0};
 };
 struct Evaluator::Impl {
   std::array<EvalEntry, EVAL_SIZE> eval;
@@ -1738,7 +1725,7 @@ inline int pawn_levers(Bitboard wp, Bitboard bp) {
   int centerW = popcnt(wLever & (FILE_C | FILE_D | FILE_E | FILE_F));
   int centerB = popcnt(bLever & (FILE_C | FILE_D | FILE_E | FILE_F));
   int wingW = popcnt(wLever) - centerW;
-  int wingB = popcnt(bLever) - centerB;  // <-- was subtracting wingW (bug)
+  int wingB = popcnt(bLever) - centerB;  // was subtracting wingW (bug)
   return (centerW - centerB) * PAWN_LEVER_CENTER + (wingW - wingB) * PAWN_LEVER_WING;
 }
 
@@ -2007,7 +1994,7 @@ int Evaluator::evaluate(model::Position& pos) const {
   int shelterEG = shelter / SHELTER_EG_DEN;
 
   // ---------------------------------------------------------------------------
-  // NEW: Pins
+  // Pins
   Bitboard wPins = rook_pins(occ, wocc, (B[3] | B[4]), wK, true, &A) |
                    bishop_pins(occ, wocc, (B[2] | B[4]), wK, true, &A);
   Bitboard bPins = rook_pins(occ, bocc, (W[3] | W[4]), bK, false, &A) |
@@ -2019,12 +2006,12 @@ int Evaluator::evaluate(model::Position& pos) const {
   pinScore += popcnt(bPins & (B[1] | B[2])) * PIN_MINOR + popcnt(bPins & B[3]) * PIN_ROOK +
               popcnt(bPins & B[4]) * PIN_QUEEN;
 
-  // NEW: Safe checks
+  // Safe checks
   int scW = safe_checks(true, W, B, occ, A, bK);
   int scB = safe_checks(false, W, B, occ, A, wK);
   int sc = scW - scB;
 
-  // NEW: Holes (knight occupation + bishop attack near enemy king ring)
+  // Holes (knight occupation + bishop attack near enemy king ring)
   Bitboard wHoles = holes_for_white(B[0]);  // usable by white
   Bitboard bHoles = holes_for_black(W[0]);  // usable by black
   const Bitboard W_ENEMY_HALF = RANK_4 | RANK_5 | RANK_6 | RANK_7;
@@ -2043,24 +2030,24 @@ int Evaluator::evaluate(model::Position& pos) const {
     holeScore -= c * HOLE_ATT_BI;
   }
 
-  // NEW: Pawn levers (center/wing)
+  // Pawn levers (center/wing)
   int lever = pawn_levers(W[0], B[0]);
 
-  // NEW: X-ray pressure along king file
+  // X-ray pressure along king file
   int xray = xray_king_file_pressure(true, W, B, occ, bK, &A) +
              xray_king_file_pressure(false, W, B, occ, wK, &A);
 
-  // NEW: Queen + bishop battery toward king
+  // Queen + bishop battery toward king
   int qbatt = queen_bishop_battery(true, W, B, occ, bK, &A) +
               queen_bishop_battery(false, W, B, occ, wK, &A);
 
-  // NEW: Central blockers (opening-weighted)
+  // Central blockers (opening-weighted)
   int cblock = central_blockers(W, B, curPhase);
 
-  // NEW: Weakly defended pieces (soft pressure)
+  // Weakly defended pieces (soft pressure)
   int weak = weakly_defended(W, B, A);
 
-  // NEW: Fianchetto structure (MG king-safety oriented)
+  // Fianchetto structure (MG king-safety oriented)
   int fian = fianchetto_structure_ksmg(W, B, wK, bK);
   // ---------------------------------------------------------------------------
 
@@ -2119,7 +2106,6 @@ int Evaluator::evaluate(model::Position& pos) const {
   mg_add += rim + badB + block + trop;
   eg_add += (rim / 2) + (badB / 3) + (block / 2) + (trop / 6);
 
-  // ------------------ inject NEW feature scores ------------------
   // Pins: strong in MG, still relevant in EG (reduced)
   mg_add += pinScore;
   eg_add += pinScore / 2;
@@ -2166,8 +2152,6 @@ int Evaluator::evaluate(model::Position& pos) const {
     eg = (eg * scale) / FULL_SCALE;
   }
   int score = taper(mg, eg, curPhase);
-  // tempo after blending so tempo doesn’t get “endgame scaled”
-
   // tempo (phase-aware)
   const bool wtm = (pos.getState().sideToMove == Color::White);
   const int tempo = taper(TEMPO_MG, TEMPO_EG, curPhase);

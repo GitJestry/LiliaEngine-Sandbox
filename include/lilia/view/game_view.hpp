@@ -12,10 +12,10 @@
 #include "animation/chess_animator.hpp"
 #include "board_view.hpp"
 #include "clock.hpp"
+#include "cursor_manager.hpp"
 #include "entity.hpp"
 #include "eval_bar.hpp"
 #include "highlight_manager.hpp"
-#include "cursor_manager.hpp"
 #include "modal_view.hpp"
 #include "move_list_view.hpp"
 #include "particle_system.hpp"
@@ -27,21 +27,21 @@ namespace lilia::view {
 
 class GameView {
  public:
-  GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot);
+  GameView(sf::RenderWindow& window, bool topIsBot, bool bottomIsBot);
   ~GameView() = default;
 
-  void init(const std::string &fen = core::START_FEN);
+  void init(const std::string& fen = core::START_FEN);
   void resetBoard();
 
   void update(float dt);
   void updateEval(int eval);
   void render();
 
-  void addMove(const std::string &move);
-  void addResult(const std::string &result);
+  void addMove(const std::string& move);
+  void addResult(const std::string& result);
   void selectMove(std::size_t moveIndex);
-  void setBoardFen(const std::string &fen);
-  void updateFen(const std::string &fen);
+  void setBoardFen(const std::string& fen);
+  void updateFen(const std::string& fen);
   void scrollMoveList(float delta);
   void setBotMode(bool anyBot);
 
@@ -56,7 +56,7 @@ class GameView {
   [[nodiscard]] bool isOnResignYes(core::MousePos mousePos) const;
   [[nodiscard]] bool isOnResignNo(core::MousePos mousePos) const;
 
-  void showGameOverPopup(const std::string &msg, bool humanWinner);
+  void showGameOverPopup(const std::string& msg, bool humanWinner);
   void hideGameOverPopup();
   [[nodiscard]] bool isGameOverPopupOpen() const;
   [[nodiscard]] bool isOnNewBot(core::MousePos mousePos) const;
@@ -144,7 +144,7 @@ class GameView {
   [[nodiscard]] bool isOnEvalToggle(core::MousePos mousePos) const;
 
   void resetEvalBar();
-  void setEvalResult(const std::string &result);
+  void setEvalResult(const std::string& result);
 
   void updateClock(core::Color color, float seconds);
   void setClockActive(std::optional<core::Color> active);
@@ -153,7 +153,7 @@ class GameView {
  private:
   void layout(unsigned int width, unsigned int height);
 
-  sf::RenderWindow &m_window;
+  sf::RenderWindow& m_window;
 
   BoardView m_board_view;
   PieceManager m_piece_manager;
@@ -171,22 +171,20 @@ class GameView {
   MoveListView m_move_list;
   PlayerInfoView m_top_player;
   PlayerInfoView m_bottom_player;
-  PlayerInfoView *m_white_player{};
-  PlayerInfoView *m_black_player{};
+  PlayerInfoView* m_white_player{};
+  PlayerInfoView* m_black_player{};
   Clock m_top_clock;
   Clock m_bottom_clock;
-  Clock *m_white_clock{};
-  Clock *m_black_clock{};
+  Clock* m_white_clock{};
+  Clock* m_black_clock{};
   bool m_show_clocks{true};
-  ModalView m_modal;  // ← replaces ad-hoc popup fields
+  ModalView m_modal;
 
   // FX
   ParticleSystem m_particles;
 
   std::vector<core::Square> m_saved_rclick_squares;
   std::vector<std::pair<core::Square, core::Square>> m_saved_rclick_arrows;
-
-  // eval bar toggle handled internally by EvalBar
 };
 
 }  // namespace lilia::view

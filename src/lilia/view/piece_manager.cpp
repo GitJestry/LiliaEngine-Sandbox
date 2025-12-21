@@ -275,7 +275,7 @@ void PieceManager::renderPieces(sf::RenderWindow &window,
     const auto pos = pair.first;
     auto &piece = pair.second;
     if (m_hidden_squares.count(pos) > 0) continue;
-    if (m_premove_pieces.count(pos) > 0) continue;  // <- ghost on top, skip base
+    if (m_premove_pieces.count(pos) > 0) continue;  // ghost on top, skip base
     if (!chessAnimRef.isAnimating(piece.getId())) {
       piece.setPosition(createPiecePositon(pos));
       piece.draw(window);
@@ -283,7 +283,7 @@ void PieceManager::renderPieces(sf::RenderWindow &window,
   }
 }
 
-// New: draw ghosts after animator so they always win the z-order.
+// draw ghosts after animator so they always win the z-order.
 void PieceManager::renderPremoveGhosts(sf::RenderWindow &window,
                                        const animation::ChessAnimator &chessAnimRef) {
   for (auto &pair : m_premove_pieces) {
@@ -371,10 +371,10 @@ void PieceManager::consumePremoveGhost(core::Square from, core::Square to) {
   m_premove_origin.erase(it);
   m_premove_pieces.erase(to);
 
-  // ✅ Reveal the real piece again — no real move happened
+  // Reveal the real piece again, no real move happened
   m_hidden_squares.erase(from);
 
-  // ✅ If we had temporarily stashed a piece that was sitting on 'to',
+  // If we had temporarily stashed a piece that was sitting on 'to',
   // put it back so the board matches reality.
   if (auto bak = m_captured_backup.find(to); bak != m_captured_backup.end()) {
     m_pieces[to] = std::move(bak->second);
@@ -407,7 +407,7 @@ void PieceManager::clearPremovePieces(bool restore) {
     m_captured_backup.clear();  // only clear when we actually restored
     m_hidden_squares.clear();   // safe to clear — nothing is hidden anymore
   } else {
-    // We’re just hiding ghosts temporarily (e.g., while viewing history).
+    // We’re just hiding ghosts temporarily
     // Keep backups so we can reconstitute the preview later.
     m_hidden_squares.clear();  // show the true board while in history view
     // m_captured_backup stays intact on purpose

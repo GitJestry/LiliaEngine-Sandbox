@@ -27,7 +27,6 @@ namespace lilia::engine {
 
 using steady_clock = std::chrono::steady_clock;
 
-// ---------- kleine Helfer / Konstanten ----------
 inline int16_t clamp16(int x) {
   if (x > 32767) return 32767;
   if (x < -32768) return -32768;
@@ -59,11 +58,10 @@ inline int decode_tt_score(int s, int ply) {
 }
 
 static constexpr int ROOT_VERIFY_MARGIN_BASE = 60;
-static constexpr int FUT_MARGIN[4] = {0, 110, 210, 300};  // leicht angehoben
+static constexpr int FUT_MARGIN[4] = {0, 110, 210, 300};
 static constexpr int SNMP_MARGINS[4] = {0, 140, 200, 260};
-static constexpr int RAZOR_MARGIN_BASE = 240;  // vorher 220
-static constexpr int RFP_MARGIN_BASE = 190;    // vorher 180
-// LMP-Limits pro Tiefe (nur Quiet-Züge)
+static constexpr int RAZOR_MARGIN_BASE = 240;
+static constexpr int RFP_MARGIN_BASE = 190;
 static constexpr int LMP_LIMIT[4] = {0, 5, 9, 14};  // D=1..3
 static constexpr int LOW_MVV_MARGIN = 360;
 
@@ -371,7 +369,7 @@ static inline void init_check_tables() {
     }
 }
 
-// --- NEW: pre-move "would give check" detector (EP & promotion aware) ---
+// --- pre-move "would give check" detector (EP & promotion aware) ---
 struct QuietSignals {
   int pawnSignal = 0;
   int pieceSignal = 0;
@@ -581,8 +579,8 @@ Search::Search(model::TT5& tt_, std::shared_ptr<const Evaluator> eval_, const En
   for (auto& pm : prevMove) pm = model::Move{};
 
   stopFlag.reset();
-  sharedNodes.reset();  // NEW
-  nodeLimit = 0;        // NEW
+  sharedNodes.reset();
+  nodeLimit = 0;
   stats = SearchStats{};
   ensure_check_tables_initialized();
 }
@@ -920,7 +918,7 @@ int Search::quiescence(model::Position& pos, int alpha, int beta, int ply) {
     }
   }
 
-  // --- NEW: limited quiet checks in qsearch (not just low material) ---
+  // --- limited quiet checks in qsearch (not just low material) ---
   if (best < beta) {
     // MATERIAL gate: don't add quiet checks in bare endgames (king chases)
     auto countSideNP = [&](core::Color c) {
@@ -1096,7 +1094,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   // --- Static Null-Move Pruning (non-PV, not in check, shallow) ---
   if (!tacticalNode && !inCheck && !isPV && depth <= 3) {
     const int d = std::max(1, std::min(3, depth));
-    const int margin = SNMP_MARGINS[d];  // e.g. {0,140,200,260}
+    const int margin = SNMP_MARGINS[d];
     if (staticEval - margin >= beta) {
       // Cheap cutoff – this saves a lot of leaf work with basically no tactical risk.
       if (!(stopFlag && stopFlag->load())) {
@@ -1132,7 +1130,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
     }
   }
 
-  // --- NEW: light "quick quiet check" probe to avoid suicidal null-move
+  // --- light "quick quiet check" probe to avoid suicidal null-move
   bool hasQuickQuietCheck = false;
   if (!inCheck && !isPV && depth <= 5) {
     int probeCap = std::min(engine::MAX_MOVES, 16);
@@ -1207,7 +1205,7 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
   const bool prevOk = !prev.isNull() && prev.from() != prev.to();
   const model::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : model::Move{};
 
-  // --------- Staged move ordering (Stockfish-style) ---------
+  // --------- Staged move ordering ---------
   constexpr int MAX_MOVES = engine::MAX_MOVES;
   int scores[MAX_MOVES];
   model::Move ordered[MAX_MOVES];
@@ -1618,7 +1616,6 @@ int Search::negamax(model::Position& pos, int depth, int alpha, int beta, int pl
         if (beta - alpha <= 8) r -= 1;
         if (!improving) r += 1;
         if (qpc_sig == 2 /* quiet check */) r = std::max(0, r - 1);
-        // Optional: also be kinder to tactical quiets (x-ray threat)
         if (qpc_sig == 1 /* tactical quiet via signals */) r = std::max(0, r - 1);
 
         // extra safety: avoid reducing the first 3 quiets at shallow depth
@@ -1778,7 +1775,6 @@ std::vector<model::Move> Search::build_pv_from_tt(model::Position pos, int max_l
     if (!tt.probe_into(pos.hash(), tte)) break;
 
     model::Move m = tte.best;
-    // ✅ allow following non-null best move even if not Exact
     if (m.from() == m.to()) break;
 
     if (!pos.doMove(m)) break;
@@ -2211,7 +2207,6 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
     w->set_thread_id(t);
     w->stopFlag = stop;
     w->set_node_limit(sharedCounter, maxNodes);
-    // Heuristiken aus dem Main übernehmen: weniger Driften, bessere Order-Kohärenz
     w->copy_heuristics_from(*this);
     workers.emplace_back(std::move(w));
   }
@@ -2220,7 +2215,7 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
 
   int mainScore = 0;
 
-  // Snapshot der Ausgangsstellung anlegen, bevor Helfer starten
+  // Snapshot
   const model::Position rootSnapshot = pos;
 
   // Helfer starten
@@ -2229,16 +2224,14 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
   for (int t = 1; t < threads; ++t) {
     futs.emplace_back(pool.submit([rootSnapshot, &workers, maxDepth, stop, tid = t] {
       model::Position local = rootSnapshot;
-      // Helfer: Root-Ordering möglichst nicht vom TT-Move abhängig machen,
-      // damit Main deterministischer bleibt (optional: cfg-Flag verwenden).
       return workers[tid]->search_root_single(local, maxDepth, stop, /*maxNodes*/ 0);
     }));
   }
 
-  // Main sucht & liefert Ergebnis
+  // Main search
   mainScore = this->search_root_single(pos, maxDepth, stop, /*maxNodes*/ 0);
 
-  // Main ist fertig -> Helfer stoppen
+  // Main is done stop helper
   if (stop) stop->store(true, std::memory_order_relaxed);
 
   // wait
@@ -2249,7 +2242,7 @@ int Search::search_root_lazy_smp(model::Position& pos, int maxDepth,
     }
   }
 
-  // NEW: fold worker heuristics back into main
+  // fold worker heuristics back into main
   for (int t = 1; t < threads; ++t) {
     this->merge_from(*workers[t]);
   }
@@ -2283,7 +2276,7 @@ void Search::clearSearchState() {
 
 void Search::copy_heuristics_from(const Search& src) {
   // History-like tables
-  history = src.history;  // std::array copy
+  history = src.history;
 
   std::memcpy(quietHist, src.quietHist, sizeof(quietHist));
   std::memcpy(captureHist, src.captureHist, sizeof(captureHist));

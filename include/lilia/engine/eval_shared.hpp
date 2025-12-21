@@ -7,18 +7,17 @@
 
 #include "lilia/model/core/bitboard.hpp"
 
+/**
+ * @brief Its like the look up table as shared parameter values for the eval class
+ */
+
 namespace lilia::engine {
 using namespace lilia::core;
 using namespace lilia::model;
 
-// -------- helpers (inline) --------
 inline constexpr int mirror_sq_black(int sq) noexcept {
   return sq ^ 56;
 }
-
-// =============================================================================
-// Eval parameter registry
-// =============================================================================
 
 struct EvalParams {
 #define EVAL_PARAM_SCALAR(name, default_value) int name = default_value;
@@ -43,9 +42,6 @@ std::vector<int> get_eval_param_values();
 std::vector<int> get_default_eval_param_values();
 void set_eval_param_values(std::span<const int> values);
 
-// =============================================================================
-// Globale Skalen & Mischer
-// =============================================================================
 constexpr int MAX_PHASE = 16;
 inline int taper(int mg, int eg, int phase) {
   // mg when phase=MAX_PHASE, eg when phase=0

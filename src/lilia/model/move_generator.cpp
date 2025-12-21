@@ -708,7 +708,6 @@ LILIA_ALWAYS_INLINE void generate_all_regular(const Board& b, const GameState& s
 }  // namespace
 
 //-- -- -- -- -- -- -- --Public APIs-- -- -- -- -- -- -- --
-// ... keep existing includes/namespace stuff ...
 
 void MoveGenerator::generateNonCapturePromotions(const Board& b, const GameState& st,
                                                  std::vector<model::Move>& out) const {

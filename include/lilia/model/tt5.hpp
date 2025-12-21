@@ -92,7 +92,6 @@ class TT5 {
     slots_ = highest_pow2(want ? want : 1);
     table_.reset(new Cluster[slots_]);
     generation_.store(1u, std::memory_order_relaxed);
-    // (optional) std::fprintf(stderr,"TT: %.1f MB real\n", slots_*sizeof(Cluster)/1048576.0);
   }
 
   void clear() {
@@ -135,9 +134,9 @@ class TT5 {
           static_cast<std::uint16_t>((info1 >> INFO_KEYHI_SHIFT) & 0xFFFFu);
       if (LILIA_UNLIKELY(infoKeyHi != keyHi)) continue;
 
-      // Ok: read data relaxed
+      // read data relaxed
       const std::uint64_t d = ent.data.load(std::memory_order_relaxed);
-      // Torn-read/ABA-Schutz: verifiziere KeyHigh auch aus den Daten
+      // Torn-read/ABA-protection: verify KeyHigh out of the data
       const std::uint16_t dKeyHi = static_cast<std::uint16_t>(d >> 48);
       if (LILIA_UNLIKELY(dKeyHi != keyHi)) continue;
 
@@ -292,7 +291,7 @@ class TT5 {
     ent.data.store(newData, std::memory_order_relaxed);
     (void)ent.info.compare_exchange_strong(oldInfo, newInfo, std::memory_order_release,
                                            std::memory_order_acquire);
-    // if CAS fails, we just drop it — cheap and deterministic enough
+    // if CAS fails, we just drop it
   }
 #else
   void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound, const Move& best,
@@ -488,7 +487,6 @@ class TT5 {
     // heavier depth weight + bound bias; penalize staleness stronger
     // bonus: if data has a mate score, bump strongly
     const int mateBias = 0;  // default 0, see below for optional decode
-    // (Optional) peek at data value16 and favor mates:
     // const uint64_t d = ent.data.load(std::memory_order_relaxed);
     // const int16_t v16 = (int16_t)((d >> 16) & 0xFFFFu);
     // const int isMate = (std::abs((int)v16) >= MATE_THR) ? 64 : 0;

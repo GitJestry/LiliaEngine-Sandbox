@@ -23,7 +23,6 @@ class Board {
 
   inline void clear() noexcept;
 
-  // API unverändert
   inline void setPiece(core::Square sq, bb::Piece p) noexcept;
   inline void removePiece(core::Square sq) noexcept;
   inline std::optional<bb::Piece> getPiece(core::Square sq) const noexcept;
@@ -34,23 +33,16 @@ class Board {
     return m_bb[bb::ci(c)][static_cast<int>(t)];
   }
 
-  // Optionaler Fast-Path (später in Position nutzen):
-  // bewegt eine Figur von 'from' nach 'to' (ohne Capture; 'to' muss leer sein)
   inline void movePiece_noCapture(core::Square from, core::Square to) noexcept;
-  // Move a piece from `from` to `to` while removing a captured piece on `capSq`.
-  // For normal captures: capSq == to.
-  // For en passant:      capSq != to (the pawn behind `to`).
-  // `captured` must describe the piece removed on `capSq` (type != None).
   inline void movePiece_withCapture(core::Square from, core::Square capSq, core::Square to,
                                     bb::Piece captured) noexcept;
 
  private:
-  // Bitboards wie gehabt
   std::array<std::array<bb::Bitboard, 6>, 2> m_bb{};
   std::array<bb::Bitboard, 2> m_color_occ{};
   bb::Bitboard m_all_occ = 0;
 
-  // Neu: O(1)-Lookup pro Feld (0 = leer, sonst (ptIdx+1) | (color<<3))
+  // O(1)-Lookup per square (0 = empty, else (ptIdx+1) | (color<<3))
   std::array<std::uint8_t, 64> m_piece_on{};
 
   // Helper
@@ -231,4 +223,3 @@ inline void Board::movePiece_withCapture(core::Square from, core::Square capSq,
 }
 
 }  // namespace lilia::model
-

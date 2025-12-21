@@ -30,8 +30,6 @@ class BotEngine {
 
   SearchResult findBestMove(model::ChessGame& gameState, int maxDepth, int thinkMillis,
                             std::atomic<bool>* externalCancel = nullptr);
-
-  // Direkt zugänglich, falls jemand Stats separat lesen will
   const engine::SearchStats& getLastSearchStats() const;
 
  private:

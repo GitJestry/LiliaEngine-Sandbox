@@ -6,14 +6,11 @@
 namespace lilia::view::animation {
 
 void AnimationManager::add(Entity::ID_type entityID, std::unique_ptr<IAnimation> anim) {
-  // ALT: hat ignoriert, wenn schon vorhanden
-  // NEU: delegiere auf addOrReplace -> ersetzt sauber
   addOrReplace(entityID, std::move(anim), AnimLayer::Base);
 }
 
 void AnimationManager::addOrReplace(Entity::ID_type entityID, std::unique_ptr<IAnimation> anim,
                                     AnimLayer layer) {
-  // Entferne bestehende Animationen in beiden Layern für diese Entity
   if (auto it = m_animations.find(entityID); it != m_animations.end()) {
     m_animations.erase(it);
   }
@@ -22,7 +19,6 @@ void AnimationManager::addOrReplace(Entity::ID_type entityID, std::unique_ptr<IA
     m_highlight_level_animations.erase(it);
   }
 
-  // Setze neue Animation in gewünschten Layer
   if (layer == AnimLayer::Highlight) {
     m_highlight_level_animations[entityID] = std::move(anim);
   } else {
@@ -40,27 +36,20 @@ void AnimationManager::addOrReplace(Entity::ID_type entityID, std::unique_ptr<IA
 }
 
 void AnimationManager::declareHighlightLevel(Entity::ID_type entityID) {
-  // Robust: egal in welchem Layer – stelle sicher, dass sie im Highlight-Layer liegt
-  // 1) Wenn bereits im Highlight: nichts tun
   if (m_highlight_level_animations.find(entityID) != m_highlight_level_animations.end()) return;
 
-  // 2) Falls im Base-Layer -> rüber verschieben
   if (auto it = m_animations.find(entityID); it != m_animations.end()) {
     m_highlight_level_animations[entityID] = std::move(it->second);
     m_animations.erase(it);
     return;
   }
-
-  // 3) Sonst keine Animation vorhanden -> nichts zu tun
 }
 
 void AnimationManager::endAnim(Entity::ID_type entityID) {
-  // Beendet NUR im Base-Layer (alte Semantik)
   m_animations.erase(entityID);
 }
 
 void AnimationManager::cancelAll(Entity::ID_type entityID) {
-  // Beende in beiden Layern
   if (auto it = m_animations.find(entityID); it != m_animations.end()) {
     m_animations.erase(it);
   }

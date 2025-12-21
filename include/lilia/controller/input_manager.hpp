@@ -28,12 +28,12 @@ class InputManager {
   void cancelDrag();
 
  private:
-  bool m_dragging = false;                     ///< Indicates whether a drag operation is active.
-  std::optional<core::MousePos> m_drag_start;  ///< Starting position of an active drag.
+  bool m_dragging = false;                     // Indicates whether a drag operation is active.
+  std::optional<core::MousePos> m_drag_start;  // Starting position of an active drag.
 
-  ClickCallback m_on_click = nullptr;  ///< Registered click callback.
-  DragCallback m_on_drag = nullptr;    ///< Registered drag callback.
-  DropCallback m_on_drop = nullptr;    ///< Registered drop callback.
+  ClickCallback m_on_click = nullptr;  // Registered click callback.
+  DragCallback m_on_drag = nullptr;    // Registered drag callback.
+  DropCallback m_on_drop = nullptr;    // Registered drop callback.
 
   [[nodiscard]] bool isClick(const core::MousePos& start, const core::MousePos& end,
                              int threshold = 4) const;

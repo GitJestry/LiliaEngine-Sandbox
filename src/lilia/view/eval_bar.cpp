@@ -20,9 +20,6 @@ namespace {
 
 namespace constant = lilia::view::constant;
 
-// Theme (kept in sync with the rest of the UI)
-// (colors now come from render_constants.hpp)
-
 inline float snapf(float v) {
   return std::round(v);
 }
@@ -107,7 +104,7 @@ EvalBar::EvalBar() : EvalBar::Entity() {
 
   m_score_text.setFont(m_font);
   m_score_text.setCharacterSize(constant::EVAL_BAR_FONT_SIZE);
-  m_score_text.setFillColor(constant::COL_SCORE_TEXT_DARK);  // default (balanced → white side)
+  m_score_text.setFillColor(constant::COL_SCORE_TEXT_DARK);  // default
 
   m_toggle_text.setFont(m_font);
   m_toggle_text.setCharacterSize(15);
@@ -266,7 +263,7 @@ void EvalBar::update(int eval) {
   auto b = m_score_text.getLocalBounds();
   m_score_text.setOrigin(b.width / 2.f, b.height / 2.f);
 
-  // place/contrast: white advantage → bottom (dark text), black → top (light text)
+  // place/contrast
   const float offset = 10.f;
   const float barHalfHeight = static_cast<float>(constant::EVAL_BAR_HEIGHT) * 0.5f;
 

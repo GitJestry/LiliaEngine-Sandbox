@@ -11,7 +11,6 @@
 namespace lilia::view {
 
 namespace {
-// Theme colors (sourced from render_constants.hpp)
 
 // layout
 constexpr float kScale = 0.80f;  // 20% smaller

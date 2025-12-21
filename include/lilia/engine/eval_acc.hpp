@@ -11,6 +11,7 @@ namespace lilia::engine {
 struct EvalAcc {
   // White-POV buckets
   int mg = 0, eg = 0, phase = 0;
+  // pieces 2 colors
   int P[2]{}, N[2]{}, B[2]{}, R[2]{}, Q[2]{};
   int kingSq[2]{-1, -1};  // [0]=W, [1]=B
 
@@ -36,7 +37,6 @@ struct EvalDelta {
   int rookFrom = -1, rookTo = -1;
 };
 
-// ---- inline impl ----
 inline void EvalAcc::build_from_board(const model::Board& b) {
   using namespace lilia::core;
   using model::bb::Bitboard;
@@ -140,7 +140,7 @@ inline void EvalAcc::add_piece(lilia::core::Color c, lilia::core::PieceType pt, 
       break;
     case lilia::core::PieceType::King:
       kingSq[s] = sq;
-      break;  // <-- fixed
+      break;
     default:
       break;
   }
@@ -183,7 +183,6 @@ inline void EvalAcc::remove_piece(lilia::core::Color c, lilia::core::PieceType p
 }
 
 inline void EvalAcc::move_piece(lilia::core::Color c, lilia::core::PieceType pt, int from, int to) {
-  // gleiches Piece -> Phase unverändert
   if (c == lilia::core::Color::White) {
     mg -= pst_mg(pt, from);
     eg -= pst_eg(pt, from);

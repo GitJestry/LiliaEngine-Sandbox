@@ -5,7 +5,7 @@
 
 namespace lilia::engine {
 
-constexpr int MAX_MOVES = 256;  // großzügig, sicher genug
+constexpr int MAX_MOVES = 256;
 
 struct MoveBuffer {
   model::Move* out;
@@ -24,7 +24,7 @@ struct MoveBuffer {
 #ifndef NDEBUG
     if (!can_push()) {
       __debugbreak();
-    }  // oder assert(false)
+    }
 #endif
     out[n++] = m;
   }

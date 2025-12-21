@@ -15,7 +15,6 @@ struct IPlayer {
 
   virtual std::future<model::Move> requestMove(model::ChessGame& gameState,
                                                std::atomic<bool>& cancelToken) = 0;
-
   virtual bool isHuman() const = 0;
 };
 

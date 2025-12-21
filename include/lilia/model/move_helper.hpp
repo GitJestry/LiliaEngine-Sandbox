@@ -23,7 +23,7 @@ static inline bool attackedBy(const Board& b, core::Square sq, core::Color by,
   const bb::Bitboard kn = b.getPieces(by, core::PieceType::Knight);
   if (kn && (bb::knight_attacks_from(sq) & kn)) return true;
 
-  // Diagonal sliders (B/Q) – nur wenn vorhanden
+  // Diagonal sliders (B/Q)
   const bb::Bitboard bq =
       b.getPieces(by, core::PieceType::Bishop) | b.getPieces(by, core::PieceType::Queen);
   if (bq) {
@@ -31,7 +31,7 @@ static inline bool attackedBy(const Board& b, core::Square sq, core::Color by,
     if (diag & bq) return true;
   }
 
-  // Orthogonal sliders (R/Q) – nur wenn vorhanden
+  // Orthogonal sliders (R/Q)
   const bb::Bitboard rq =
       b.getPieces(by, core::PieceType::Rook) | b.getPieces(by, core::PieceType::Queen);
   if (rq) {

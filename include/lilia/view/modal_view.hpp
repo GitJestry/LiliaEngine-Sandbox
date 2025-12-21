@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include <SFML/Graphics.hpp>
+
 #include "color_palette_manager.hpp"
 
 namespace lilia::view {
@@ -29,7 +30,7 @@ class ModalView {
   void onResize(const sf::Vector2u& windowSize, sf::Vector2f boardCenter);
 
   // The façade can render particles between these two calls:
-  //   drawOverlay() -> particles -> drawPanel()
+  // drawOverlay() -> particles -> drawPanel()
   void drawOverlay(sf::RenderWindow& win) const;
   void drawPanel(sf::RenderWindow& win) const;
 
@@ -41,8 +42,6 @@ class ModalView {
   bool hitClose(sf::Vector2f p) const;
 
  private:
-  // colors sourced from render_constants.hpp
-
   // geometry
   sf::Vector2u m_windowSize{};
   sf::Vector2f m_boardCenter{};

@@ -10,7 +10,7 @@
 #include <thread>
 
 #include "lilia/model/chess_game.hpp"
-#include "lilia/uci/uci_helper.hpp"  // für move_to_uci falls gewünscht beim Logging
+#include "lilia/uci/uci_helper.hpp"
 
 namespace lilia::engine {
 
@@ -81,18 +81,16 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   cv.notify_one();
   if (timer.joinable()) timer.join();
 
-  // >>> WICHTIG: Nur dann Stats übernehmen, wenn die Suche NICHT geworfen hat
+  // >>> Important: only adapt stats, when engine succeeded
   if (!engineThrew) {
     res.stats = m_engine.getLastSearchStats();
     res.topMoves = res.stats.topMoves;
   } else {
-    res.stats = SearchStats{};  // leere/neutrale Stats statt alter Werte
+    res.stats = SearchStats{};
     res.topMoves.clear();
   }
 
 #if LOG
-
-  // Logging – alles optional-sicher
   std::string reason;
   if (externalCancel && externalCancel->load()) {
     reason = "external-cancel";

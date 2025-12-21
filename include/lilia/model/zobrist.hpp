@@ -8,7 +8,6 @@
 namespace lilia::model {
 
 namespace detail {
-// SplitMix64: deterministisch und schnell
 consteval std::uint64_t splitmix64(std::uint64_t& x) {
   std::uint64_t z = (x += 0x9E3779B97F4A7C15ULL);
   z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
@@ -65,11 +64,9 @@ struct Zobrist {
   static constexpr auto& side = tables.side;
   static constexpr auto& epCaptureMask = tables.epCaptureMask;
 
-  // Kompatibilitäts-Stubs – keine Initialisierung nötig
   static constexpr void init() noexcept {}
   static void init(std::uint64_t) = delete;
 
-  // Nur hashen, wenn ein EP-Schlag tatsächlich möglich ist
   static inline bb::Bitboard epHashIfRelevant(const Board& b, const GameState& st) noexcept {
     if (st.enPassantSquare == core::NO_SQUARE) return 0;
     const int ep = static_cast<int>(st.enPassantSquare);
@@ -80,12 +77,11 @@ struct Zobrist {
     const bb::Bitboard pawnsSTM = b.getPieces(stm, core::PieceType::Pawn);
     if (!pawnsSTM) return 0;
 
-    // gibt es einen Bauer der Seite am Zug, der das EP-Feld schlagen könnte?
+    // enpessant?
     if (pawnsSTM & epCaptureMask[ci][ep]) return epFile[file];
     return 0;
   }
 
-  // Vollständiger Hash (teuer, nur für Init/Checks)
   template <class PositionLike>
   static bb::Bitboard compute(const PositionLike& pos) noexcept {
     bb::Bitboard h = 0;

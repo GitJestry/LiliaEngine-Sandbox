@@ -15,7 +15,7 @@ struct Engine::Impl {
   EngineConfig cfg;
   model::TT5 tt;
 
-  // Gemeinsame Evaluator-Instanz, von allen Searches/Threads genutzt
+  // collectively Evaluator-Instance, for all Searches/Threads used
   std::shared_ptr<const Evaluator> eval;
   std::unique_ptr<Search> search;
 
@@ -61,25 +61,21 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
                                                   std::shared_ptr<std::atomic<bool>> stop) {
   if (maxDepth <= 0) maxDepth = pimpl->cfg.maxDepth;
 
-  // Suche immer sauber zurücksetzen (Killers/History etc.)
   try {
     pimpl->search->clearSearchState();
   } catch (...) {
   }
 
-  // 1) Suche ausführen – niemals Exceptions nach außen lassen
   try {
     (void)pimpl->search->search_root_lazy_smp(pos, maxDepth, stop, pimpl->cfg.threads
                                               /*,pimpl->cfg.maxNodes*/);
   } catch (...) {
-    // Wir fallen gleich auf TT/Legal zurück; keine Weitergabe
   }
 
-  // 2) BestMove aus Stats, wenn vorhanden
   const auto& stats = pimpl->search->getStats();
   if (stats.bestMove.has_value()) return stats.bestMove;  // safe
 
-  // 3) TT-Fallback: am Root-Hash nachsehen und legalisieren
+  // TT-Fallback look at root
   try {
     auto& tt = pimpl->search->ttRef();
     if (auto e = tt.probe(pos.hash())) {
@@ -91,17 +87,15 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
       }
     }
   } catch (...) {
-    // TT defekt/leer: ignorieren
   }
 
-  // 4) Letzter Fallback: generiere legale Züge und wähle eine vernünftige Heuristik
+  // last Fallback: generate legal moves and decide heuristically
   try {
     model::MoveGenerator mg;
     std::vector<model::Move> pseudo;
     pseudo.reserve(128);
     mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
 
-    // Legal filtern und „gute“ Züge bevorzugen (Captures/Promos via MVV-LVA)
     std::optional<model::Move> bestCapPromo;
     int bestCapScore = std::numeric_limits<int>::min();
     std::optional<model::Move> firstLegal;
@@ -124,10 +118,9 @@ std::optional<model::Move> Engine::find_best_move(model::Position& pos, int maxD
     if (bestCapPromo) return bestCapPromo;
     if (firstLegal) return firstLegal;
   } catch (...) {
-    // Movegen kaputt? Dann gibt es wirklich nichts zu ziehen.
   }
 
-  // 5) Keine Züge -> Matt/Pat, gib leer zurück (sicher! kein value()-Crash)
+  // no moves
   return std::nullopt;
 }
 
