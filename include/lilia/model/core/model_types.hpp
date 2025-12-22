@@ -10,21 +10,21 @@ using Bitboard = std::uint64_t;
 struct Piece {
   core::PieceType type = core::PieceType::None;
   core::Color color = core::Color::White;
-  constexpr bool isNone() const noexcept { return type == core::PieceType::None; }
+  [[nodiscard]] constexpr bool isNone() const noexcept { return type == core::PieceType::None; }
 };
 
-constexpr inline int ci(core::Color c) noexcept {
+[[nodiscard]] constexpr inline int ci(core::Color c) noexcept {
   return c == core::Color::White ? 0 : 1;
 }
 
-constexpr inline int file_of(core::Square s) noexcept {
+[[nodiscard]] constexpr inline int file_of(core::Square s) noexcept {
   return s & 7;
 }
-constexpr inline int rank_of(core::Square s) noexcept {
+[[nodiscard]] constexpr inline int rank_of(core::Square s) noexcept {
   return s >> 3;
 }
 
-constexpr inline Bitboard sq_bb(core::Square s) noexcept {
+[[nodiscard]] constexpr inline Bitboard sq_bb(core::Square s) noexcept {
   return Bitboard{1} << s;
 }
 

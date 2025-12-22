@@ -13,4 +13,3 @@ BotConfig getBotConfig(BotType type) {
 }
 
 }  // namespace lilia
-

@@ -15,61 +15,67 @@
 
 namespace lilia::model::bb {
 
-constexpr inline bool any(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool any(Bitboard b) noexcept {
   return b != 0;
 }
-constexpr inline bool none(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool none(Bitboard b) noexcept {
   return b == 0;
 }
 
-constexpr inline int popcount(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr int popcount(Bitboard b) noexcept {
   return std::popcount(b);
 }
 
-LILIA_ALWAYS_INLINE int ctz64(std::uint64_t x) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr int ctz64(std::uint64_t x) noexcept {
   return static_cast<int>(std::countr_zero(x));
 }
 
-LILIA_ALWAYS_INLINE int clz64(std::uint64_t x) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr int clz64(std::uint64_t x) noexcept {
   return static_cast<int>(std::countl_zero(x));
 }
 
-LILIA_ALWAYS_INLINE core::Square pop_lsb(Bitboard& b) noexcept {
-  if (!b) return core::NO_SQUARE;
+// New: unchecked variant for hot loops where b!=0 is guaranteed by the caller.
+[[nodiscard]] LILIA_ALWAYS_INLINE core::Square pop_lsb_unchecked(Bitboard& b) noexcept {
   const int idx = ctz64(b);
   b &= (b - 1);
   return static_cast<core::Square>(idx);
 }
 
-constexpr inline Bitboard north(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE core::Square pop_lsb(Bitboard& b) noexcept {
+  if (!b) return core::NO_SQUARE;
+  return pop_lsb_unchecked(b);
+}
+
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard north(Bitboard b) noexcept {
   return b << 8;
 }
-constexpr inline Bitboard south(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard south(Bitboard b) noexcept {
   return b >> 8;
 }
-constexpr inline Bitboard east(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard east(Bitboard b) noexcept {
   return (b & ~FILE_H) << 1;
 }
-constexpr inline Bitboard west(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard west(Bitboard b) noexcept {
   return (b & ~FILE_A) >> 1;
 }
-constexpr inline Bitboard ne(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard ne(Bitboard b) noexcept {
   return (b & ~FILE_H) << 9;
 }
-constexpr inline Bitboard nw(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard nw(Bitboard b) noexcept {
   return (b & ~FILE_A) << 7;
 }
-constexpr inline Bitboard se(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard se(Bitboard b) noexcept {
   return (b & ~FILE_H) >> 7;
 }
-constexpr inline Bitboard sw(Bitboard b) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard sw(Bitboard b) noexcept {
   return (b & ~FILE_A) >> 9;
 }
 
 namespace detail {
 
 template <Bitboard (*Step)(Bitboard)>
-LILIA_ALWAYS_INLINE constexpr Bitboard ray_attack_dir_fast(Bitboard from, Bitboard occ) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard ray_attack_dir_fast(Bitboard from,
+                                                                         Bitboard occ) noexcept {
   Bitboard atk = 0;
   Bitboard r = Step(from);
   while (r) {
@@ -112,25 +118,29 @@ inline constexpr auto KING_ATTACKS = build_king_table();
 
 }  // namespace detail
 
-constexpr inline Bitboard knight_attacks_from(core::Square s) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard knight_attacks_from(core::Square s) noexcept {
   return detail::KNIGHT_ATTACKS[static_cast<int>(s)];
 }
 
-constexpr inline Bitboard king_attacks_from(core::Square s) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard king_attacks_from(core::Square s) noexcept {
   return detail::KING_ATTACKS[static_cast<int>(s)];
 }
 
-constexpr inline Bitboard ray_attack_dir(Bitboard from, Bitboard occ, Bitboard (*step)(Bitboard)) {
-  if (step == ne) return detail::ray_attack_dir_fast<ne>(from, occ);
-  if (step == nw) return detail::ray_attack_dir_fast<nw>(from, occ);
-  if (step == se) return detail::ray_attack_dir_fast<se>(from, occ);
-  if (step == sw) return detail::ray_attack_dir_fast<sw>(from, occ);
-  if (step == north) return detail::ray_attack_dir_fast<north>(from, occ);
-  if (step == south) return detail::ray_attack_dir_fast<south>(from, occ);
-  if (step == east) return detail::ray_attack_dir_fast<east>(from, occ);
-  if (step == west) return detail::ray_attack_dir_fast<west>(from, occ);
+// This is runtime-dispatched (function pointer), so "constexpr" adds no value.
+// Keep signature and fast-path specializations.
+[[nodiscard]] LILIA_ALWAYS_INLINE Bitboard ray_attack_dir(Bitboard from, Bitboard occ,
+                                                          Bitboard (*step)(Bitboard)) noexcept {
+  if (step == &ne) return detail::ray_attack_dir_fast<ne>(from, occ);
+  if (step == &nw) return detail::ray_attack_dir_fast<nw>(from, occ);
+  if (step == &se) return detail::ray_attack_dir_fast<se>(from, occ);
+  if (step == &sw) return detail::ray_attack_dir_fast<sw>(from, occ);
+  if (step == &north) return detail::ray_attack_dir_fast<north>(from, occ);
+  if (step == &south) return detail::ray_attack_dir_fast<south>(from, occ);
+  if (step == &east) return detail::ray_attack_dir_fast<east>(from, occ);
+  if (step == &west) return detail::ray_attack_dir_fast<west>(from, occ);
 
-  Bitboard atk = 0, r = step(from);
+  Bitboard atk = 0;
+  Bitboard r = step(from);
   while (r) {
     atk |= r;
     if (r & occ) break;
@@ -139,13 +149,15 @@ constexpr inline Bitboard ray_attack_dir(Bitboard from, Bitboard occ, Bitboard (
   return atk;
 }
 
-constexpr inline Bitboard bishop_attacks(core::Square s, Bitboard occ) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard bishop_attacks(core::Square s,
+                                                                    Bitboard occ) noexcept {
   Bitboard from = sq_bb(s);
   return detail::ray_attack_dir_fast<ne>(from, occ) | detail::ray_attack_dir_fast<nw>(from, occ) |
          detail::ray_attack_dir_fast<se>(from, occ) | detail::ray_attack_dir_fast<sw>(from, occ);
 }
 
-constexpr inline Bitboard rook_attacks(core::Square s, Bitboard occ) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard rook_attacks(core::Square s,
+                                                                  Bitboard occ) noexcept {
   Bitboard from = sq_bb(s);
   return detail::ray_attack_dir_fast<north>(from, occ) |
          detail::ray_attack_dir_fast<south>(from, occ) |
@@ -153,15 +165,16 @@ constexpr inline Bitboard rook_attacks(core::Square s, Bitboard occ) noexcept {
          detail::ray_attack_dir_fast<west>(from, occ);
 }
 
-constexpr inline Bitboard queen_attacks(core::Square s, Bitboard occ) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard queen_attacks(core::Square s,
+                                                                   Bitboard occ) noexcept {
   return bishop_attacks(s, occ) | rook_attacks(s, occ);
 }
 
-constexpr inline Bitboard white_pawn_attacks(Bitboard pawns) noexcept {
-  return (nw(pawns) | ne(pawns));
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard white_pawn_attacks(Bitboard pawns) noexcept {
+  return nw(pawns) | ne(pawns);
 }
-constexpr inline Bitboard black_pawn_attacks(Bitboard pawns) noexcept {
-  return (sw(pawns) | se(pawns));
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard black_pawn_attacks(Bitboard pawns) noexcept {
+  return sw(pawns) | se(pawns);
 }
 
 }  // namespace lilia::model::bb

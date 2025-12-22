@@ -1,10 +1,10 @@
 #pragma once
 #include <cstdint>
-#include <vector>
+#include <type_traits>
 
-#include "core/bitboard.hpp"     // for bb::Bitboard, bb::Castling flags
-#include "core/model_types.hpp"  // for core::Color, core::Square, etc.
-#include "move.hpp"              // for lilia::model::Move
+#include "core/bitboard.hpp"
+#include "core/model_types.hpp"
+#include "move.hpp"
 
 namespace lilia::model {
 
@@ -19,20 +19,23 @@ struct GameState {
 };
 
 struct StateInfo {
-  Move move{};                        // last move
-  bb::Bitboard prevPawnKey{};         // pawn hash before move
-  bb::Bitboard zobristKey{};          // full hash before move
-  bb::Piece captured{};               // captured piece (type+color)
+  // Put 8-byte fields first to reduce padding; improves stack/array locality in search.
+  bb::Bitboard zobristKey{};   // full hash before move
+  bb::Bitboard prevPawnKey{};  // pawn hash before move
+
+  Move move{};           // last move
+  bb::Piece captured{};  // captured piece (type+color)
+
   std::uint16_t prevHalfmoveClock{};  // halfmove clock before move
-  std::uint8_t gaveCheck{0};          // 0/1
   std::uint8_t prevCastlingRights{};  // castling rights before move
+  std::uint8_t gaveCheck{0};          // 0/1
   core::Square prevEnPassantSquare{core::NO_SQUARE};
 };
 
 struct NullState {
   bb::Bitboard zobristKey{0};  // full hash before null move
-  std::uint16_t prevHalfmoveClock{0};
   std::uint32_t prevFullmoveNumber{1};
+  std::uint16_t prevHalfmoveClock{0};
   std::uint8_t prevCastlingRights{0};
   core::Square prevEnPassantSquare{core::NO_SQUARE};
 };
