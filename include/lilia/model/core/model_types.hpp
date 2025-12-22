@@ -1,36 +1,41 @@
 #pragma once
+#include <cstdint>
+
 #include "../../chess_types.hpp"
 
 namespace lilia::model::bb {
+
 using Bitboard = std::uint64_t;
 
 struct Piece {
   core::PieceType type = core::PieceType::None;
   core::Color color = core::Color::White;
-  constexpr bool isNone() const { return type == core::PieceType::None; }
+  constexpr bool isNone() const noexcept { return type == core::PieceType::None; }
 };
-constexpr inline int ci(core::Color c) {
+
+constexpr inline int ci(core::Color c) noexcept {
   return c == core::Color::White ? 0 : 1;
 }
 
-constexpr inline int file_of(core::Square s) {
+constexpr inline int file_of(core::Square s) noexcept {
   return s & 7;
 }
-constexpr inline int rank_of(core::Square s) {
+constexpr inline int rank_of(core::Square s) noexcept {
   return s >> 3;
 }
-constexpr inline Bitboard sq_bb(core::Square s) {
+
+constexpr inline Bitboard sq_bb(core::Square s) noexcept {
   return Bitboard{1} << s;
 }
 
 constexpr Bitboard FILE_A = 0x0101010101010101ULL;
 constexpr Bitboard FILE_B = 0x0202020202020202ULL;
-constexpr Bitboard FILE_G = 0x4040404040404040ULL;
-constexpr Bitboard FILE_H = 0x8080808080808080ULL;
 constexpr Bitboard FILE_C = 0x0404040404040404ULL;
 constexpr Bitboard FILE_D = 0x0808080808080808ULL;
 constexpr Bitboard FILE_E = 0x1010101010101010ULL;
 constexpr Bitboard FILE_F = 0x2020202020202020ULL;
+constexpr Bitboard FILE_G = 0x4040404040404040ULL;
+constexpr Bitboard FILE_H = 0x8080808080808080ULL;
 
 constexpr Bitboard RANK_1 = 0x00000000000000FFULL;
 constexpr Bitboard RANK_2 = 0x000000000000FF00ULL;
