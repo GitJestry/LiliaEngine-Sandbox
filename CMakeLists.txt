@@ -32,13 +32,27 @@ set(LILIA_ASSETS_DIR "${PROJECT_SOURCE_DIR}/assets"
 # -------------------------------------------------
 # Sources
 # -------------------------------------------------
-file(GLOB_RECURSE MODEL_FILES      ${PROJECT_SOURCE_DIR}/src/lilia/model/*.cpp)
-file(GLOB_RECURSE ENGINE_FILES     ${PROJECT_SOURCE_DIR}/src/lilia/engine/*.cpp)
-file(GLOB_RECURSE UCI_FILES        ${PROJECT_SOURCE_DIR}/src/lilia/uci/*.cpp)
-file(GLOB_RECURSE CONTROLLER_FILES ${PROJECT_SOURCE_DIR}/src/lilia/controller/*.cpp)
-file(GLOB_RECURSE UI_FILES         ${PROJECT_SOURCE_DIR}/src/lilia/view/*.cpp)
-file(GLOB_RECURSE APP_FILES        ${PROJECT_SOURCE_DIR}/src/lilia/app/*.cpp)
-file(GLOB_RECURSE BOT_FILES        ${PROJECT_SOURCE_DIR}/src/lilia/bot/*.cpp)
+file(GLOB_RECURSE MODEL_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/model/*.cpp"
+)
+file(GLOB_RECURSE ENGINE_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/engine/*.cpp"
+)
+file(GLOB_RECURSE UCI_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/uci/*.cpp"
+)
+file(GLOB_RECURSE CONTROLLER_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/controller/*.cpp"
+)
+file(GLOB_RECURSE UI_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/view/*.cpp"
+)
+file(GLOB_RECURSE APP_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/app/*.cpp"
+)
+file(GLOB_RECURSE BOT_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/bot/*.cpp"
+)
 
 set(CORE_FILES
   ${MODEL_FILES}

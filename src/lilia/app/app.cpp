@@ -50,11 +50,11 @@ int App::run() {
     int blackDepth = blackCfg.depth;
     int blackThinkMs = blackCfg.thinkTimeMs;
 
-    lilia::controller::GameController::NextAction action =
-        lilia::controller::GameController::NextAction::None;
+    lilia::controller::NextAction action =
+        lilia::controller::NextAction::None;
 
     do {
-      action = lilia::controller::GameController::NextAction::None;
+      action = lilia::controller::NextAction::None;
       lilia::model::ChessGame chessGame;
       lilia::view::GameView gameView(window, m_black_is_bot, m_white_is_bot);
       lilia::controller::GameController gameController(gameView, chessGame);
@@ -65,7 +65,7 @@ int App::run() {
 
       sf::Clock clock;
       while (window.isOpen() && gameController.getNextAction() ==
-                                    lilia::controller::GameController::NextAction::None) {
+                                    lilia::controller::NextAction::None) {
         float deltaSeconds = clock.restart().asSeconds();
         sf::Event event;
         while (window.pollEvent(event)) {
@@ -83,9 +83,9 @@ int App::run() {
 
       action = gameController.getNextAction();
 
-    } while (action == lilia::controller::GameController::NextAction::Rematch && window.isOpen());
+    } while (action == lilia::controller::NextAction::Rematch && window.isOpen());
 
-    if (action != lilia::controller::GameController::NextAction::NewBot) break;
+    if (action != lilia::controller::NextAction::NewBot) break;
   }
 
   return 0;
