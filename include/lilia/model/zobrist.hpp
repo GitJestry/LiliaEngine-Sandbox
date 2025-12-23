@@ -8,6 +8,7 @@
 namespace lilia::model {
 
 namespace detail {
+
 consteval std::uint64_t splitmix64(std::uint64_t& x) {
   std::uint64_t z = (x += 0x9E3779B97F4A7C15ULL);
   z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
@@ -37,8 +38,7 @@ consteval Tables generate() {
 
   for (int c = 0; c < 2; ++c)
     for (int p = 0; p < 6; ++p)
-      for (int s = 0; s < 64; ++s)
-        t.piece[c][p][s] = next(seed);
+      for (int s = 0; s < 64; ++s) t.piece[c][p][s] = next(seed);
 
   for (int i = 0; i < 16; ++i) t.castling[i] = next(seed);
   for (int f = 0; f < 8; ++f) t.epFile[f] = next(seed);
@@ -52,12 +52,16 @@ consteval Tables generate() {
 
   return t;
 }
-} // namespace detail
+
+}  // namespace detail
 
 struct Zobrist {
   using Tables = detail::Tables;
 
-  static inline constinit Tables tables = detail::generate();
+  // Compile-time generated, ODR-safe in a header.
+  static inline constexpr Tables tables = detail::generate();
+
+  // Convenience refs (remain constant expressions).
   static constexpr auto& piece = tables.piece;
   static constexpr auto& castling = tables.castling;
   static constexpr auto& epFile = tables.epFile;
@@ -68,44 +72,40 @@ struct Zobrist {
   static void init(std::uint64_t) = delete;
 
   static inline bb::Bitboard epHashIfRelevant(const Board& b, const GameState& st) noexcept {
-    if (st.enPassantSquare == core::NO_SQUARE) return 0;
-    const int ep = static_cast<int>(st.enPassantSquare);
+    const core::Square epSq = st.enPassantSquare;
+    if (epSq == core::NO_SQUARE) return 0ULL;
+
+    const int ep = static_cast<int>(epSq);
     const int file = ep & 7;
 
-    const auto stm = st.sideToMove;
+    const core::Color stm = st.sideToMove;
     const int ci = bb::ci(stm);
-    const bb::Bitboard pawnsSTM = b.getPieces(stm, core::PieceType::Pawn);
-    if (!pawnsSTM) return 0;
 
-    // enpessant?
-    if (pawnsSTM & epCaptureMask[ci][ep]) return epFile[file];
-    return 0;
+    // If side-to-move has a pawn that can capture onto EP square, hash EP file.
+    const bb::Bitboard pawnsSTM = b.getPieces(stm, core::PieceType::Pawn);
+    return (pawnsSTM & epCaptureMask[ci][ep]) ? epFile[file] : 0ULL;
   }
 
-  template <class PositionLike>
-  static bb::Bitboard compute(const PositionLike& pos) noexcept {
-    bb::Bitboard h = 0;
+ private:
+  // Single implementation to avoid template bloat for different PositionLike types.
+  static inline bb::Bitboard compute_from(const Board& b, const GameState& st) noexcept {
+    bb::Bitboard h = 0ULL;
 
-    static constexpr core::PieceType PTs[6] = {core::PieceType::Pawn,   core::PieceType::Knight,
-                                               core::PieceType::Bishop, core::PieceType::Rook,
-                                               core::PieceType::Queen,  core::PieceType::King};
-
-    const Board& b = pos.getBoard();
-
+    // Assumes PieceType values for Pawn..King map to 0..5 (your Board + Move code already relies on
+    // this).
     for (int c = 0; c < 2; ++c) {
-      const auto color = static_cast<core::Color>(c);
-      for (int i = 0; i < 6; ++i) {
-        const auto pt = PTs[i];
-        const int pti = static_cast<int>(pt);
+      const core::Color color = static_cast<core::Color>(c);
+      for (int p = 0; p < 6; ++p) {
+        const core::PieceType pt = static_cast<core::PieceType>(p);
         bb::Bitboard bbp = b.getPieces(color, pt);
+
         while (bbp) {
-          core::Square s = bb::pop_lsb(bbp);
-          h ^= piece[c][pti][s];
+          const core::Square s = bb::pop_lsb_unchecked(bbp);
+          h ^= piece[c][p][static_cast<int>(s)];
         }
       }
     }
 
-    const GameState& st = pos.getState();
     h ^= castling[st.castlingRights & 0xF];
     h ^= epHashIfRelevant(b, st);
     if (st.sideToMove == core::Color::Black) h ^= side;
@@ -113,16 +113,25 @@ struct Zobrist {
     return h;
   }
 
+ public:
+  template <class PositionLike>
+  static bb::Bitboard compute(const PositionLike& pos) noexcept {
+    const Board& b = pos.getBoard();
+    const GameState& st = pos.getState();
+    return compute_from(b, st);
+  }
+
   static bb::Bitboard computePawnKey(const Board& b) noexcept {
-    bb::Bitboard h = 0;
-    const int pawnIdx = static_cast<int>(core::PieceType::Pawn);
+    bb::Bitboard h = 0ULL;
+    constexpr int pawnIdx = 0;  // Pawn == 0
 
     for (int c = 0; c < 2; ++c) {
-      const auto color = static_cast<core::Color>(c);
+      const core::Color color = static_cast<core::Color>(c);
       bb::Bitboard pawns = b.getPieces(color, core::PieceType::Pawn);
+
       while (pawns) {
-        core::Square s = bb::pop_lsb(pawns);
-        h ^= piece[c][pawnIdx][s];
+        const core::Square s = bb::pop_lsb_unchecked(pawns);
+        h ^= piece[c][pawnIdx][static_cast<int>(s)];
       }
     }
     return h;
