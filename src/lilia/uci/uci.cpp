@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "lilia/engine/bot_engine.hpp"
@@ -206,6 +207,26 @@ int UCI::run() {
   std::atomic<bool> cancelToken(false);
   bool searchRunning = false;
 
+  auto stopSearch = [&]() {
+    cancelToken.store(true);
+
+    std::thread threadToJoin;
+    {
+      std::lock_guard<std::mutex> lk(stateMutex);
+      if (searchRunning && printerThread.joinable()) {
+        threadToJoin = std::move(printerThread);
+      }
+    }
+
+    if (threadToJoin.joinable()) threadToJoin.join();
+
+    cancelToken.store(false);
+    {
+      std::lock_guard<std::mutex> lk(stateMutex);
+      searchRunning = false;
+    }
+  };
+
   while (std::getline(std::cin, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
@@ -234,6 +255,9 @@ int UCI::run() {
     }
 
     if (cmd == "ucinewgame") {
+      stopSearch();
+      m_game = model::ChessGame{};
+      m_game.setPosition(core::START_FEN);
       continue;
     }
 
@@ -290,15 +314,7 @@ int UCI::run() {
         }
       }
 
-      {
-        std::lock_guard<std::mutex> lk(stateMutex);
-        if (searchRunning) {
-          cancelToken.store(true);
-          if (printerThread.joinable()) printerThread.join();
-          searchRunning = false;
-          cancelToken.store(false);
-        }
-      }
+      stopSearch();
 
       // determine think time
       int thinkMillis = 0;
@@ -359,15 +375,7 @@ int UCI::run() {
     }
 
     if (cmd == "stop") {
-      cancelToken.store(true);
-      {
-        std::lock_guard<std::mutex> lk(stateMutex);
-        if (searchRunning && printerThread.joinable()) {
-          printerThread.join();
-          searchRunning = false;
-          cancelToken.store(false);
-        }
-      }
+      stopSearch();
       continue;
     }
 
@@ -377,21 +385,12 @@ int UCI::run() {
     }
 
     if (cmd == "quit") {
-      cancelToken.store(true);
-      {
-        std::lock_guard<std::mutex> lk(stateMutex);
-        if (searchRunning && printerThread.joinable()) {
-          printerThread.join();
-        }
-      }
+      stopSearch();
       break;
     }
   }
 
-  {
-    std::lock_guard<std::mutex> lk(stateMutex);
-    if (searchRunning && printerThread.joinable()) printerThread.join();
-  }
+  stopSearch();
 
   return 0;
 }
