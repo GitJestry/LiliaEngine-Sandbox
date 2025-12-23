@@ -39,7 +39,7 @@ static std::string extract_fen_after(const std::string& line) {
 void UCI::showOptions() {
   const auto& c = m_options.cfg;
   std::cout << "option name Hash type spin default " << c.ttSizeMb << " min 1 max 131072\n";
-  std::cout << "option name Threads type spin default " << c.threads << " min 1 max 64\n";
+  std::cout << "option name Threads type spin default " << c.threads << " min 0 max 64\n";
   std::cout << "option name Max Depth type spin default " << c.maxDepth << " min 1 max "
             << engine::MAX_PLY << "\n";
   std::cout << "option name Max Nodes type spin default " << c.maxNodes
@@ -124,7 +124,7 @@ void UCI::setOption(const std::string& line) {
     m_options.cfg.ttSizeMb = v;
   } else if (name == "Threads") {
     int v = std::stoi(value);
-    v = std::max(1, std::min(64, v));
+    v = std::max(0, std::min(64, v));
     m_options.cfg.threads = v;
   } else if (name == "Max Depth") {
     int v = std::stoi(value);
