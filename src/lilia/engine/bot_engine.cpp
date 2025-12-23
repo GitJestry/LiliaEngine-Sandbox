@@ -40,13 +40,33 @@ SearchResult BotEngine::findBestMove(model::ChessGame& gameState, int maxDepth, 
   bool timerStop = false;
 
   std::thread timer([&]() {
-    if (thinkMillis <= 0) return;
-    std::unique_lock<std::mutex> lk(m);
-    bool pred = cv.wait_for(lk, std::chrono::milliseconds(thinkMillis), [&] {
-      return timerStop || (externalCancel && externalCancel->load());
-    });
-    if (!pred || (externalCancel && externalCancel->load())) {
-      stopFlag->store(true);
+    auto checkCancel = [&]() {
+      if (externalCancel && externalCancel->load()) {
+        stopFlag->store(true);
+        return true;
+      }
+      return false;
+    };
+
+    if (thinkMillis <= 0) {
+      while (true) {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait_for(lk, std::chrono::milliseconds(50), [&] { return timerStop; });
+        if (timerStop) return;
+        if (checkCancel()) return;
+      }
+    }
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(thinkMillis);
+    while (true) {
+      std::unique_lock<std::mutex> lk(m);
+      cv.wait_for(lk, std::chrono::milliseconds(50), [&] { return timerStop; });
+      if (timerStop) return;
+      if (checkCancel()) return;
+      if (std::chrono::steady_clock::now() >= deadline) {
+        stopFlag->store(true);
+        return;
+      }
     }
   });
 
