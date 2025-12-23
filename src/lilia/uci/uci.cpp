@@ -1,17 +1,18 @@
 #include "lilia/uci/uci.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
-#include <chrono>
+#include <charconv>
+#include <cstdint>
 #include <iostream>
-#include <limits>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
-#include <vector>
 
 #include "lilia/engine/bot_engine.hpp"
 #include "lilia/model/chess_game.hpp"
@@ -19,187 +20,259 @@
 
 namespace lilia {
 
-static std::vector<std::string> split_ws(const std::string& s) {
-  std::istringstream iss(s);
-  std::vector<std::string> out;
-  std::string tok;
-  while (iss >> tok) out.push_back(tok);
+namespace {
+
+// ---------------- Small, allocation-free utilities ----------------
+
+static inline bool is_space(char c) noexcept {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+}
+
+static inline char lower_ascii(char c) noexcept {
+  return (c >= 'A' && c <= 'Z') ? static_cast<char>(c + ('a' - 'A')) : c;
+}
+
+static inline std::string_view trim(std::string_view s) noexcept {
+  while (!s.empty() && is_space(s.front())) s.remove_prefix(1);
+  while (!s.empty() && is_space(s.back())) s.remove_suffix(1);
+  return s;
+}
+
+static inline bool ieq_lit(std::string_view s, const char* lit) noexcept {
+  // Case-insensitive compare with ASCII lowering, for small option values.
+  const char* p = lit;
+  size_t i = 0;
+  for (; p[i] != '\0'; ++i) {
+    if (i >= s.size()) return false;
+    if (lower_ascii(s[i]) != lower_ascii(p[i])) return false;
+  }
+  return i == s.size();
+}
+
+static inline bool to_bool_sv(std::string_view v) noexcept {
+  v = trim(v);
+  if (v.empty()) return false;
+  // Fast common cases:
+  if (v.size() == 1) {
+    const char c = lower_ascii(v[0]);
+    return c == '1' || c == 't' || c == 'y';
+  }
+  return ieq_lit(v, "true") || ieq_lit(v, "on") || ieq_lit(v, "yes");
+}
+
+template <class T>
+static inline bool parse_int(std::string_view s, T& out) noexcept {
+  s = trim(s);
+  if (s.empty()) return false;
+  const char* b = s.data();
+  const char* e = b + s.size();
+  auto [ptr, ec] = std::from_chars(b, e, out);
+  return ec == std::errc{} && ptr == e;
+}
+
+template <typename T>
+static inline T clampv(T v, T lo, T hi) noexcept {
+  return v < lo ? lo : (v > hi ? hi : v);
+}
+
+// Fixed-size tokenizer: avoids heap churn in the UCI loop.
+struct Tokenizer {
+  static constexpr size_t MAX = 128;
+  std::array<std::string_view, MAX> t{};
+  size_t n = 0;
+
+  void split(std::string_view s) noexcept {
+    n = 0;
+    const char* p = s.data();
+    const char* end = p + s.size();
+
+    while (p < end) {
+      while (p < end && is_space(*p)) ++p;
+      if (p >= end) break;
+      const char* start = p;
+      while (p < end && !is_space(*p)) ++p;
+      if (n < MAX)
+        t[n++] = std::string_view(start, static_cast<size_t>(p - start));
+      else
+        break;
+    }
+  }
+
+  std::string_view operator[](size_t i) const noexcept { return t[i]; }
+};
+
+static inline std::string join_tokens(const Tokenizer& tok, size_t from, size_t to_excl) {
+  if (from >= to_excl) return {};
+  size_t total = 0;
+  for (size_t i = from; i < to_excl; ++i) total += tok[i].size();
+  total += (to_excl - from - 1);
+
+  std::string out;
+  out.reserve(total);
+  for (size_t i = from; i < to_excl; ++i) {
+    if (i != from) out.push_back(' ');
+    out.append(tok[i].data(), tok[i].size());
+  }
   return out;
 }
 
-static bool ieq(const std::string& a, const std::string& b) {
-  if (a.size() != b.size()) return false;
-  for (size_t i = 0; i < a.size(); ++i) {
-    if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i])) return false;
-  }
-  return true;
-}
-
-static bool to_bool(std::string v) {
-  std::transform(v.begin(), v.end(), v.begin(),
-                 [](unsigned char c) { return (unsigned char)std::tolower(c); });
-  return (v == "true" || v == "1" || v == "on" || v == "yes");
-}
-
-static std::string join_tokens(const std::vector<std::string>& t, size_t from, size_t to_excl) {
-  std::ostringstream oss;
-  for (size_t i = from; i < to_excl; ++i) {
-    if (oss.tellp() > 0) oss << ' ';
-    oss << t[i];
-  }
-  return oss.str();
-}
+}  // namespace
 
 void UCI::showOptions() {
   const auto& c = m_options.cfg;
-  std::cout << "option name Hash type spin default " << c.ttSizeMb << " min 1 max 131072\n";
-  std::cout << "option name Threads type spin default " << c.threads << " min 0 max 64\n";
-  std::cout << "option name Max Depth type spin default " << c.maxDepth << " min 1 max "
-            << engine::MAX_PLY << "\n";
-  std::cout << "option name Max Nodes type spin default " << c.maxNodes
-            << " min 0 max 1000000000\n";
-  std::cout << "option name Use Null Move type check default " << (c.useNullMove ? "true" : "false")
-            << "\n";
-  std::cout << "option name Use LMR type check default " << (c.useLMR ? "true" : "false") << "\n";
-  std::cout << "option name Use Aspiration type check default "
-            << (c.useAspiration ? "true" : "false") << "\n";
-  std::cout << "option name Aspiration Window type spin default " << c.aspirationWindow
-            << " min 1 max 1000\n";
-  std::cout << "option name Use LMP type check default " << (c.useLMP ? "true" : "false") << "\n";
-  std::cout << "option name Use IID type check default " << (c.useIID ? "true" : "false") << "\n";
-  std::cout << "option name Use Singular Extension type check default "
-            << (c.useSingularExt ? "true" : "false") << "\n";
-  std::cout << "option name LMP Depth Max type spin default " << c.lmpDepthMax << " min 0 max 10\n";
-  std::cout << "option name LMP Base type spin default " << c.lmpBase << " min 0 max 10\n";
-  std::cout << "option name Use Futility type check default " << (c.useFutility ? "true" : "false")
-            << "\n";
-  std::cout << "option name Futility Margin type spin default " << c.futilityMargin
-            << " min 0 max 1000\n";
-  std::cout << "option name Use Reverse Futility type check default "
-            << (c.useReverseFutility ? "true" : "false") << "\n";
-  std::cout << "option name Use SEE Pruning type check default "
-            << (c.useSEEPruning ? "true" : "false") << "\n";
-  std::cout << "option name Use Prob Cut type check default " << (c.useProbCut ? "true" : "false")
-            << "\n";
-  std::cout << "option name Qsearch Quiet Checks type check default "
-            << (c.qsearchQuietChecks ? "true" : "false") << "\n";
-  std::cout << "option name LMR Base type spin default " << c.lmrBase << " min 0 max 10\n";
-  std::cout << "option name LMR Max type spin default " << c.lmrMax << " min 0 max 10\n";
-  std::cout << "option name LMR Use History type check default "
-            << (c.lmrUseHistory ? "true" : "false") << "\n";
-  std::cout << "option name Ponder type check default " << (m_options.ponder ? "true" : "false")
-            << "\n";
-  std::cout << "option name Move Overhead type spin default " << m_options.moveOverhead
-            << " min 0 max 5000\n";
+
+  // Buffering reduces iostream overhead and ensures fewer syscalls.
+  std::ostringstream oss;
+  oss << "option name Hash type spin default " << c.ttSizeMb << " min 1 max 131072\n";
+  oss << "option name Threads type spin default " << c.threads << " min 0 max 64\n";
+  oss << "option name Max Depth type spin default " << c.maxDepth << " min 1 max "
+      << engine::MAX_PLY << "\n";
+  oss << "option name Max Nodes type spin default " << c.maxNodes << " min 0 max 1000000000\n";
+  oss << "option name Use Null Move type check default " << (c.useNullMove ? "true" : "false")
+      << "\n";
+  oss << "option name Use LMR type check default " << (c.useLMR ? "true" : "false") << "\n";
+  oss << "option name Use Aspiration type check default " << (c.useAspiration ? "true" : "false")
+      << "\n";
+  oss << "option name Aspiration Window type spin default " << c.aspirationWindow
+      << " min 1 max 1000\n";
+  oss << "option name Use LMP type check default " << (c.useLMP ? "true" : "false") << "\n";
+  oss << "option name Use IID type check default " << (c.useIID ? "true" : "false") << "\n";
+  oss << "option name Use Singular Extension type check default "
+      << (c.useSingularExt ? "true" : "false") << "\n";
+  oss << "option name LMP Depth Max type spin default " << c.lmpDepthMax << " min 0 max 10\n";
+  oss << "option name LMP Base type spin default " << c.lmpBase << " min 0 max 10\n";
+  oss << "option name Use Futility type check default " << (c.useFutility ? "true" : "false")
+      << "\n";
+  oss << "option name Futility Margin type spin default " << c.futilityMargin
+      << " min 0 max 1000\n";
+  oss << "option name Use Reverse Futility type check default "
+      << (c.useReverseFutility ? "true" : "false") << "\n";
+  oss << "option name Use SEE Pruning type check default " << (c.useSEEPruning ? "true" : "false")
+      << "\n";
+  oss << "option name Use Prob Cut type check default " << (c.useProbCut ? "true" : "false")
+      << "\n";
+  oss << "option name Qsearch Quiet Checks type check default "
+      << (c.qsearchQuietChecks ? "true" : "false") << "\n";
+  oss << "option name LMR Base type spin default " << c.lmrBase << " min 0 max 10\n";
+  oss << "option name LMR Max type spin default " << c.lmrMax << " min 0 max 10\n";
+  oss << "option name LMR Use History type check default " << (c.lmrUseHistory ? "true" : "false")
+      << "\n";
+  oss << "option name Ponder type check default " << (m_options.ponder ? "true" : "false") << "\n";
+  oss << "option name Move Overhead type spin default " << m_options.moveOverhead
+      << " min 0 max 5000\n";
+
+  std::cout << oss.str();
 }
 
 void UCI::setOption(const std::string& line) {
-  auto tokens = split_ws(line);
-  std::string name;
-  std::string value;
+  // Parse raw line to correctly handle multi-word option names and values without token-joins.
+  std::string_view s(line);
 
-  // UCI format: setoption name <id> [value <x>]
-  for (size_t i = 1; i < tokens.size(); ++i) {
-    if (tokens[i] == "name") {
-      size_t j = i + 1;
-      std::ostringstream n;
-      while (j < tokens.size() && tokens[j] != "value") {
-        if (n.tellp() > 0) n << ' ';
-        n << tokens[j++];
-      }
-      name = n.str();
-      i = j - 1;
-    } else if (tokens[i] == "value") {
-      value = join_tokens(tokens, i + 1, tokens.size());
-      break;
-    }
+  // Require "name"
+  const size_t namePos = s.find("name");
+  if (namePos == std::string_view::npos) return;
+
+  size_t nameStart = namePos + 4;
+  if (nameStart >= s.size()) return;
+  while (nameStart < s.size() && is_space(s[nameStart])) ++nameStart;
+
+  // Optional "value"
+  // We look for " value " (with spaces) to reduce false matches inside names.
+  size_t valuePos = s.find(" value ", nameStart);
+
+  std::string_view name;
+  std::string_view value;
+
+  if (valuePos == std::string_view::npos) {
+    name = trim(s.substr(nameStart));
+    value = {};
+  } else {
+    name = trim(s.substr(nameStart, valuePos - nameStart));
+    const size_t vstart = valuePos + 7;  // len(" value ")
+    value = (vstart <= s.size()) ? trim(s.substr(vstart)) : std::string_view{};
   }
+
   if (name.empty()) return;
 
-  try {
-    if (name == "Hash") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      v = std::max(1, std::min(131072, v));
-      m_options.cfg.ttSizeMb = v;
-    } else if (name == "Threads") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      v = std::max(0, std::min(64, v));
-      m_options.cfg.threads = v;
-    } else if (name == "Max Depth") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      v = std::max(1, std::min(engine::MAX_PLY, v));
-      m_options.cfg.maxDepth = v;
-    } else if (name == "Max Nodes") {
-      if (value.empty()) return;
-      std::uint64_t v = std::stoull(value);
-      if (v > 1000000000ULL) v = 1000000000ULL;
-      m_options.cfg.maxNodes = v;
-    } else if (name == "Use Null Move") {
-      m_options.cfg.useNullMove = to_bool(value);
-    } else if (name == "Use LMR") {
-      m_options.cfg.useLMR = to_bool(value);
-    } else if (name == "Use Aspiration") {
-      m_options.cfg.useAspiration = to_bool(value);
-    } else if (name == "Aspiration Window") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      v = std::max(1, std::min(1000, v));
-      m_options.cfg.aspirationWindow = v;
-    } else if (name == "Use LMP") {
-      m_options.cfg.useLMP = to_bool(value);
-    } else if (name == "Use IID") {
-      m_options.cfg.useIID = to_bool(value);
-    } else if (name == "Use Singular Extension") {
-      m_options.cfg.useSingularExt = to_bool(value);
-    } else if (name == "LMP Depth Max") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      m_options.cfg.lmpDepthMax = std::max(0, std::min(10, v));
-    } else if (name == "LMP Base") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      m_options.cfg.lmpBase = std::max(0, std::min(10, v));
-    } else if (name == "Use Futility") {
-      m_options.cfg.useFutility = to_bool(value);
-    } else if (name == "Futility Margin") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      m_options.cfg.futilityMargin = std::max(0, std::min(1000, v));
-    } else if (name == "Use Reverse Futility") {
-      m_options.cfg.useReverseFutility = to_bool(value);
-    } else if (name == "Use SEE Pruning") {
-      m_options.cfg.useSEEPruning = to_bool(value);
-    } else if (name == "Use Prob Cut") {
-      m_options.cfg.useProbCut = to_bool(value);
-    } else if (name == "Qsearch Quiet Checks") {
-      m_options.cfg.qsearchQuietChecks = to_bool(value);
-    } else if (name == "LMR Base") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      m_options.cfg.lmrBase = std::max(0, std::min(10, v));
-    } else if (name == "LMR Max") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      m_options.cfg.lmrMax = std::max(0, std::min(10, v));
-    } else if (name == "LMR Use History") {
-      m_options.cfg.lmrUseHistory = to_bool(value);
-    } else if (name == "Ponder") {
-      m_options.ponder = to_bool(value);
-    } else if (name == "Move Overhead") {
-      if (value.empty()) return;
-      int v = std::stoi(value);
-      m_options.moveOverhead = std::max(0, v);
-    }
-  } catch (...) {
-    // Ignore malformed setoption rather than crashing the engine.
+  // Numeric parsing is now from_chars-based: no exceptions, much lower overhead.
+  if (name == "Hash") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.ttSizeMb = clampv(v, 1, 131072);
+  } else if (name == "Threads") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.threads = clampv(v, 0, 64);
+  } else if (name == "Max Depth") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.maxDepth = clampv(v, 1, engine::MAX_PLY);
+  } else if (name == "Max Nodes") {
+    std::uint64_t v = 0;
+    if (!parse_int(value, v)) return;
+    if (v > 1000000000ULL) v = 1000000000ULL;
+    m_options.cfg.maxNodes = v;
+  } else if (name == "Use Null Move") {
+    m_options.cfg.useNullMove = to_bool_sv(value);
+  } else if (name == "Use LMR") {
+    m_options.cfg.useLMR = to_bool_sv(value);
+  } else if (name == "Use Aspiration") {
+    m_options.cfg.useAspiration = to_bool_sv(value);
+  } else if (name == "Aspiration Window") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.aspirationWindow = clampv(v, 1, 1000);
+  } else if (name == "Use LMP") {
+    m_options.cfg.useLMP = to_bool_sv(value);
+  } else if (name == "Use IID") {
+    m_options.cfg.useIID = to_bool_sv(value);
+  } else if (name == "Use Singular Extension") {
+    m_options.cfg.useSingularExt = to_bool_sv(value);
+  } else if (name == "LMP Depth Max") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.lmpDepthMax = clampv(v, 0, 10);
+  } else if (name == "LMP Base") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.lmpBase = clampv(v, 0, 10);
+  } else if (name == "Use Futility") {
+    m_options.cfg.useFutility = to_bool_sv(value);
+  } else if (name == "Futility Margin") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.futilityMargin = clampv(v, 0, 1000);
+  } else if (name == "Use Reverse Futility") {
+    m_options.cfg.useReverseFutility = to_bool_sv(value);
+  } else if (name == "Use SEE Pruning") {
+    m_options.cfg.useSEEPruning = to_bool_sv(value);
+  } else if (name == "Use Prob Cut") {
+    m_options.cfg.useProbCut = to_bool_sv(value);
+  } else if (name == "Qsearch Quiet Checks") {
+    m_options.cfg.qsearchQuietChecks = to_bool_sv(value);
+  } else if (name == "LMR Base") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.lmrBase = clampv(v, 0, 10);
+  } else if (name == "LMR Max") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    m_options.cfg.lmrMax = clampv(v, 0, 10);
+  } else if (name == "LMR Use History") {
+    m_options.cfg.lmrUseHistory = to_bool_sv(value);
+  } else if (name == "Ponder") {
+    m_options.ponder = to_bool_sv(value);
+  } else if (name == "Move Overhead") {
+    int v = 0;
+    if (!parse_int(value, v)) return;
+    if (v < 0) v = 0;
+    m_options.moveOverhead = v;
   }
 }
 
 int UCI::run() {
   engine::Engine::init();
+
   std::string line;
 
   std::mutex stateMutex;
@@ -234,14 +307,12 @@ int UCI::run() {
                                   &cancelToken, &stateMutex, &searchRunning]() mutable {
         lilia::engine::BotEngine engine(cfg);
 
-        // If your engine treats thinkMillis==0 as "return immediately", avoid that for
-        // infinite/ponder. We use a large value instead of 0 for "unbounded" searches.
         auto res = engine.findBestMove(game, depth, thinkMillis, &cancelToken);
 
         model::Move best = model::Move{};
-        if (res.bestMove.has_value()) best = res.bestMove.value();
+        if (res.bestMove.has_value()) best = *res.bestMove;
 
-        if (best.from() >= 0 && best.to() >= 0) {
+        if (!best.isNull()) {
           std::cout << "bestmove " << move_to_uci(best) << "\n";
         } else {
           std::cout << "bestmove 0000\n";
@@ -256,17 +327,18 @@ int UCI::run() {
     }
   };
 
+  Tokenizer tok;
+
   while (std::getline(std::cin, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
 
-    auto tokens = split_ws(line);
-    if (tokens.empty()) continue;
+    tok.split(std::string_view(line));
+    if (tok.n == 0) continue;
 
-    const std::string& cmd = tokens[0];
+    const std::string_view cmd = tok[0];
 
     if (cmd == "uci") {
-      // Prefer the conventional form: include version in the name.
       std::cout << "id name " << m_name << " " << m_version << "\n";
       std::cout << "id author unknown\n";
       showOptions();
@@ -294,34 +366,30 @@ int UCI::run() {
     }
 
     if (cmd == "position") {
-      // Critical: stop an active search before mutating position.
       stopSearch();
 
-      // UCI: position startpos [moves ...]
-      //      position fen <fen-string> [moves ...]
+      // position startpos [moves ...]
+      // position fen <fen-string> [moves ...]
       size_t i = 1;
 
-      if (i < tokens.size() && tokens[i] == "startpos") {
+      if (i < tok.n && tok[i] == "startpos") {
         m_game.setPosition(core::START_FEN);
         ++i;
       } else {
-        // Find "fen" token (usually tokens[1] == "fen", but be tolerant)
-        size_t fenPos = tokens.size();
-        for (size_t k = 1; k < tokens.size(); ++k) {
-          if (tokens[k] == "fen") {
+        // Look for "fen"
+        size_t fenPos = tok.n;
+        for (size_t k = 1; k < tok.n; ++k) {
+          if (tok[k] == "fen") {
             fenPos = k;
             break;
           }
         }
 
-        if (fenPos < tokens.size()) {
+        if (fenPos < tok.n) {
           size_t j = fenPos + 1;
-          std::ostringstream fen;
-          while (j < tokens.size() && tokens[j] != "moves") {
-            if (fen.tellp() > 0) fen << ' ';
-            fen << tokens[j++];
-          }
-          const std::string fenStr = fen.str();
+          while (j < tok.n && tok[j] != "moves") ++j;
+
+          const std::string fenStr = join_tokens(tok, fenPos + 1, j);
           if (!fenStr.empty()) {
             try {
               m_game.setPosition(fenStr);
@@ -333,13 +401,14 @@ int UCI::run() {
         }
       }
 
-      if (i < tokens.size() && tokens[i] == "moves") {
+      if (i < tok.n && tok[i] == "moves") {
         ++i;
-        for (; i < tokens.size(); ++i) {
+        for (; i < tok.n; ++i) {
           try {
-            m_game.doMoveUCI(tokens[i]);
+            // doMoveUCI likely takes std::string; construct once per move token.
+            m_game.doMoveUCI(std::string(tok[i]));
           } catch (...) {
-            std::cerr << "[UCI] warning: applyMoveUCI failed for " << tokens[i] << "\n";
+            std::cerr << "[UCI] warning: applyMoveUCI failed for " << tok[i] << "\n";
           }
         }
       }
@@ -355,43 +424,34 @@ int UCI::run() {
       bool infinite = false;
       bool ponder = false;
 
-      for (size_t i = 1; i < tokens.size(); ++i) {
-        try {
-          if (tokens[i] == "depth" && i + 1 < tokens.size()) {
-            depth = std::stoi(tokens[++i]);
-          } else if (tokens[i] == "movetime" && i + 1 < tokens.size()) {
-            movetime = std::stoi(tokens[++i]);
-          } else if (tokens[i] == "wtime" && i + 1 < tokens.size()) {
-            wtime = std::stoi(tokens[++i]);
-          } else if (tokens[i] == "btime" && i + 1 < tokens.size()) {
-            btime = std::stoi(tokens[++i]);
-          } else if (tokens[i] == "winc" && i + 1 < tokens.size()) {
-            winc = std::stoi(tokens[++i]);
-          } else if (tokens[i] == "binc" && i + 1 < tokens.size()) {
-            binc = std::stoi(tokens[++i]);
-          } else if (tokens[i] == "movestogo" && i + 1 < tokens.size()) {
-            movestogo = std::stoi(tokens[++i]);
-          } else if (tokens[i] == "nodes" && i + 1 < tokens.size()) {
-            nodes = std::stoull(tokens[++i]);
-          } else if (tokens[i] == "infinite") {
-            infinite = true;
-          } else if (tokens[i] == "ponder") {
-            ponder = true;
-          }
-        } catch (...) {
-          // Ignore malformed go parameters.
+      for (size_t i = 1; i < tok.n; ++i) {
+        if (tok[i] == "depth" && i + 1 < tok.n) {
+          (void)parse_int(tok[++i], depth);
+        } else if (tok[i] == "movetime" && i + 1 < tok.n) {
+          (void)parse_int(tok[++i], movetime);
+        } else if (tok[i] == "wtime" && i + 1 < tok.n) {
+          (void)parse_int(tok[++i], wtime);
+        } else if (tok[i] == "btime" && i + 1 < tok.n) {
+          (void)parse_int(tok[++i], btime);
+        } else if (tok[i] == "winc" && i + 1 < tok.n) {
+          (void)parse_int(tok[++i], winc);
+        } else if (tok[i] == "binc" && i + 1 < tok.n) {
+          (void)parse_int(tok[++i], binc);
+        } else if (tok[i] == "movestogo" && i + 1 < tok.n) {
+          (void)parse_int(tok[++i], movestogo);
+        } else if (tok[i] == "nodes" && i + 1 < tok.n) {
+          (void)parse_int(tok[++i], nodes);
+        } else if (tok[i] == "infinite") {
+          infinite = true;
+        } else if (tok[i] == "ponder") {
+          ponder = true;
         }
       }
 
-      // Snapshot position to avoid any shared-state issues.
       model::ChessGame gameCopy = m_game;
 
-      // Compute depth and time budget.
-      int searchDepth = (depth > 0 ? depth : m_options.cfg.maxDepth);
+      const int searchDepth = (depth > 0 ? depth : m_options.cfg.maxDepth);
 
-      // Use a large value (instead of 0) for "unbounded" searches to avoid accidental immediate
-      // returns. 1e9 ms is ~11.6 days, which is effectively infinite for UCI, and cancellation
-      // still stops it.
       constexpr int UCI_UNBOUNDED_MS = 1'000'000'000;
 
       int thinkMillis = 0;
@@ -400,8 +460,11 @@ int UCI::run() {
       } else if (infinite || (ponder && m_options.ponder)) {
         thinkMillis = UCI_UNBOUNDED_MS;
       } else {
-        int timeLeft = (m_game.getGameState().sideToMove == core::Color::White ? wtime : btime);
-        int inc = (m_game.getGameState().sideToMove == core::Color::White ? winc : binc);
+        const auto gs = m_game.getGameState();  // snapshot for consistent use
+        const bool whiteToMove = (gs.sideToMove == core::Color::White);
+
+        const int timeLeft = whiteToMove ? wtime : btime;
+        const int inc = whiteToMove ? winc : binc;
 
         if (timeLeft >= 0) {
           if (movestogo > 0)
@@ -413,8 +476,7 @@ int UCI::run() {
           thinkMillis -= m_options.moveOverhead;
           if (thinkMillis < 0) thinkMillis = 0;
         } else {
-          // No time controls provided: just search to depth.
-          thinkMillis = 0;
+          thinkMillis = 0;  // depth-only / no TC
         }
       }
 
@@ -431,8 +493,7 @@ int UCI::run() {
     }
 
     if (cmd == "ponderhit") {
-      // If you later implement true pondering, convert this into "continue as normal move search"
-      // rather than "ignore".
+      // Optional: implement if you support true pondering.
       continue;
     }
 
