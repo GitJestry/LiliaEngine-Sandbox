@@ -13,6 +13,17 @@
 #define LILIA_ALWAYS_INLINE inline
 #endif
 
+#if defined(__clang__) || defined(__GNUC__)
+#define LILIA_ASSUME(x)                \
+  do {                                 \
+    if (!(x)) __builtin_unreachable(); \
+  } while (0)
+#elif defined(_MSC_VER)
+#define LILIA_ASSUME(x) __assume(x)
+#else
+#define LILIA_ASSUME(x) ((void)0)
+#endif
+
 namespace lilia::model::bb {
 
 [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool any(Bitboard b) noexcept {
@@ -34,8 +45,9 @@ namespace lilia::model::bb {
   return static_cast<int>(std::countl_zero(x));
 }
 
-// New: unchecked variant for hot loops where b!=0 is guaranteed by the caller.
+// Hot-loop variant: caller guarantees b != 0
 [[nodiscard]] LILIA_ALWAYS_INLINE core::Square pop_lsb_unchecked(Bitboard& b) noexcept {
+  LILIA_ASSUME(b != 0);
   const int idx = ctz64(b);
   b &= (b - 1);
   return static_cast<core::Square>(idx);
@@ -126,18 +138,17 @@ inline constexpr auto KING_ATTACKS = build_king_table();
   return detail::KING_ATTACKS[static_cast<int>(s)];
 }
 
-// This is runtime-dispatched (function pointer), so "constexpr" adds no value.
-// Keep signature and fast-path specializations.
+// Runtime-dispatched only; keep as compatibility entry-point.
 [[nodiscard]] LILIA_ALWAYS_INLINE Bitboard ray_attack_dir(Bitboard from, Bitboard occ,
                                                           Bitboard (*step)(Bitboard)) noexcept {
-  if (step == &ne) return detail::ray_attack_dir_fast<ne>(from, occ);
-  if (step == &nw) return detail::ray_attack_dir_fast<nw>(from, occ);
-  if (step == &se) return detail::ray_attack_dir_fast<se>(from, occ);
-  if (step == &sw) return detail::ray_attack_dir_fast<sw>(from, occ);
   if (step == &north) return detail::ray_attack_dir_fast<north>(from, occ);
   if (step == &south) return detail::ray_attack_dir_fast<south>(from, occ);
   if (step == &east) return detail::ray_attack_dir_fast<east>(from, occ);
   if (step == &west) return detail::ray_attack_dir_fast<west>(from, occ);
+  if (step == &ne) return detail::ray_attack_dir_fast<ne>(from, occ);
+  if (step == &nw) return detail::ray_attack_dir_fast<nw>(from, occ);
+  if (step == &se) return detail::ray_attack_dir_fast<se>(from, occ);
+  if (step == &sw) return detail::ray_attack_dir_fast<sw>(from, occ);
 
   Bitboard atk = 0;
   Bitboard r = step(from);

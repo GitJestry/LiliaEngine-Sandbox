@@ -13,6 +13,14 @@
 #include "lilia/model/generated/magic_constants.hpp"
 #include "lilia/model/magic_serializer.hpp"
 
+#if defined(__GNUC__) || defined(__clang__)
+#define LILIA_LIKELY(x) __builtin_expect(!!(x), 1)
+#define LILIA_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+#define LILIA_LIKELY(x) (x)
+#define LILIA_UNLIKELY(x) (x)
+#endif
+
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
 #if defined(__BMI2__) || defined(_MSC_VER)
 #include <immintrin.h>  // _pext_u64
@@ -31,24 +39,22 @@ static std::array<bb::Bitboard, 64> g_bishop_mask{};
 static std::array<Magic, 64> g_rook_magic{};
 static std::array<Magic, 64> g_bishop_magic{};
 
-// -------------------- alte (kompatible) Vektor-Tabellen --------------------
+// Compatibility vector tables (can be dropped after packing; lazily reconstructable)
 static std::array<std::vector<bb::Bitboard>, 64> g_rook_table;
 static std::array<std::vector<bb::Bitboard>, 64> g_bishop_table;
 
-// -------------------- NEU: flache Arenen + Offsets/Längen ------------------
-// Magic-indiziert
+// Flat arenas + offsets/lengths
 static std::array<std::uint32_t, 64> g_r_off_magic{}, g_b_off_magic{};
 static std::array<std::uint16_t, 64> g_r_len_magic{}, g_b_len_magic{};
 static std::vector<bb::Bitboard> g_r_arena_magic, g_b_arena_magic;
 
-// PEXT-indiziert
 static std::array<std::uint32_t, 64> g_r_off_pext{}, g_b_off_pext{};
 static std::array<std::uint16_t, 64> g_r_len_pext{}, g_b_len_pext{};
 static std::vector<bb::Bitboard> g_r_arena_pext, g_b_arena_pext;
 
-static bool g_use_pext = false;  // CPU-Dispatch
+static bool g_use_pext = false;
 
-// ----------------------------------------------------------------------------
+// -------------------- helpers --------------------
 
 template <class F>
 static inline void foreach_subset(bb::Bitboard mask, F&& f) {
@@ -70,48 +76,55 @@ static inline bb::Bitboard brute_attacks(Slider s, core::Square sq, bb::Bitboard
   return (s == Slider::Rook) ? brute_rook(sq, occ) : brute_bishop(sq, occ);
 }
 
-static inline uint64_t index_for_occ(bb::Bitboard occ, bb::Bitboard mask, bb::Bitboard magic,
-                                     uint8_t shift) {
+// Build-time / validation index (kept for generator paths)
+static inline std::uint64_t index_for_occ_checked(bb::Bitboard occ, bb::Bitboard mask,
+                                                  bb::Bitboard magic, std::uint8_t shift) {
   const int bits = bb::popcount(mask);
   if (bits == 0) return 0ULL;
   const bb::Bitboard subset = occ & mask;
-  const uint64_t raw = static_cast<uint64_t>((subset * magic) >> shift);
-  const uint64_t mask_idx =
-      (bits >= 64) ? std::numeric_limits<uint64_t>::max() : ((1ULL << bits) - 1ULL);
-  return raw & mask_idx;
+  return static_cast<std::uint64_t>((subset * magic) >> shift);
+}
+
+// Hot-path index: NO popcount, NO additional masking.
+// Safe for shift==64 via guard (avoids UB shift-by-64).
+static inline std::uint32_t index_for_occ_fast(bb::Bitboard occ, bb::Bitboard mask,
+                                               bb::Bitboard magic, std::uint8_t shift) noexcept {
+  if (LILIA_UNLIKELY(shift >= 64)) return 0u;
+  const bb::Bitboard subset = occ & mask;
+  return static_cast<std::uint32_t>((subset * magic) >> shift);
 }
 
 static inline void build_table_for_square(Slider s, int sq, bb::Bitboard mask, bb::Bitboard magic,
-                                          uint8_t shift, std::vector<bb::Bitboard>& outTable) {
+                                          std::uint8_t shift, std::vector<bb::Bitboard>& outTable) {
   const int bits = bb::popcount(mask);
-  const size_t tableSize = (bits >= 64) ? 0 : (1ULL << bits);
-  const size_t allocSize = (tableSize == 0) ? 1 : tableSize;
-  outTable.assign(allocSize, 0ULL);
+  const std::size_t tableSize = (bits == 0) ? 1ULL : (1ULL << bits);
+  outTable.assign(tableSize, 0ULL);
 
   foreach_subset(mask, [&](bb::Bitboard occSubset) {
-    const uint64_t index = index_for_occ(occSubset, mask, magic, shift);
-    outTable[index] = brute_attacks(s, static_cast<core::Square>(sq), occSubset);
+    const std::uint64_t index = index_for_occ_checked(occSubset, mask, magic, shift);
+    outTable[static_cast<std::size_t>(index)] =
+        brute_attacks(s, static_cast<core::Square>(sq), occSubset);
   });
 }
 
 static inline bool try_magic_for_square(Slider s, int sq, bb::Bitboard mask, bb::Bitboard magic,
-                                        uint8_t shift, std::vector<bb::Bitboard>& outTable) {
+                                        std::uint8_t shift, std::vector<bb::Bitboard>& outTable) {
   const int bits = bb::popcount(mask);
-  const size_t tableSize = (bits >= 64) ? 0 : (1ULL << bits);
-  const size_t allocSize = (tableSize == 0) ? 1 : tableSize;
+  const std::size_t tableSize = (bits == 0) ? 1ULL : (1ULL << bits);
 
-  std::vector<char> used(allocSize);
-  std::vector<bb::Bitboard> table(allocSize);
+  std::vector<std::uint8_t> used(tableSize, 0);
+  std::vector<bb::Bitboard> table(tableSize);
 
   bb::Bitboard occSubset = mask;
   while (true) {
-    const uint64_t idx = index_for_occ(occSubset, mask, magic, shift);
+    const std::uint64_t idx = index_for_occ_checked(occSubset, mask, magic, shift);
     const bb::Bitboard atk = brute_attacks(s, static_cast<core::Square>(sq), occSubset);
 
-    if (!used[idx]) {
-      used[idx] = 1;
-      table[idx] = atk;
-    } else if (table[idx] != atk) {
+    const std::size_t j = static_cast<std::size_t>(idx);
+    if (!used[j]) {
+      used[j] = 1;
+      table[j] = atk;
+    } else if (table[j] != atk) {
       return false;
     }
 
@@ -124,11 +137,11 @@ static inline bool try_magic_for_square(Slider s, int sq, bb::Bitboard mask, bb:
 }
 
 static inline bool find_magic_for_square(Slider s, int sq, bb::Bitboard mask,
-                                         bb::Bitboard& out_magic, uint8_t& out_shift,
+                                         bb::Bitboard& out_magic, std::uint8_t& out_shift,
                                          std::vector<bb::Bitboard>& outTable) {
   const int bits = bb::popcount(mask);
-  const uint8_t shift =
-      static_cast<uint8_t>((bits == 0) ? 64u : (64u - static_cast<uint8_t>(bits)));
+  const std::uint8_t shift =
+      static_cast<std::uint8_t>((bits == 0) ? 64u : (64u - static_cast<std::uint8_t>(bits)));
   out_shift = shift;
 
   bb::Bitboard seed = 0xC0FFEE123456789ULL ^ (static_cast<bb::Bitboard>(sq) << 32) ^
@@ -188,6 +201,7 @@ static inline bb::Bitboard rook_relevant_mask(core::Square sq) {
   for (int ff = f - 1; ff >= 1; --ff) mask |= bb::sq_bb(static_cast<core::Square>(r * 8 + ff));
   return mask;
 }
+
 static inline bb::Bitboard bishop_relevant_mask(core::Square sq) {
   bb::Bitboard mask = 0ULL;
   int r = bb::rank_of(sq), f = bb::file_of(sq);
@@ -209,7 +223,7 @@ static inline void build_masks() {
   }
 }
 
-// ------------------------- Magics & Vektor-Tabellen -------------------------
+// ------------------------- generation -------------------------
 
 static inline void generate_all_magics_and_tables() {
   build_masks();
@@ -217,7 +231,7 @@ static inline void generate_all_magics_and_tables() {
   for (int sq = 0; sq < 64; ++sq) {
     std::vector<bb::Bitboard> table;
     bb::Bitboard magic = 0ULL;
-    uint8_t shift = 0;
+    std::uint8_t shift = 0;
     const bb::Bitboard mask = g_rook_mask[sq];
     (void)find_magic_for_square(Slider::Rook, sq, mask, magic, shift, table);
     g_rook_magic[sq] = Magic{magic, shift};
@@ -226,7 +240,7 @@ static inline void generate_all_magics_and_tables() {
   for (int sq = 0; sq < 64; ++sq) {
     std::vector<bb::Bitboard> table;
     bb::Bitboard magic = 0ULL;
-    uint8_t shift = 0;
+    std::uint8_t shift = 0;
     const bb::Bitboard mask = g_bishop_mask[sq];
     (void)find_magic_for_square(Slider::Bishop, sq, mask, magic, shift, table);
     g_bishop_magic[sq] = Magic{magic, shift};
@@ -234,70 +248,81 @@ static inline void generate_all_magics_and_tables() {
   }
 }
 
-// ---------------------- Flat-Pack (Magic-indiziert) -------------------------
+// ---------------------- packing to flat -------------------------
 
 static inline void pack_magic_vectors_to_flat(const std::array<std::vector<bb::Bitboard>, 64>& src,
                                               std::array<std::uint32_t, 64>& off,
                                               std::array<std::uint16_t, 64>& len,
                                               std::vector<bb::Bitboard>& arena) {
   std::uint32_t cur = 0;
+
+  std::size_t total = 0;
+  for (int i = 0; i < 64; ++i) total += src[i].empty() ? 1u : src[i].size();
+
   arena.clear();
-  arena.reserve(1 << 16);
+  arena.resize(total);
 
   for (int i = 0; i < 64; ++i) {
     off[i] = cur;
+
     if (src[i].empty()) {
       len[i] = 1;
-      arena.push_back(0);
+      arena[cur] = 0ULL;
       ++cur;
     } else {
-      len[i] = static_cast<std::uint16_t>(src[i].size());
-      arena.insert(arena.end(), src[i].begin(), src[i].end());
-      cur += len[i];
+      const std::size_t sz = src[i].size();
+      len[i] = static_cast<std::uint16_t>(sz);
+      std::copy(src[i].begin(), src[i].end(), arena.begin() + cur);
+      cur += static_cast<std::uint32_t>(sz);
     }
   }
 }
 
-// ---------------------- PEXT-Tabellen (flat) --------------------------------
+// ---------------------- PEXT build (flat, no per-square tmp allocations) ----
 
-static inline void build_table_for_square_pext(Slider s, int sq, bb::Bitboard mask,
-                                               std::vector<bb::Bitboard>& out) {
+#if defined(LILIA_HAVE_PEXT_INTRINSIC)
+static inline void build_table_for_square_pext_into(bb::Bitboard mask, Slider s, int sq,
+                                                    bb::Bitboard* dst /* size = 1<<bits or 1 */) {
   const int bits = bb::popcount(mask);
-  const size_t size = (bits == 0 ? 1 : (1ULL << bits));
-  out.assign(size, 0ULL);
-#if LILIA_HAVE_PEXT_INTRINSIC
+  const std::size_t size = (bits == 0) ? 1ULL : (1ULL << bits);
+  std::fill(dst, dst + size, 0ULL);
+
   foreach_subset(mask, [&](bb::Bitboard sub) {
-    const uint64_t idx = _pext_u64(sub, mask);
-    out[idx] = brute_attacks(s, static_cast<core::Square>(sq), sub);
+    const std::uint64_t idx = _pext_u64(sub, mask);
+    dst[static_cast<std::size_t>(idx)] = brute_attacks(s, static_cast<core::Square>(sq), sub);
   });
-#else
-  // nicht aufgerufen ohne BMI2
-  out[0] = 0;
-#endif
 }
 
 static inline void build_all_pext_flat(std::array<std::uint32_t, 64>& off,
                                        std::array<std::uint16_t, 64>& len,
                                        std::vector<bb::Bitboard>& arena, Slider s) {
   std::uint32_t cur = 0;
+
+  std::size_t total = 0;
+  for (int i = 0; i < 64; ++i) {
+    const bb::Bitboard mask = (s == Slider::Rook) ? g_rook_mask[i] : g_bishop_mask[i];
+    const int bits = bb::popcount(mask);
+    total += (bits == 0) ? 1ULL : (1ULL << bits);
+  }
+
   arena.clear();
-  arena.reserve(1 << 16);
+  arena.resize(total);
 
   for (int i = 0; i < 64; ++i) {
     const bb::Bitboard mask = (s == Slider::Rook) ? g_rook_mask[i] : g_bishop_mask[i];
     const int bits = bb::popcount(mask);
-    const std::uint16_t L = static_cast<std::uint16_t>(bits == 0 ? 1 : (1u << bits));
+    const std::uint16_t L = static_cast<std::uint16_t>((bits == 0) ? 1u : (1u << bits));
+
     off[i] = cur;
     len[i] = L;
 
-    std::vector<bb::Bitboard> tmp;
-    build_table_for_square_pext(s, i, mask, tmp);
-    arena.insert(arena.end(), tmp.begin(), tmp.end());
+    build_table_for_square_pext_into(mask, s, i, arena.data() + cur);
     cur += L;
   }
 }
+#endif
 
-// ---------------------- CPU Feature -----------------------------------------
+// ---------------------- CPU feature -------------------------
 
 static bool cpu_has_bmi2() {
 #if defined(LILIA_HAVE_PEXT_INTRINSIC)
@@ -317,7 +342,7 @@ static bool cpu_has_bmi2() {
 #endif
 }
 
-// ---------------------- Init -------------------------------------------------
+// ---------------------- init -------------------------
 
 void init_magics() {
 #ifdef LILIA_MAGIC_HAVE_CONSTANTS
@@ -325,7 +350,6 @@ void init_magics() {
 
   build_masks();
 
-  // Magic Konstanten
   for (int i = 0; i < 64; ++i) {
     g_rook_magic[i] = {srook_magic[i].magic, srook_magic[i].shift};
     g_bishop_magic[i] = {sbishop_magic[i].magic, sbishop_magic[i].shift};
@@ -357,8 +381,8 @@ void init_magics() {
   serialize_magics_to_header("include/lilia/model/generated/magic_constants.hpp");
 #endif
 
-  // PEXT-Fast-Path opportunistisch
   g_use_pext = cpu_has_bmi2();
+
 #if defined(LILIA_HAVE_PEXT_INTRINSIC)
   if (g_use_pext) {
     build_all_pext_flat(g_r_off_pext, g_r_len_pext, g_r_arena_pext, Slider::Rook);
@@ -367,15 +391,24 @@ void init_magics() {
 #else
   g_use_pext = false;
 #endif
+
+  // Optional memory trim: keep only flat arenas by default; vectors can be lazily reconstructed if
+  // someone calls rook_tables().
+#ifndef NDEBUG
+  // keep debug introspection memory as-is
+#else
+  for (auto& v : g_rook_table) std::vector<bb::Bitboard>().swap(v);
+  for (auto& v : g_bishop_table) std::vector<bb::Bitboard>().swap(v);
+#endif
 }
 
-// ---------------------- Query -----------------------------------------------
+// ---------------------- query (HOT) -------------------------
 
 bb::Bitboard sliding_attacks(Slider s, core::Square sq, bb::Bitboard occ) noexcept {
   const int i = static_cast<int>(sq);
 
 #if defined(LILIA_HAVE_PEXT_INTRINSIC)
-  if (g_use_pext) {
+  if (LILIA_LIKELY(g_use_pext)) {
     if (s == Slider::Rook) {
       const std::uint32_t off = g_r_off_pext[i];
       const std::uint64_t idx = _pext_u64(occ, g_rook_mask[i]);
@@ -390,18 +423,19 @@ bb::Bitboard sliding_attacks(Slider s, core::Square sq, bb::Bitboard occ) noexce
 
   if (s == Slider::Rook) {
     const std::uint32_t off = g_r_off_magic[i];
-    const std::uint64_t idx =
-        index_for_occ(occ, g_rook_mask[i], g_rook_magic[i].magic, g_rook_magic[i].shift);
-    return g_r_arena_magic[off + static_cast<std::uint32_t>(idx)];
+    const std::uint32_t idx =
+        index_for_occ_fast(occ, g_rook_mask[i], g_rook_magic[i].magic, g_rook_magic[i].shift);
+    return g_r_arena_magic[off + idx];
   } else {
     const std::uint32_t off = g_b_off_magic[i];
-    const std::uint64_t idx =
-        index_for_occ(occ, g_bishop_mask[i], g_bishop_magic[i].magic, g_bishop_magic[i].shift);
-    return g_b_arena_magic[off + static_cast<std::uint32_t>(idx)];
+    const std::uint32_t idx =
+        index_for_occ_fast(occ, g_bishop_mask[i], g_bishop_magic[i].magic, g_bishop_magic[i].shift);
+    return g_b_arena_magic[off + idx];
   }
 }
 
-// (optionale Getter – unverändert)
+// ---------------------- getters -------------------------
+
 const std::array<bb::Bitboard, 64>& rook_masks() {
   return g_rook_mask;
 }
@@ -414,11 +448,32 @@ const std::array<Magic, 64>& rook_magics() {
 const std::array<Magic, 64>& bishop_magics() {
   return g_bishop_magic;
 }
-// Die alten vector<...>-Getter bleiben zur Kompatibilität bestehen:
+
+// Lazy reconstruction: only if someone asks for vector tables (compat).
+static inline void materialize_rook_vectors_if_needed() {
+  if (!g_rook_table[0].empty()) return;
+  for (int i = 0; i < 64; ++i) {
+    const std::uint32_t off = g_r_off_magic[i];
+    const std::uint16_t L = g_r_len_magic[i];
+    g_rook_table[i].assign(g_r_arena_magic.begin() + off, g_r_arena_magic.begin() + off + L);
+  }
+}
+static inline void materialize_bishop_vectors_if_needed() {
+  if (!g_bishop_table[0].empty()) return;
+  for (int i = 0; i < 64; ++i) {
+    const std::uint32_t off = g_b_off_magic[i];
+    const std::uint16_t L = g_b_len_magic[i];
+    g_bishop_table[i].assign(g_b_arena_magic.begin() + off, g_b_arena_magic.begin() + off + L);
+  }
+}
+
 const std::array<std::vector<bb::Bitboard>, 64>& rook_tables() {
+  if (LILIA_UNLIKELY(g_rook_table[0].empty())) materialize_rook_vectors_if_needed();
   return g_rook_table;
 }
+
 const std::array<std::vector<bb::Bitboard>, 64>& bishop_tables() {
+  if (LILIA_UNLIKELY(g_bishop_table[0].empty())) materialize_bishop_vectors_if_needed();
   return g_bishop_table;
 }
 

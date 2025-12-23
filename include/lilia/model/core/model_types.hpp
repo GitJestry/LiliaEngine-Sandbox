@@ -3,6 +3,14 @@
 
 #include "../../chess_types.hpp"
 
+#if defined(_MSC_VER)
+#define LILIA_ALWAYS_INLINE __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#define LILIA_ALWAYS_INLINE inline __attribute__((always_inline))
+#else
+#define LILIA_ALWAYS_INLINE inline
+#endif
+
 namespace lilia::model::bb {
 
 using Bitboard = std::uint64_t;
@@ -13,19 +21,20 @@ struct Piece {
   [[nodiscard]] constexpr bool isNone() const noexcept { return type == core::PieceType::None; }
 };
 
-[[nodiscard]] constexpr inline int ci(core::Color c) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr int ci(core::Color c) noexcept {
   return c == core::Color::White ? 0 : 1;
 }
 
-[[nodiscard]] constexpr inline int file_of(core::Square s) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr int file_of(core::Square s) noexcept {
   return s & 7;
 }
-[[nodiscard]] constexpr inline int rank_of(core::Square s) noexcept {
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr int rank_of(core::Square s) noexcept {
   return s >> 3;
 }
 
-[[nodiscard]] constexpr inline Bitboard sq_bb(core::Square s) noexcept {
-  return Bitboard{1} << s;
+[[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard sq_bb(core::Square s) noexcept {
+  // Caller responsibility: s must be 0..63.
+  return Bitboard{1} << static_cast<unsigned>(s);
 }
 
 constexpr Bitboard FILE_A = 0x0101010101010101ULL;
