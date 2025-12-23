@@ -322,11 +322,12 @@ int UCI::run() {
       {
         std::lock_guard<std::mutex> lk(stateMutex);
         auto cfg = m_options.toEngineConfig();
+        int searchDepth = depth > 0 ? depth : m_options.cfg.maxDepth;
         searchFuture = std::async(
-            std::launch::async, [this, depth, thinkMillis, &cancelToken, cfg]() -> model::Move {
+            std::launch::async,
+            [this, searchDepth, thinkMillis, &cancelToken, cfg]() -> model::Move {
               lilia::engine::BotEngine engine(cfg);
-              auto res = engine.findBestMove(m_game, (depth > 0 ? depth : /*some default*/ 0),
-                                             thinkMillis, &cancelToken);
+              auto res = engine.findBestMove(m_game, searchDepth, thinkMillis, &cancelToken);
               if (res.bestMove.has_value()) return res.bestMove.value();
               return model::Move{};
             });
