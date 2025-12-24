@@ -39,7 +39,7 @@ constexpr float ANIM_MOVE_SPEED = .05f;
 LILIA_COLOR_PALETTE(X)
 #undef X
 inline constexpr std::string_view STR_COL_PALETTE_DEFAULT{"Default"};
-inline constexpr std::string_view STR_COL_PALETTE_ROSE_NOIR{"Rose noir"};
+inline constexpr std::string_view STR_COL_PALETTE_Amethyst{"Amethyst"};
 inline constexpr std::string_view STR_COL_PALETTE_GREEN_IVORY{"Chess.com"};
 inline constexpr std::string_view STR_COL_PALETTE_SOFT_PINK{"Soft Pink"};
 inline constexpr std::string_view STR_COL_PALETTE_KINTSUGI{"Kintsugi Jade"};

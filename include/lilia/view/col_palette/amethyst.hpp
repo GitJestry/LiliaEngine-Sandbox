@@ -5,6 +5,6 @@ namespace lilia::view {
 
 // Returns the Rose Noir color palette. The palette is constructed on first use
 // and cached for subsequent calls.
-const ColorPalette& roseNoirPalette();
+const ColorPalette& amethystPalette();
 
 }  // namespace lilia::view
