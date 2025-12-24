@@ -7,12 +7,6 @@
 #include "lilia/model/core/magic.hpp"
 #include "lilia/model/move_helper.hpp"
 
-#if defined(__GNUC__) || defined(__clang__)
-#define LILIA_ALWAYS_INLINE inline __attribute__((always_inline))
-#else
-#define LILIA_ALWAYS_INLINE inline
-#endif
-
 namespace lilia::model {
 
 namespace {

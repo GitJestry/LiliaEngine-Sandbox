@@ -4,12 +4,6 @@
 #include "core/bitboard.hpp"
 #include "core/magic.hpp"
 
-#if defined(__GNUC__) || defined(__clang__)
-#define LILIA_ALWAYS_INLINE inline __attribute__((always_inline))
-#else
-#define LILIA_ALWAYS_INLINE inline
-#endif
-
 namespace lilia::model {
 
 // ---------------- Attack query ----------------
