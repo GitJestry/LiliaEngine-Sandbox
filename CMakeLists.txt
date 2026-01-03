@@ -21,7 +21,18 @@ option(LILIA_FAST_MATH    "Enable fast-math in Release" ON)
 option(LILIA_LTO          "Enable Link-Time Optimization/IPO in Release" ON)
 option(LILIA_PGO_GENERATE "Build with PGO generate (instrumentation)" OFF)
 option(LILIA_PGO_USE      "Build with PGO use (optimized by profiles)" OFF)
-option(LILIA_BUILD_UI    "Build the graphical UI application" OFF)
+option(LILIA_BUILD_UI     "Build the graphical UI application" OFF)
+
+# macOS: optional universal2 build (arm64 + x86_64)
+option(LILIA_UNIVERSAL2   "Build universal2 binary on macOS (arm64 + x86_64)" OFF)
+if(APPLE AND LILIA_UNIVERSAL2)
+  set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
+  # Native CPU flags do not make sense for universal builds
+  set(LILIA_NATIVE OFF CACHE BOOL "" FORCE)
+endif()
+
+# Clang/AppleClang PGO: path to merged .profdata when using profiles
+set(LILIA_PGO_PROFDATA "" CACHE FILEPATH "Path to merged LLVM .profdata for Clang/AppleClang PGO use")
 
 # -------------------------------------------------
 # Runtime assets path (shipped next to the exe)
@@ -67,7 +78,10 @@ add_executable(lilia_engine
   examples/main.cpp
   ${CORE_FILES}
 )
-target_compile_definitions(lilia_engine PRIVATE LILIA_ENGINE NOMINMAX)
+target_compile_definitions(lilia_engine PRIVATE
+  LILIA_ENGINE
+  $<$<PLATFORM_ID:Windows>:NOMINMAX>
+)
 target_include_directories(lilia_engine PRIVATE
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/include/lilia
@@ -77,12 +91,18 @@ add_executable(texel_tuner
   src/lilia/tools/texel/texel_tuner.cpp
   ${CORE_FILES}
 )
-target_compile_definitions(texel_tuner PRIVATE LILIA_ENGINE NOMINMAX)
+target_compile_definitions(texel_tuner PRIVATE
+  LILIA_ENGINE
+  $<$<PLATFORM_ID:Windows>:NOMINMAX>
+)
 target_include_directories(texel_tuner PRIVATE
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/include/lilia
 )
 
+# -------------------------------------------------
+# Optional: bundled Stockfish copy for texel_tuner
+# -------------------------------------------------
 set(LILIA_TEXEL_STOCKFISH "")
 set(LILIA_TEXEL_STOCKFISH_DIR "${PROJECT_SOURCE_DIR}/tools/texel")
 if(EXISTS "${LILIA_TEXEL_STOCKFISH_DIR}")
@@ -113,6 +133,9 @@ if(LILIA_TEXEL_STOCKFISH)
     VERBATIM)
 endif()
 
+# -------------------------------------------------
+# UI target (optional)
+# -------------------------------------------------
 if(LILIA_BUILD_UI)
   add_executable(lilia_app
     examples/main.cpp
@@ -122,17 +145,35 @@ if(LILIA_BUILD_UI)
     ${CONTROLLER_FILES}
     ${BOT_FILES}
   )
-  target_compile_definitions(lilia_app PRIVATE LILIA_UI NOMINMAX)
+  target_compile_definitions(lilia_app PRIVATE
+    LILIA_UI
+    $<$<PLATFORM_ID:Windows>:NOMINMAX>
+  )
   target_include_directories(lilia_app PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/include/lilia
   )
 
+  # macOS: build as .app bundle (optional but convenient)
+  if(APPLE)
+    set_target_properties(lilia_app PROPERTIES MACOSX_BUNDLE TRUE)
+  endif()
+
   # -------------------------------------------------
   # SFML for UI (shared, built from source)
   # -------------------------------------------------
   include(FetchContent)
+
+  # Minimize global side effects: temporarily force BUILD_SHARED_LIBS for SFML only.
+  if(DEFINED BUILD_SHARED_LIBS)
+    set(_lilia_old_build_shared_libs "${BUILD_SHARED_LIBS}")
+    set(_lilia_had_build_shared_libs TRUE)
+  else()
+    set(_lilia_had_build_shared_libs FALSE)
+  endif()
+
   set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
   # Keep SFML minimal
   set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
   set(SFML_BUILD_TESTING  OFF CACHE BOOL "" FORCE)
@@ -141,9 +182,19 @@ if(LILIA_BUILD_UI)
   FetchContent_Declare(
     SFML
     GIT_REPOSITORY https://github.com/SFML/SFML.git
-    GIT_TAG 2.6.0
+    GIT_TAG 2.6.x
   )
   FetchContent_MakeAvailable(SFML)
+
+  # Restore previous BUILD_SHARED_LIBS cache value
+  if(_lilia_had_build_shared_libs)
+    set(BUILD_SHARED_LIBS "${_lilia_old_build_shared_libs}" CACHE BOOL "" FORCE)
+  else()
+    unset(BUILD_SHARED_LIBS CACHE)
+  endif()
+
+  unset(_lilia_old_build_shared_libs)
+  unset(_lilia_had_build_shared_libs)
 
   target_link_libraries(lilia_app PRIVATE
     sfml-graphics
@@ -169,7 +220,10 @@ endif()
 file(GLOB_RECURSE TEST_FILES ${PROJECT_SOURCE_DIR}/tests/*.cpp)
 if(TEST_FILES)
   add_executable(engine_tests ${TEST_FILES} ${CORE_FILES})
-  target_compile_definitions(engine_tests PRIVATE LILIA_ENGINE NOMINMAX)
+  target_compile_definitions(engine_tests PRIVATE
+    LILIA_ENGINE
+    $<$<PLATFORM_ID:Windows>:NOMINMAX>
+  )
   target_include_directories(engine_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/include/lilia
@@ -208,8 +262,13 @@ function(lilia_set_perf_flags tgt)
   else()
     if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
       set(IS_GCC TRUE)
+      set(IS_CLANG FALSE)
     elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+      set(IS_GCC FALSE)
       set(IS_CLANG TRUE)
+    else()
+      set(IS_GCC FALSE)
+      set(IS_CLANG FALSE)
     endif()
 
     target_compile_options(${tgt} PRIVATE
@@ -220,19 +279,36 @@ function(lilia_set_perf_flags tgt)
       $<$<AND:$<CONFIG:Release>,$<BOOL:${IS_CLANG}>>:-fstrict-aliasing>
       $<$<CONFIG:Release>:-fvisibility=hidden -fvisibility-inlines-hidden>
     )
+
     if (LILIA_LTO)
       target_link_options(${tgt} PRIVATE $<$<CONFIG:Release>:-flto>)
       if (IS_GCC)
         target_link_options(${tgt} PRIVATE -Wl,-O2)
       endif()
     endif()
+
+    # PGO
     if (LILIA_PGO_GENERATE)
-      target_compile_options(${tgt} PRIVATE $<$<CONFIG:Release>:-fprofile-generate>)
-      target_link_options(${tgt}    PRIVATE $<$<CONFIG:Release>:-fprofile-generate>)
+      if (IS_CLANG)
+        target_compile_options(${tgt} PRIVATE $<$<CONFIG:Release>:-fprofile-instr-generate>)
+        target_link_options(${tgt}    PRIVATE $<$<CONFIG:Release>:-fprofile-instr-generate>)
+      else()
+        target_compile_options(${tgt} PRIVATE $<$<CONFIG:Release>:-fprofile-generate>)
+        target_link_options(${tgt}    PRIVATE $<$<CONFIG:Release>:-fprofile-generate>)
+      endif()
     endif()
+
     if (LILIA_PGO_USE)
-      target_compile_options(${tgt} PRIVATE $<$<CONFIG:Release>:-fprofile-use -fprofile-correction>)
-      target_link_options(${tgt}    PRIVATE $<$<CONFIG:Release>:-fprofile-use>)
+      if (IS_CLANG)
+        if (NOT LILIA_PGO_PROFDATA)
+          message(FATAL_ERROR "LILIA_PGO_USE is ON, but LILIA_PGO_PROFDATA is empty (need merged .profdata).")
+        endif()
+        target_compile_options(${tgt} PRIVATE $<$<CONFIG:Release>:-fprofile-instr-use=${LILIA_PGO_PROFDATA}>)
+        target_link_options(${tgt}    PRIVATE $<$<CONFIG:Release>:-fprofile-instr-use=${LILIA_PGO_PROFDATA}>)
+      else()
+        target_compile_options(${tgt} PRIVATE $<$<CONFIG:Release>:-fprofile-use -fprofile-correction>)
+        target_link_options(${tgt}    PRIVATE $<$<CONFIG:Release>:-fprofile-use>)
+      endif()
     endif()
   endif()
 endfunction()
@@ -242,6 +318,9 @@ lilia_set_perf_flags(lilia_engine)
 lilia_set_perf_flags(texel_tuner)
 if(LILIA_BUILD_UI)
   lilia_set_perf_flags(lilia_app)
+endif()
+if(TARGET engine_tests)
+  lilia_set_perf_flags(engine_tests)
 endif()
 
 # Global IPO fallback (non-MSVC)
@@ -298,11 +377,15 @@ endif()
 # -------------------------------------------------
 # Output dirs
 # -------------------------------------------------
-set(_targets lilia_engine)
+set(_targets lilia_engine texel_tuner)
 if(LILIA_BUILD_UI)
   list(APPEND _targets lilia_app)
 endif()
-foreach(target ${_targets})
+if(TARGET engine_tests)
+  list(APPEND _targets engine_tests)
+endif()
+
+foreach(target IN LISTS _targets)
   set_target_properties(${target} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"

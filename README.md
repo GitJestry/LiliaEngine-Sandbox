@@ -1,86 +1,248 @@
+---
+
 # Lilia Chess Engine
 
-Lilia is a Windows‑focused chess sandbox written in modern **C++20**. The repository hosts both the SFML‑based **LiliaApp** GUI and the standalone **liliaengine** core. The engine speaks [UCI](https://en.wikipedia.org/wiki/Universal_Chess_Interface) and can be plugged into any UCI front‑end.
+**Lilia** is a cross-platform chess engine and sandbox written in modern **C++23**. This repository contains:
 
-👉 **Get prebuilt binaries** from the [Releases tab](https://github.com/JustAnoAim/Lilia/releases) to try the latest version of the engine and GUI.
+* **`lilia_engine`** — the standalone engine core with **UCI** support
+* **`lilia_app`** — an optional **SFML-based GUI** (sandbox + visual tooling)
 
-## Project Idea & Design
-Lilia is first and foremost a playground to experiment with chess‑engine ideas. The code base is deliberately modular so that algorithms can be swapped in and out with minimal friction.
+Prebuilt binaries are available in the GitHub **Releases**.
 
-- Clear separation between *engine* and *app* modules.
-- Modular MVC layout (`model`, `engine`, `uci` / `view`, `controller`, `app`).
-- Bitboard board representation for fast move generation.
-- Multithreaded search designed for maintainability and experimentation.
+* Download: Releases tab (Windows, Linux, macOS artifacts)
+  [https://github.com/JustAnoAim/Lilia/releases](https://github.com/JustAnoAim/Lilia/releases)
 
-## Search Algorithms
-The search is a classic negamax with alpha‑beta pruning augmented by many heuristics and pruning ideas from modern engines:
+---
 
-- Iterative deepening with aspiration windows and principal variation search.
-- Late move reductions with a pre‑tuned reduction table.
-- Null‑move pruning, razoring and multiple futility pruning stages.
-- SEE pruning, ProbCut and light check extensions.
-- Rich move ordering: transposition table, killer moves, quiet/capture histories, counter‑moves and history pruning.
+## Project Goals
+
+Lilia is built as a playground for experimenting with modern chess-engine ideas and analysis tooling. The codebase is modular by design, so search/evaluation components can be swapped with minimal friction.
+
+The long-term direction is to provide analysis tooling comparable to chess.com and extend beyond it with deeper visualization and engine debugging utilities.
+
+---
+
+## Search
+
+The current search is a classic **Negamax with Alpha-Beta pruning**, augmented with modern heuristics and pruning concepts:
+
+* Iterative deepening, aspiration windows, principal variation search
+* Late Move Reductions (LMR) with tuned reduction tables
+* Null-move pruning, razoring, multi-stage futility pruning
+* SEE pruning, ProbCut, light check extensions
+* Move ordering: TT, killer moves, quiet/capture histories, counter moves, history pruning
+
+---
 
 ## Evaluation
-The handcrafted evaluator mixes material, mobility and many structural features:
 
-- Piece‑square tables and mobility profiles for each piece.
-- Pawn structure: isolated, doubled and backward pawns, phalanxes, candidates and connected or passed pawns.
-- King safety: pawn shields, king rings and storm/shelter tables.
-- Piece‑specific motifs such as bishop pair, outposts, rooks on open files or behind passers, connected rooks and more.
-- Threat detection, space and material imbalance terms.
+The handcrafted evaluator combines material, mobility, and structural heuristics to produce a more “human-like” style.
+Planned: integrate an **NNUE** backend (industry standard) for evaluation.
+
+---
 
 ## Transposition Table
-The engine currently uses **TT5**, a compact 16‑byte entry table with two‑stage key verification and generation‑based aging for fast lookups.
+
+The engine currently uses **TT5**: a compact **16-byte entry** table with two-stage key verification and generation-based aging for fast lookups.
+
+---
 
 ## Project Structure
+
 ```
 .
-├── assets/        # textures and audio for the GUI
-├── examples/      # example entry point
+├── assets/         # textures/audio/fonts for the GUI runtime
+├── examples/       # entry points / integration examples
 ├── include/
-│   └── lilia/     # public headers
+│   └── lilia/      # public headers
 └── src/lilia/
-    ├── app/       # LiliaApp front-end
-    ├── controller/ # MVC controllers for the GUI
-    ├── engine/    # search, evaluation & transposition table
-    ├── model/     # board representation & move generation
-    ├── uci/       # UCI protocol implementation
-    └── view/      # SFML-based rendering
+    ├── app/        # GUI front-end logic
+    ├── bot/        # engine/bot integration
+    ├── controller/ # MVC controllers (GUI)
+    ├── engine/     # search, eval, TT
+    ├── model/      # board state & move generation
+    ├── uci/        # UCI protocol implementation
+    └── view/       # SFML rendering + UI
 ```
 
-## Using the Engine
-- `liliaengine` speaks the [UCI protocol](https://en.wikipedia.org/wiki/Universal_Chess_Interface) and can be plugged into any UCI-compatible GUI.
-- The engine can also be linked as a library; see `examples/main.cpp` for a minimal integration example.
+---
 
-### Thread configuration
-Lock the search to a specific number of threads by setting `EngineConfig::threads` or via the UCI `Threads` option. The engine
-uses this value deterministically and does not resize the thread pool based on runtime hardware queries.
+## Requirements
 
-## Acknowledgements
-- Graphics, windowing and audio are provided by [SFML](https://www.sfml-dev.org/).
-- This setup is currently optimized for **Windows 64-bit** architecture.
+### Common
 
-## Architecture & Design Patterns
+* **CMake ≥ 3.21**
+* A C++ compiler with **C++23** support:
 
-The project is structured around a clear separation of responsibilities:
+  * Windows: MSVC (VS 2022) or Clang/MinGW
+  * Linux: GCC or Clang
+  * macOS: AppleClang
 
-- **Model** – core chess logic such as the board representation, move generation and evaluation (`include/lilia/model`, `src/lilia/model`).
-- **View** – SFML-based rendering layer (`include/lilia/view`, `src/lilia/view`). `GameView` acts as a façade over SFML, while textures are managed by the Singleton `TextureTable`.
-- Board coordinates are rendered at runtime with an outlined OpenSans font, removing the need for separate PNG label textures.
-- **Controller** – orchestrates user input and the game loop (`include/lilia/controller`, `src/lilia/controller`). `GameManager` exposes callbacks for moves, promotions and game end events, enabling an observer-style communication with the view.
-- **Engine** – search and evaluation algorithms for AI play (`include/lilia/engine`, `src/lilia/engine`).
+### GUI (optional)
 
-Design patterns used include:
+`lilia_app` uses **SFML**. The repository builds SFML via **FetchContent** when the UI is enabled, but your system still needs typical audio/windowing dependencies on Linux/macOS.
 
-- **Model–View–Controller** to separate state, presentation and interaction.
-- **Strategy** via the `IPlayer` interface, allowing interchangeable bot or human move providers.
-- **Singleton** for central texture management (`TextureTable`).
-- **Observer-like callbacks** from `GameManager` to notify other components of state changes.
-- **Factory** to generate fresh evaluator instances for each search thread (`EvalFactory`).
-- **Facade** through `GameView`, which offers a simplified interface to the rendering subsystem.
+---
+
+## Building
+
+Lilia can be built in two ways:
+
+1. **CMake directly** (recommended for CI / IDE workflows)
+2. **Makefile wrapper** (convenient developer workflow on macOS/Linux and MSYS2/MinGW environments)
+
+### Build Targets
+
+* `lilia_engine` (UCI engine core)
+* `lilia_app` (GUI sandbox; optional)
+* `texel_tuner` (tooling target)
+
+> By default the UI is **OFF** in CMake. Enable it with `-DLILIA_BUILD_UI=ON`.
+
+---
+
+## Building with the Makefile Wrapper
+
+The repo ships a cross-platform Makefile wrapper around CMake.
+
+### Linux / macOS
+
+Build engine + app:
+
+```bash
+make all
+```
+
+Build only the engine (no UI, no SFML):
+
+```bash
+make engine
+```
+
+Build only the GUI app:
+
+```bash
+make app
+```
+
+Clean:
+
+```bash
+make clean
+```
+
+### macOS Universal Binary (universal2)
+
+To build a universal binary (arm64 + x86_64), use:
+
+```bash
+make all UNIVERSAL2=ON
+```
+
+Notes:
+
+* Universal builds automatically disable native CPU flags (`-march=native`) since they do not apply to universal2.
+* Output is produced in `build-ui/bin/` (for UI builds) and `build-engine/bin/` (engine-only builds).
+
+### Windows (Makefile wrapper)
+
+The Makefile wrapper works on Windows only in Unix-like environments such as **MSYS2 / MinGW / Git Bash / Cygwin**.
+For native Windows builds, prefer the MSVC workflow below.
+
+---
+
+## Building with CMake (Recommended / CI)
+
+### Windows (MSVC / Visual Studio)
+
+Configure:
+
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DLILIA_BUILD_UI=ON `
+  -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
+```
+
+Build:
+
+```powershell
+cmake --build build --config Release --target lilia_app lilia_engine
+```
+
+Artifacts typically land in:
+
+* `build/bin/Release/` (multi-config layout)
+
+### Linux (Ninja or Unix Makefiles)
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLILIA_BUILD_UI=ON \
+  -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
+
+cmake --build build --target lilia_app lilia_engine
+```
+
+### macOS (AppleClang)
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLILIA_BUILD_UI=ON \
+  -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
+
+cmake --build build --target lilia_app lilia_engine
+```
+
+Universal2 via CMake:
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLILIA_BUILD_UI=ON \
+  -DLILIA_UNIVERSAL2=ON \
+  -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
+
+cmake --build build --target lilia_app lilia_engine
+```
+
+---
+
+## Runtime Assets
+
+The GUI requires the `assets/` folder next to the executable.
+The build system copies assets automatically into the target output directory for convenience.
+
+---
+
+## Using the Engine (UCI)
+
+`lilia_engine` implements the [UCI protocol](https://en.wikipedia.org/wiki/Universal_Chess_Interface) and can be used in any UCI-compatible chess GUI.
+
+Example (CLI):
+
+```bash
+./lilia_engine
+```
+
+For minimal integration examples, see:
+
+* `examples/main.cpp`
+
+---
 
 ## Future Work
-- Integrate an NNUE evaluation backend.
-- Continue exploring new pruning techniques and search ideas.
-- Improve cross-platform support.
+
+* Integrate NNUE evaluation backend
+* Continue exploring pruning/search improvements
+* Expand visual analysis tooling and debugging features
+
+---
+
+## Acknowledgements
+
+* Graphics, windowing, and audio: [SFML](https://www.sfml-dev.org/)
+
+---

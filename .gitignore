@@ -33,6 +33,7 @@
 
 # Ignore build directory
 build*/
+build-ui*/
 
 # ignoe package
 package_dir*/

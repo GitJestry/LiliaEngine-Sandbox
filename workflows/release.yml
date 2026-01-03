@@ -1,0 +1,173 @@
+name: Multi-Platform Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+            generator: 'Visual Studio 17 2022'
+            arch: x64
+            exe_ext: .exe
+          - os: ubuntu-latest
+            name: Linux
+            generator: Ninja
+            arch: ''
+            exe_ext: ''
+          - os: macos-latest
+            name: macOS
+            generator: Ninja
+            arch: ''
+            exe_ext: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Optional dependencies for Linux/macOS if you rely on system SFML.
+      # If your CMake already fetches SFML via FetchContent/vcpkg, these are usually harmless.
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build zip libsfml-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install ninja zip sfml
+
+      - name: Configure (Release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build \
+            -G "${{ matrix.generator }}" \
+            ${{ matrix.arch && format('-A {0}', matrix.arch) || '' }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
+
+      - name: Build (lilia_app, lilia_engine)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build --config Release --target lilia_app lilia_engine
+
+      # -------- Package per OS --------
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # Locate binaries (VS multi-config usually puts them under build\bin\Release)
+          $app = Get-ChildItem -Recurse -File build -Filter "lilia_app.exe" | Select-Object -First 1
+          $eng = Get-ChildItem -Recurse -File build -Filter "lilia_engine.exe" | Select-Object -First 1
+          if (-not $app) { throw "lilia_app.exe missing (searched under build/)" }
+          if (-not $eng) { throw "lilia_engine.exe missing (searched under build/)" }
+
+          # Locate assets folder (try common candidates first, then fallback to search)
+          $candidates = @(
+            "build\bin\Release\assets",
+            "build\bin\assets",
+            "build\assets"
+          ) | ForEach-Object { Resolve-Path -ErrorAction SilentlyContinue $_ } | Where-Object { $_ }
+
+          $assetsPath = $null
+          foreach ($c in $candidates) {
+            if (Test-Path $c) { $assetsPath = $c; break }
+          }
+          if (-not $assetsPath) {
+            $assetsDir = Get-ChildItem -Recurse -Directory build -Filter "assets" | Select-Object -First 1
+            if ($assetsDir) { $assetsPath = $assetsDir.FullName }
+          }
+          if (-not $assetsPath) { throw "assets/ folder missing (searched common paths and recursively under build/)" }
+
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item -Force $app.FullName dist\
+          Copy-Item -Force $eng.FullName dist\
+          Copy-Item -Recurse -Force $assetsPath dist\assets
+
+          $zip = "ChessEngine_Lilia-Windows.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path dist\* -DestinationPath $zip
+          Get-ChildItem $zip | Format-Table FullName, Length
+
+      - name: Package (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Find binaries
+          app="$(find build -type f -name lilia_app -perm -111 | head -n 1 || true)"
+          eng="$(find build -type f -name lilia_engine -perm -111 | head -n 1 || true)"
+          if [[ -z "${app}" ]]; then
+            # fallback: sometimes binaries are not marked +x in cache/CI
+            app="$(find build -type f -name lilia_app | head -n 1 || true)"
+          fi
+          if [[ -z "${eng}" ]]; then
+            eng="$(find build -type f -name lilia_engine | head -n 1 || true)"
+          fi
+
+          if [[ -z "${app}" ]]; then echo "lilia_app missing (searched under build/)"; exit 1; fi
+          if [[ -z "${eng}" ]]; then echo "lilia_engine missing (searched under build/)"; exit 1; fi
+
+          # Find assets
+          assets=""
+          for c in "build/bin/assets" "build/bin/Release/assets" "build/assets"; do
+            if [[ -d "$c" ]]; then assets="$c"; break; fi
+          done
+          if [[ -z "${assets}" ]]; then
+            assets="$(find build -type d -name assets | head -n 1 || true)"
+          fi
+          if [[ -z "${assets}" ]]; then echo "assets/ folder missing (searched common paths and recursively under build/)"; exit 1; fi
+
+          rm -rf dist
+          mkdir -p dist/assets
+          cp -f "${app}" dist/
+          cp -f "${eng}" dist/
+          cp -R "${assets}/"* dist/assets/
+
+          OSNAME="${{ matrix.name }}"
+          ZIP="ChessEngine_Lilia-${OSNAME}.zip"
+          rm -f "${ZIP}"
+          (cd dist && zip -r "../${ZIP}" .)
+          ls -lh "${ZIP}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.name }}
+          path: ChessEngine_Lilia-${{ matrix.name }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip

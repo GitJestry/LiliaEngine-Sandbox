@@ -2,15 +2,17 @@
 
 #include <string>
 
-#include "../chess_types.hpp"
-#include "../constants.hpp"
+#include "lilia/chess_types.hpp"
+#include "lilia/constants.hpp"
 
-namespace lilia::app {
+namespace lilia::app
+{
 
-class App {
- public:
-  App() = default;
-  int run();
-};
+  class App
+  {
+  public:
+    App() = default;
+    int run();
+  };
 
-}  // namespace lilia::app
+} // namespace lilia::app
