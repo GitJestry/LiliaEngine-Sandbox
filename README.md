@@ -1,5 +1,3 @@
----
-
 # Lilia Chess Engine
 
 **Lilia** is a cross-platform chess engine and sandbox written in modern **C++23**. This repository contains:
@@ -11,8 +9,6 @@ Prebuilt binaries are available in the GitHub **Releases**.
 
 * Download: Releases tab (Windows, Linux, macOS artifacts)
   [https://github.com/JustAnoAim/Lilia/releases](https://github.com/JustAnoAim/Lilia/releases)
-
----
 
 ## Project Goals
 
