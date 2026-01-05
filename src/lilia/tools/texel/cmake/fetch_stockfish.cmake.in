@@ -1,0 +1,98 @@
+cmake_minimum_required(VERSION 3.21)
+
+# Configured inputs:
+set(URL "@SF_URL@")
+set(ARCHIVE "@SF_ARCHIVE@")
+set(EXTRACT_DIR "@SF_EXTRACT_DIR@")
+set(OUT "@SF_OUT@")
+
+get_filename_component(_out_dir "${OUT}" DIRECTORY)
+file(MAKE_DIRECTORY "${_out_dir}")
+
+if(NOT EXISTS "${ARCHIVE}")
+  message(STATUS "Downloading Stockfish: ${URL}")
+  file(DOWNLOAD "${URL}" "${ARCHIVE}" SHOW_PROGRESS STATUS st)
+  list(GET st 0 code)
+  if(NOT code EQUAL 0)
+    list(GET st 1 msg)
+    message(FATAL_ERROR "Stockfish download failed: ${msg}")
+  endif()
+endif()
+
+# Fresh extract each time to avoid stale content
+execute_process(COMMAND "${CMAKE_COMMAND}" -E rm -rf "${EXTRACT_DIR}")
+file(MAKE_DIRECTORY "${EXTRACT_DIR}")
+
+message(STATUS "Extracting Stockfish archive")
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E tar xvf "${ARCHIVE}"
+  WORKING_DIRECTORY "${EXTRACT_DIR}"
+  RESULT_VARIABLE rv
+)
+if(NOT rv EQUAL 0)
+  message(FATAL_ERROR "Failed to extract Stockfish archive: ${ARCHIVE}")
+endif()
+
+# Candidate search (files only)
+file(GLOB_RECURSE candidates LIST_DIRECTORIES false "${EXTRACT_DIR}/*")
+
+set(best "")
+set(bestSize 0)
+
+foreach(c IN LISTS candidates)
+  get_filename_component(name "${c}" NAME)
+  get_filename_component(ext  "${c}" EXT)
+  string(TOLOWER "${name}" name_l)
+  string(TOLOWER "${ext}"  ext_l)
+
+  # Exact names first
+  if(name_l STREQUAL "stockfish" OR name_l STREQUAL "stockfish.exe")
+    set(best "${c}")
+    break()
+  endif()
+
+  # Reject obvious non-binaries
+  if(ext_l STREQUAL ".cpp" OR ext_l STREQUAL ".c" OR ext_l STREQUAL ".h" OR ext_l STREQUAL ".hpp"
+     OR ext_l STREQUAL ".md" OR ext_l STREQUAL ".txt" OR ext_l STREQUAL ".cff"
+     OR ext_l STREQUAL ".sh" OR ext_l STREQUAL ".mk" OR ext_l STREQUAL ".o" OR ext_l STREQUAL ".a")
+    continue()
+  endif()
+
+  # Name must start with "stockfish"
+  if(NOT name_l MATCHES "^stockfish")
+    continue()
+  endif()
+
+  # Windows: require .exe
+  if(WIN32 AND NOT ext_l STREQUAL ".exe")
+    continue()
+  endif()
+
+  file(SIZE "${c}" sz)
+  if(sz GREATER bestSize)
+    set(best "${c}")
+    set(bestSize "${sz}")
+  endif()
+endforeach()
+
+if(best STREQUAL "")
+  set(_shown 0)
+  message(STATUS "Stockfish extraction produced these top-level entries:")
+  file(GLOB _top LIST_DIRECTORIES true "${EXTRACT_DIR}/*")
+  foreach(t IN LISTS _top)
+    if(_shown GREATER 25)
+      message(STATUS "  ... (truncated)")
+      break()
+    endif()
+    message(STATUS "  ${t}")
+    math(EXPR _shown "${_shown}+1")
+  endforeach()
+  message(FATAL_ERROR "Could not locate a Stockfish binary in extracted archive. Consider setting -DLILIA_TEXEL_STOCKFISH_ASSET=<asset-name>.")
+endif()
+
+file(COPY_FILE "${best}" "${OUT}" ONLY_IF_DIFFERENT)
+if(NOT WIN32)
+  execute_process(COMMAND "${CMAKE_COMMAND}" -E chmod +x "${OUT}")
+endif()
+
+message(STATUS "Stockfish binary selected: ${best}")

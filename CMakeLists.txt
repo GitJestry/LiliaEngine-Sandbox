@@ -21,7 +21,9 @@ option(LILIA_FAST_MATH    "Enable fast-math in Release" ON)
 option(LILIA_LTO          "Enable Link-Time Optimization/IPO in Release" ON)
 option(LILIA_PGO_GENERATE "Build with PGO generate (instrumentation)" OFF)
 option(LILIA_PGO_USE      "Build with PGO use (optimized by profiles)" OFF)
+
 option(LILIA_BUILD_UI     "Build the graphical UI application" OFF)
+option(LILIA_BUILD_TEXEL  "Build the Texel tuner tool" ON)
 
 # macOS: optional universal2 build (arm64 + x86_64)
 option(LILIA_UNIVERSAL2   "Build universal2 binary on macOS (arm64 + x86_64)" OFF)
@@ -35,10 +37,23 @@ endif()
 set(LILIA_PGO_PROFDATA "" CACHE FILEPATH "Path to merged LLVM .profdata for Clang/AppleClang PGO use")
 
 # -------------------------------------------------
+# Texel: Stockfish provisioning config (used by src/lilia/tools/texel)
+# -------------------------------------------------
+option(LILIA_TEXEL_FETCH_STOCKFISH "Auto-download a Stockfish binary for texel_tuner when not bundled" ON)
+set(LILIA_TEXEL_STOCKFISH_URL_BASE "https://github.com/official-stockfish/Stockfish/releases/latest/download"
+    CACHE STRING "Base URL for Stockfish release assets")
+set(LILIA_TEXEL_STOCKFISH_ASSET "" CACHE STRING "Override Stockfish asset filename (e.g. stockfish-macos-m1-apple-silicon.tar)")
+
+# -------------------------------------------------
 # Runtime assets path (shipped next to the exe)
 # -------------------------------------------------
 set(LILIA_ASSETS_DIR "${PROJECT_SOURCE_DIR}/assets"
     CACHE PATH "Directory with runtime assets (textures, sounds, fonts, etc.)")
+
+# -------------------------------------------------
+# Threads
+# -------------------------------------------------
+find_package(Threads REQUIRED)
 
 # -------------------------------------------------
 # Sources
@@ -70,168 +85,6 @@ set(CORE_FILES
   ${ENGINE_FILES}
   ${UCI_FILES}
 )
-
-# -------------------------------------------------
-# Targets
-# -------------------------------------------------
-add_executable(lilia_engine
-  examples/main.cpp
-  ${CORE_FILES}
-)
-target_compile_definitions(lilia_engine PRIVATE
-  LILIA_ENGINE
-  $<$<PLATFORM_ID:Windows>:NOMINMAX>
-)
-target_include_directories(lilia_engine PRIVATE
-  ${PROJECT_SOURCE_DIR}/include
-  ${PROJECT_SOURCE_DIR}/include/lilia
-)
-
-add_executable(texel_tuner
-  src/lilia/tools/texel/texel_tuner.cpp
-  ${CORE_FILES}
-)
-target_compile_definitions(texel_tuner PRIVATE
-  LILIA_ENGINE
-  $<$<PLATFORM_ID:Windows>:NOMINMAX>
-)
-target_include_directories(texel_tuner PRIVATE
-  ${PROJECT_SOURCE_DIR}/include
-  ${PROJECT_SOURCE_DIR}/include/lilia
-)
-
-# -------------------------------------------------
-# Optional: bundled Stockfish copy for texel_tuner
-# -------------------------------------------------
-set(LILIA_TEXEL_STOCKFISH "")
-set(LILIA_TEXEL_STOCKFISH_DIR "${PROJECT_SOURCE_DIR}/tools/texel")
-if(EXISTS "${LILIA_TEXEL_STOCKFISH_DIR}")
-  set(_lilia_stockfish_candidates)
-  if(DEFINED CMAKE_EXECUTABLE_SUFFIX)
-    list(APPEND _lilia_stockfish_candidates
-      "${LILIA_TEXEL_STOCKFISH_DIR}/stockfish${CMAKE_EXECUTABLE_SUFFIX}")
-  endif()
-  list(APPEND _lilia_stockfish_candidates
-    "${LILIA_TEXEL_STOCKFISH_DIR}/stockfish"
-    "${LILIA_TEXEL_STOCKFISH_DIR}/stockfish.exe")
-  foreach(candidate IN LISTS _lilia_stockfish_candidates)
-    if(NOT LILIA_TEXEL_STOCKFISH AND EXISTS "${candidate}")
-      set(LILIA_TEXEL_STOCKFISH "${candidate}")
-      break()
-    endif()
-  endforeach()
-  unset(_lilia_stockfish_candidates)
-endif()
-
-if(LILIA_TEXEL_STOCKFISH)
-  get_filename_component(LILIA_TEXEL_STOCKFISH_NAME "${LILIA_TEXEL_STOCKFISH}" NAME)
-  add_custom_command(TARGET texel_tuner POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${LILIA_TEXEL_STOCKFISH}"
-            "$<TARGET_FILE_DIR:texel_tuner>/${LILIA_TEXEL_STOCKFISH_NAME}"
-    COMMENT "Copying bundled Stockfish to texel_tuner output directory"
-    VERBATIM)
-endif()
-
-# -------------------------------------------------
-# UI target (optional)
-# -------------------------------------------------
-if(LILIA_BUILD_UI)
-  add_executable(lilia_app
-    examples/main.cpp
-    ${CORE_FILES}
-    ${UI_FILES}
-    ${APP_FILES}
-    ${CONTROLLER_FILES}
-    ${BOT_FILES}
-  )
-  target_compile_definitions(lilia_app PRIVATE
-    LILIA_UI
-    $<$<PLATFORM_ID:Windows>:NOMINMAX>
-  )
-  target_include_directories(lilia_app PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/include/lilia
-  )
-
-  # macOS: build as .app bundle (optional but convenient)
-  if(APPLE)
-    set_target_properties(lilia_app PROPERTIES MACOSX_BUNDLE TRUE)
-  endif()
-
-  # -------------------------------------------------
-  # SFML for UI (shared, built from source)
-  # -------------------------------------------------
-  include(FetchContent)
-
-  # Minimize global side effects: temporarily force BUILD_SHARED_LIBS for SFML only.
-  if(DEFINED BUILD_SHARED_LIBS)
-    set(_lilia_old_build_shared_libs "${BUILD_SHARED_LIBS}")
-    set(_lilia_had_build_shared_libs TRUE)
-  else()
-    set(_lilia_had_build_shared_libs FALSE)
-  endif()
-
-  set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
-
-  # Keep SFML minimal
-  set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  set(SFML_BUILD_TESTING  OFF CACHE BOOL "" FORCE)
-  set(SFML_USE_STATIC_STD_LIBS OFF CACHE BOOL "" FORCE)
-
-  FetchContent_Declare(
-    SFML
-    GIT_REPOSITORY https://github.com/SFML/SFML.git
-    GIT_TAG 2.6.x
-  )
-  FetchContent_MakeAvailable(SFML)
-
-  # Restore previous BUILD_SHARED_LIBS cache value
-  if(_lilia_had_build_shared_libs)
-    set(BUILD_SHARED_LIBS "${_lilia_old_build_shared_libs}" CACHE BOOL "" FORCE)
-  else()
-    unset(BUILD_SHARED_LIBS CACHE)
-  endif()
-
-  unset(_lilia_old_build_shared_libs)
-  unset(_lilia_had_build_shared_libs)
-
-  target_link_libraries(lilia_app PRIVATE
-    sfml-graphics
-    sfml-window
-    sfml-system
-    sfml-audio
-  )
-endif()
-
-# -------------------------------------------------
-# Threads
-# -------------------------------------------------
-find_package(Threads REQUIRED)
-target_link_libraries(lilia_engine PRIVATE Threads::Threads)
-target_link_libraries(texel_tuner PRIVATE Threads::Threads)
-if(LILIA_BUILD_UI)
-  target_link_libraries(lilia_app PRIVATE Threads::Threads)
-endif()
-
-# -------------------------------------------------
-# Tests
-# -------------------------------------------------
-file(GLOB_RECURSE TEST_FILES ${PROJECT_SOURCE_DIR}/tests/*.cpp)
-if(TEST_FILES)
-  add_executable(engine_tests ${TEST_FILES} ${CORE_FILES})
-  target_compile_definitions(engine_tests PRIVATE
-    LILIA_ENGINE
-    $<$<PLATFORM_ID:Windows>:NOMINMAX>
-  )
-  target_include_directories(engine_tests PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/include/lilia
-  )
-  target_link_libraries(engine_tests PRIVATE Threads::Threads)
-  enable_testing()
-  add_test(NAME engine_tests COMMAND engine_tests)
-endif()
 
 # -------------------------------------------------
 # Helper: performance flags per target
@@ -313,17 +166,134 @@ function(lilia_set_perf_flags tgt)
   endif()
 endfunction()
 
-# Apply flags
+# -------------------------------------------------
+# Core library
+# -------------------------------------------------
+add_library(lilia_core STATIC ${CORE_FILES})
+target_compile_definitions(lilia_core PUBLIC
+  LILIA_ENGINE
+  $<$<PLATFORM_ID:Windows>:NOMINMAX>
+)
+target_include_directories(lilia_core PUBLIC
+  ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/include/lilia
+)
+target_link_libraries(lilia_core PUBLIC Threads::Threads)
+
+lilia_set_perf_flags(lilia_core)
+
+# -------------------------------------------------
+# CLI engine target
+# -------------------------------------------------
+add_executable(lilia_engine examples/main.cpp)
+target_link_libraries(lilia_engine PRIVATE lilia_core)
 lilia_set_perf_flags(lilia_engine)
-lilia_set_perf_flags(texel_tuner)
+
+# -------------------------------------------------
+# Texel tuner (optional)
+# -------------------------------------------------
+if (LILIA_BUILD_TEXEL)
+  # Tell the texel subproject which core target to link to.
+  set(LILIA_TARGET lilia_core)
+  add_subdirectory(src/lilia/tools/texel)
+endif()
+
+# -------------------------------------------------
+# UI target (optional)
+# -------------------------------------------------
 if(LILIA_BUILD_UI)
+  add_executable(lilia_app
+    examples/main.cpp
+    ${UI_FILES}
+    ${APP_FILES}
+    ${CONTROLLER_FILES}
+    ${BOT_FILES}
+  )
+  target_compile_definitions(lilia_app PRIVATE
+    LILIA_UI
+    $<$<PLATFORM_ID:Windows>:NOMINMAX>
+  )
+  target_include_directories(lilia_app PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/lilia
+  )
+  target_link_libraries(lilia_app PRIVATE lilia_core)
+
+  # macOS: build as .app bundle (optional but convenient)
+  if(APPLE)
+    set_target_properties(lilia_app PROPERTIES MACOSX_BUNDLE TRUE)
+  endif()
+
+  # -------------------------------------------------
+  # SFML for UI (shared, built from source)
+  # -------------------------------------------------
+  include(FetchContent)
+
+  # Minimize global side effects: temporarily force BUILD_SHARED_LIBS for SFML only.
+  if(DEFINED BUILD_SHARED_LIBS)
+    set(_lilia_old_build_shared_libs "${BUILD_SHARED_LIBS}")
+    set(_lilia_had_build_shared_libs TRUE)
+  else()
+    set(_lilia_had_build_shared_libs FALSE)
+  endif()
+
+  set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
+  # Keep SFML minimal
+  set(SFML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(SFML_BUILD_TESTING  OFF CACHE BOOL "" FORCE)
+  set(SFML_USE_STATIC_STD_LIBS OFF CACHE BOOL "" FORCE)
+
+  FetchContent_Declare(
+    SFML
+    GIT_REPOSITORY https://github.com/SFML/SFML.git
+    GIT_TAG 2.6.x
+  )
+  FetchContent_MakeAvailable(SFML)
+
+  # Restore previous BUILD_SHARED_LIBS cache value
+  if(_lilia_had_build_shared_libs)
+    set(BUILD_SHARED_LIBS "${_lilia_old_build_shared_libs}" CACHE BOOL "" FORCE)
+  else()
+    unset(BUILD_SHARED_LIBS CACHE)
+  endif()
+
+  unset(_lilia_old_build_shared_libs)
+  unset(_lilia_had_build_shared_libs)
+
+  target_link_libraries(lilia_app PRIVATE
+    sfml-graphics
+    sfml-window
+    sfml-system
+    sfml-audio
+  )
+
   lilia_set_perf_flags(lilia_app)
 endif()
-if(TARGET engine_tests)
+
+# -------------------------------------------------
+# Tests
+# -------------------------------------------------
+file(GLOB_RECURSE TEST_FILES ${PROJECT_SOURCE_DIR}/tests/*.cpp)
+if(TEST_FILES)
+  add_executable(engine_tests ${TEST_FILES})
+  target_compile_definitions(engine_tests PRIVATE
+    LILIA_ENGINE
+    $<$<PLATFORM_ID:Windows>:NOMINMAX>
+  )
+  target_include_directories(engine_tests PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/lilia
+  )
+  target_link_libraries(engine_tests PRIVATE lilia_core)
+  enable_testing()
+  add_test(NAME engine_tests COMMAND engine_tests)
   lilia_set_perf_flags(engine_tests)
 endif()
 
+# -------------------------------------------------
 # Global IPO fallback (non-MSVC)
+# -------------------------------------------------
 if (LILIA_LTO AND NOT MSVC)
   include(CheckIPOSupported)
   check_ipo_supported(RESULT ipo_ok OUTPUT ipo_out)
@@ -338,7 +308,6 @@ endif()
 # Windows: copy runtime DLLs beside the GUI exe + copy assets
 # -------------------------------------------------
 if (WIN32 AND LILIA_BUILD_UI)
-  # SFML/runtime DLLs for the GUI app
   add_custom_command(TARGET lilia_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       $<TARGET_RUNTIME_DLLS:lilia_app>
@@ -346,7 +315,6 @@ if (WIN32 AND LILIA_BUILD_UI)
     COMMAND_EXPAND_LISTS
   )
 
-  # OpenAL (sfml-audio) if present in the SFML tree
   if (EXISTS "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll")
     add_custom_command(TARGET lilia_app POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -377,7 +345,10 @@ endif()
 # -------------------------------------------------
 # Output dirs
 # -------------------------------------------------
-set(_targets lilia_engine texel_tuner)
+set(_targets lilia_engine)
+if (TARGET texel_tuner)
+  list(APPEND _targets texel_tuner)
+endif()
 if(LILIA_BUILD_UI)
   list(APPEND _targets lilia_app)
 endif()

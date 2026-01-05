@@ -17,13 +17,15 @@
 
 using namespace lilia;
 
-static core::Square sq(char file, int rank) {
+static core::Square sq(char file, int rank)
+{
   int f = file - 'a';
   int r = rank - 1;
   return static_cast<core::Square>(r * 8 + f);
 }
 
-int main() {
+int main()
+{
   engine::EngineConfig cfg;
   engine::BotEngine bot(cfg);
 
@@ -69,11 +71,11 @@ int main() {
   {
     model::ChessGame game;
     game.setPosition("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    auto& pos = game.getPositionRefForBot();
+    auto &pos = game.getPositionRefForBot();
 
     model::TT5 tt;
     engine::Evaluator eval;
-    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator*) {});
+    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator *) {});
     engine::Search search(tt, evalPtr, cfg);
 
     model::Move wrong(sq('a', 2), sq('a', 3));
@@ -81,7 +83,7 @@ int main() {
 
     auto stop = std::make_shared<std::atomic<bool>>(false);
     search.search_root_single(pos, 2, stop, 0);
-    const auto& stats = search.getStats();
+    const auto &stats = search.getStats();
     assert(!stats.topMoves.empty());
     assert(stats.bestMove == stats.topMoves[0].first);
   }
@@ -90,16 +92,16 @@ int main() {
   {
     model::ChessGame game;
     game.setPosition("4k3/8/8/7Q/8/8/8/4K3 w - - 0 1");
-    auto& pos = game.getPositionRefForBot();
+    auto &pos = game.getPositionRefForBot();
 
     model::TT5 tt;
     engine::Evaluator eval;
-    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator*) {});
+    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator *) {});
     engine::Search search(tt, evalPtr, cfg);
 
     auto stop = std::make_shared<std::atomic<bool>>(false);
     search.search_root_single(pos, 3, stop, 0);
-    const auto& stats = search.getStats();
+    const auto &stats = search.getStats();
     assert(stats.topMoves.size() >= 2);
     assert(stats.topMoves[0].second != stats.topMoves[1].second);
   }
@@ -118,11 +120,11 @@ int main() {
   {
     model::ChessGame game;
     game.setPosition("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
-    auto& pos = game.getPositionRefForBot();
+    auto &pos = game.getPositionRefForBot();
 
     model::TT5 tt;
     engine::Evaluator eval;
-    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator*) {});
+    auto evalPtr = std::shared_ptr<const engine::Evaluator>(&eval, [](const engine::Evaluator *) {});
     engine::Search search(tt, evalPtr, cfg);
 
     constexpr std::uint64_t nodeLimit = 128;
@@ -155,34 +157,38 @@ int main() {
     assert(res.bestMove);
     model::Move expected(sq('d', 2), sq('d', 4));
     model::Move alt(sq('f', 6), sq('f', 5));
-    auto inTop = std::any_of(res.topMoves.begin(), res.topMoves.end(), [&](const auto& mv) {
-      return mv.first == expected;
-    });
-    if (!inTop) {
+    auto inTop = std::any_of(res.topMoves.begin(), res.topMoves.end(), [&](const auto &mv)
+                             { return mv.first == expected; });
+    if (!inTop)
+    {
       std::cerr << "Expected d2d4 to appear in top moves" << std::endl;
       return 1;
     }
-    if (!res.bestMove) {
+    if (!res.bestMove)
+    {
       std::cerr << "Expected a best move, got <none>\n";
       return 1;
     }
 
-    if (*res.bestMove != expected && *res.bestMove != alt) {
-      auto findMove = [&](const model::Move& mv) {
-        return std::find_if(res.topMoves.begin(), res.topMoves.end(), [&](const auto& entry) {
-          return entry.first == mv;
-        });
+    if (*res.bestMove != expected && *res.bestMove != alt)
+    {
+      auto findMove = [&](const model::Move &mv)
+      {
+        return std::find_if(res.topMoves.begin(), res.topMoves.end(), [&](const auto &entry)
+                            { return entry.first == mv; });
       };
 
       const auto expIt = findMove(expected);
       const auto bestIt = findMove(*res.bestMove);
 
-      if (expIt == res.topMoves.end() || bestIt == res.topMoves.end()) {
+      if (expIt == res.topMoves.end() || bestIt == res.topMoves.end())
+      {
         std::cerr << "Unable to compare best move against expected top moves\n";
         return 1;
       }
 
-      if (std::abs(bestIt->second - expIt->second) > 24) {
+      if (std::abs(bestIt->second - expIt->second) > 24)
+      {
         std::cerr << "Best move " << move_to_uci(*res.bestMove)
                   << " differs too much in score from expected d2d4\n";
         return 1;
@@ -197,16 +203,17 @@ int main() {
     auto res = bot.findBestMove(game, 4, 0);
     assert(res.bestMove);
     model::Move expected(sq('a', 5), sq('b', 3));
-    if (!res.bestMove || *res.bestMove != expected) {
+    if (!res.bestMove || *res.bestMove != expected)
+    {
       std::cerr << "Expected best move a5b3, got "
                 << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
       return 1;
     }
 
-    bool found = std::any_of(res.topMoves.begin(), res.topMoves.end(), [&](const auto& mv) {
-      return mv.first == expected;
-    });
-    if (!found) {
+    bool found = std::any_of(res.topMoves.begin(), res.topMoves.end(), [&](const auto &mv)
+                             { return mv.first == expected; });
+    if (!found)
+    {
       std::cerr << "Expected a5b3 to appear in top moves\n";
       return 1;
     }
@@ -219,7 +226,8 @@ int main() {
     auto res = bot.findBestMove(game, 8, 0);
     assert(res.bestMove);
     model::Move expected(sq('h', 3), sq('h', 6));
-    if (!res.bestMove || *res.bestMove != expected) {
+    if (!res.bestMove || *res.bestMove != expected)
+    {
       std::cerr << "Expected best move h3h6, got "
                 << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
       return 1;
@@ -233,7 +241,8 @@ int main() {
     auto res = bot.findBestMove(game, 12, 0);
     assert(res.bestMove);
     model::Move expected(sq('c', 7), sq('c', 5));
-    if (!res.bestMove || *res.bestMove != expected) {
+    if (!res.bestMove || *res.bestMove != expected)
+    {
       std::cerr << "Expected best move c7c5, got "
                 << (res.bestMove ? move_to_uci(*res.bestMove) : std::string("<none>")) << "\n";
       return 1;
@@ -244,10 +253,11 @@ int main() {
   {
     engine::Evaluator eval;
 
-    auto evalFen = [&](const std::string& fen) {
+    auto evalFen = [&](const std::string &fen)
+    {
       model::ChessGame game;
       game.setPosition(fen);
-      auto& pos = game.getPositionRefForBot();
+      auto &pos = game.getPositionRefForBot();
       return eval.evaluate(pos);
     };
 
