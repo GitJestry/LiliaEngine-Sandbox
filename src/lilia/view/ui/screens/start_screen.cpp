@@ -15,7 +15,7 @@
 #include "lilia/view/ui/widgets/time_control_picker.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
 
-#include "lilia/view/ui/style/modals/game_setup_modal.hpp"
+#include "lilia/view/ui/style/modals/game_setup/game_setup_modal.hpp"
 #include "lilia/view/ui/style/modals/palette_picker_modal.hpp"
 
 namespace lilia::view
