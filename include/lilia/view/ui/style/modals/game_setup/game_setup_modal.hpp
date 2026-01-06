@@ -58,7 +58,9 @@ namespace lilia::view::ui
       setup_action(m_tabPgnFen, "PGN / FEN", [this]
                    { m_mode = game_setup::Mode::PgnFen; });
       setup_action(m_tabBuild, "Builder", [this]
-                   { m_mode = game_setup::Mode::Builder; });
+                   {
+               m_mode = game_setup::Mode::Builder;
+               m_pageBuilder.onOpen(); });
 
       // Forward upload callback into page
       m_pagePgnFen.setOnRequestPgnUpload([this]
@@ -66,8 +68,10 @@ namespace lilia::view::ui
         if (m_onRequestPgnUpload)
           m_onRequestPgnUpload(); });
     }
-
-    void setOnRequestPgnUpload(std::function<void()> cb) { m_onRequestPgnUpload = std::move(cb); }
+    void setOnRequestPgnUpload(std::function<void()> cb)
+    {
+      m_onRequestPgnUpload = std::move(cb);
+    }
 
     // Controller may call these after upload
     void setFenText(const std::string &fen) { m_pagePgnFen.setFenText(fen); }
