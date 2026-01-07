@@ -22,14 +22,9 @@ namespace lilia::view::ui::game_setup
     {
       m_builder.setTheme(&m_theme);
       m_builder.setFont(&m_font);
-
-      // IMPORTANT:
-      // Do NOT call resetToStart() here; PositionBuilder now remembers the last position.
-      // It will initialize itself to startpos on first run, and restore last position on later opens.
       m_builder.onOpen();
     }
 
-    // Optional hook if you want to explicitly restore when switching back to Builder tab.
     void onOpen()
     {
       m_builder.onOpen();
@@ -38,17 +33,10 @@ namespace lilia::view::ui::game_setup
     void layout(const sf::FloatRect &bounds)
     {
       m_bounds = bounds;
-
-      // Give builder the full content area:
-      // It will center the board and place side panels left/right automatically.
       m_builder.setBounds(bounds);
     }
 
-    void update()
-    {
-      // PositionBuilder handles its own animation timing internally in draw().
-      // Keep this method in case you later add page-level state.
-    }
+    void update() {}
 
     void updateHover(sf::Vector2f mouse)
     {
@@ -65,9 +53,6 @@ namespace lilia::view::ui::game_setup
       m_builder.draw(rt);
     }
 
-    // Only return a usable position if the builder rules are satisfied:
-    // - exactly 1 white king and 1 black king (enforced by fenForUse()).
-    // - passes basic FEN structure check.
     std::string resolvedFen() const
     {
       const std::string raw = m_builder.fenForUse();
@@ -86,7 +71,6 @@ namespace lilia::view::ui::game_setup
     const ui::Theme &m_theme;
 
     sf::FloatRect m_bounds{};
-
     PositionBuilder m_builder{};
   };
 

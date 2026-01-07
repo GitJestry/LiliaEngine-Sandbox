@@ -39,7 +39,7 @@ namespace lilia::view::ui::game_setup
       m_pgnField.setFont(m_font);
       m_pgnField.setFocusManager(&m_focus);
       m_pgnField.setCharacterSize(14);
-      m_pgnField.setPlaceholder("Paste PGN here… (optional [FEN \"…\"])");
+      m_pgnField.setPlaceholder("Paste PGN here... (optional [FEN \"...\"])");
       m_pgnField.setText("");
 
       // Buttons
@@ -48,7 +48,7 @@ namespace lilia::view::ui::game_setup
       setup_action(m_resetFen, "Reset", [this]
                    { m_fenField.setText(core::START_FEN); });
 
-      setup_action(m_uploadPgn, "Upload…", [this]
+      setup_action(m_uploadPgn, "Upload...", [this]
                    {
         if (m_onRequestPgnUpload)
           m_onRequestPgnUpload(); });
@@ -94,37 +94,34 @@ namespace lilia::view::ui::game_setup
     {
       m_bounds = bounds;
 
-      // Layout: three clear cards: FEN, PGN, Resolved.
       const float gap = 12.f;
 
       sf::FloatRect r = bounds;
 
-      // Reserve bottom "Resolved" card fixed height
-      const float resolvedCardH = 86.f;
+      // Bottom resolved card
+      const float resolvedCardH = 92.f;
       sf::FloatRect resolvedCard = {r.left, r.top + r.height - resolvedCardH, r.width, resolvedCardH};
       r.height -= (resolvedCardH + gap);
 
-      // Top "FEN" card fixed height
+      // Top fen card
       const float fenCardH = 114.f;
       sf::FloatRect fenCard = {r.left, r.top, r.width, fenCardH};
       r.top += (fenCardH + gap);
       r.height -= (fenCardH + gap);
 
-      // Remaining is PGN card
+      // Remaining pgn
       sf::FloatRect pgnCard = r;
 
       m_fenCard = fenCard;
       m_pgnCard = pgnCard;
       m_resolvedCard = resolvedCard;
 
-      // --- FEN card internal ---
+      // --- FEN card ---
       {
         sf::FloatRect inner = ui::inset(m_fenCard, 12.f);
 
-        // Header line: label left + status pill right
         m_fenHeader = ui::rowConsume(inner, 18.f, 8.f);
 
-        // Field row: field + buttons on the right (no overlap)
         sf::FloatRect row = ui::rowConsume(inner, 36.f, 8.f);
         const float btnW = 84.f;
         const float btnH = 30.f;
@@ -142,15 +139,13 @@ namespace lilia::view::ui::game_setup
         m_pasteFen.setBounds({buttons.left, row.top + 3.f, btnW, btnH});
         m_resetFen.setBounds({buttons.left + btnW + btnGap, row.top + 3.f, btnW, btnH});
 
-        // Status line
         m_fenStatusLine = ui::rowConsume(inner, 18.f, 0.f);
       }
 
-      // --- PGN card internal ---
+      // --- PGN card ---
       {
         sf::FloatRect inner = ui::inset(m_pgnCard, 12.f);
 
-        // Header line: label + actions on right (Upload/Paste/Clear)
         m_pgnHeader = ui::rowConsume(inner, 18.f, 8.f);
 
         const float btnW = 92.f;
@@ -158,27 +153,24 @@ namespace lilia::view::ui::game_setup
         const float btnGap = 8.f;
         const float groupW = btnW * 3.f + btnGap * 2.f;
 
-        // place buttons in header row right
-        m_uploadPgn.setBounds({m_pgnHeader.left + m_pgnHeader.width - groupW, m_pgnHeader.top - 2.f, btnW, btnH});
-        m_pastePgn.setBounds({m_pgnHeader.left + m_pgnHeader.width - (btnW * 2.f + btnGap + btnW + btnGap), m_pgnHeader.top - 2.f, btnW, btnH});
-        m_clearPgn.setBounds({m_pgnHeader.left + m_pgnHeader.width - (btnW + 0.f), m_pgnHeader.top - 2.f, btnW, btnH});
+        const float bx = m_pgnHeader.left + m_pgnHeader.width - groupW;
+        m_uploadPgn.setBounds({bx, m_pgnHeader.top - 2.f, btnW, btnH});
+        m_pastePgn.setBounds({bx + (btnW + btnGap), m_pgnHeader.top - 2.f, btnW, btnH});
+        m_clearPgn.setBounds({bx + (btnW + btnGap) * 2.f, m_pgnHeader.top - 2.f, btnW, btnH});
 
-        // Text area
         const float statusH = 18.f;
         const float pgnAreaH = std::max(160.f, inner.height - statusH - 10.f);
         m_pgnField.setBounds({inner.left, inner.top, inner.width, pgnAreaH});
 
-        // PGN status line
         m_pgnStatusLine = {inner.left, inner.top + pgnAreaH + 10.f, inner.width, statusH};
       }
 
-      // --- Resolved card internal ---
+      // --- Resolved card ---
       {
         sf::FloatRect inner = ui::inset(m_resolvedCard, 12.f);
 
         m_resolvedHeader = ui::rowConsume(inner, 18.f, 10.f);
 
-        // Source chips + resolved field + copy
         const float chipW = 66.f;
         const float chipH = 28.f;
         const float chipGap = 6.f;
@@ -233,10 +225,10 @@ namespace lilia::view::ui::game_setup
 
     bool handleEvent(const sf::Event &e, sf::Vector2f mouse)
     {
-      // Hotkeys (when page is active)
       if (e.type == sf::Event::KeyPressed)
       {
         const bool ctrl = (e.key.control || e.key.system);
+
         if (ctrl && e.key.code == sf::Keyboard::O)
         {
           if (m_onRequestPgnUpload)
@@ -246,17 +238,13 @@ namespace lilia::view::ui::game_setup
           }
         }
 
-        // If nothing is focused, Ctrl+V auto-pastes into the right box.
         if (ctrl && e.key.code == sf::Keyboard::V)
         {
           if (!m_focus.focused())
-          {
             return paste_auto_from_clipboard();
-          }
         }
       }
 
-      // Buttons/chips first
       if (m_pasteFen.handleEvent(e, mouse))
         return true;
       if (m_resetFen.handleEvent(e, mouse))
@@ -283,8 +271,6 @@ namespace lilia::view::ui::game_setup
         return true;
       if (m_pgnField.handleEvent(e, mouse))
         return true;
-
-      // Read-only but still focusable
       if (m_resolvedFen.handleEvent(e, mouse))
         return true;
 
@@ -293,7 +279,6 @@ namespace lilia::view::ui::game_setup
 
     void draw(sf::RenderTarget &rt) const
     {
-      // Cards
       draw_section_card(rt, m_theme, m_fenCard);
       draw_section_card(rt, m_theme, m_pgnCard);
       draw_section_card(rt, m_theme, m_resolvedCard);
@@ -301,38 +286,21 @@ namespace lilia::view::ui::game_setup
       // --- FEN ---
       draw_label(rt, m_font, m_theme, m_fenHeader.left, m_fenHeader.top, "FEN");
 
-      // FEN status pill right
       {
-        int k = 0;
-        std::string txt = "Empty";
-        if (!trim_copy(m_fenField.text()).empty())
-        {
-          if (m_fenValid)
-          {
-            k = 1;
-            txt = "Valid";
-          }
-          else
-          {
-            k = 3;
-            txt = "Invalid";
-          }
-        }
-        sf::FloatRect pill = {m_fenHeader.left + m_fenHeader.width - 108.f, m_fenHeader.top - 2.f, 108.f, 16.f};
-        draw_status_pill(rt, m_font, m_theme, pill, txt, k);
+        const std::string fenNorm = normalize_fen(m_fenField.text());
+        const bool empty = trim_copy(fenNorm).empty();
+        const bool ok = (!empty && !validate_fen_basic(fenNorm).has_value());
+
+        const int kind = empty ? 0 : (ok ? 1 : 3);
+        const std::string txt = empty ? "Empty" : (ok ? "Valid" : "Invalid");
+
+        sf::FloatRect pill = {m_fenHeader.left + m_fenHeader.width - 108.f, m_fenHeader.top - 2.f, 108.f, 18.f};
+        draw_status_pill(rt, m_font, m_theme, pill, txt, kind);
       }
 
       m_fenField.draw(rt);
       m_pasteFen.draw(rt);
       m_resetFen.draw(rt);
-
-      // FEN hint line
-      {
-        sf::Text hint("Tip: Ctrl+V pastes automatically when no field is focused.", m_font, 12);
-        hint.setFillColor(m_theme.subtle);
-        hint.setPosition(ui::snap({m_fenStatusLine.left, m_fenStatusLine.top}));
-        rt.draw(hint);
-      }
 
       // --- PGN ---
       draw_label(rt, m_font, m_theme, m_pgnHeader.left, m_pgnHeader.top, "PGN");
@@ -340,10 +308,10 @@ namespace lilia::view::ui::game_setup
       m_pastePgn.draw(rt);
       m_clearPgn.draw(rt);
 
-      // Selected filename (clear, non-overlapping)
       if (!m_pgnFilename.empty())
       {
-        sf::Text fn("Selected file: " + m_pgnFilename, m_font, 12);
+        // Keep ASCII-only and avoid overlap: show as a subtle line under the header start.
+        sf::Text fn("File: " + m_pgnFilename, m_font, 12);
         fn.setFillColor(m_theme.subtle);
         fn.setPosition(ui::snap({m_pgnHeader.left + 52.f, m_pgnHeader.top}));
         rt.draw(fn);
@@ -351,36 +319,47 @@ namespace lilia::view::ui::game_setup
 
       m_pgnField.draw(rt);
 
-      // PGN status pill
       {
-        int k = 0;
+        int kind = 0;
         std::string txt = "Empty";
+
         if (!trim_copy(m_pgnField.text()).empty())
         {
           if (m_pgnStatus.kind == PgnStatus::Kind::OkFen)
           {
-            k = 1;
-            txt = "Has [FEN]";
+            kind = 1;
+            txt = "Has FEN";
           }
           else if (m_pgnStatus.kind == PgnStatus::Kind::OkNoFen)
           {
-            k = 2;
-            txt = "Moves only";
+            kind = 1;      // accept (it is usable)
+            txt = "Moves"; // short, clear
           }
           else
           {
-            k = 3;
+            kind = 3;
             txt = "Invalid";
           }
         }
-        sf::FloatRect pill = {m_pgnStatusLine.left, m_pgnStatusLine.top, 140.f, m_pgnStatusLine.height};
-        draw_status_pill(rt, m_font, m_theme, pill, txt, k);
+
+        sf::FloatRect pill = {m_pgnStatusLine.left, m_pgnStatusLine.top, 120.f, m_pgnStatusLine.height};
+        draw_status_pill(rt, m_font, m_theme, pill, txt, kind);
       }
 
       // --- Resolved ---
-      draw_label(rt, m_font, m_theme, m_resolvedHeader.left, m_resolvedHeader.top, "Position to use");
+      draw_label(rt, m_font, m_theme, m_resolvedHeader.left, m_resolvedHeader.top, "Position");
 
-      // Chips active states
+      // Right-side resolved indicator: green when using FEN/PGN-derived position, red when falling back.
+      {
+        const auto path = resolved_path();
+        const bool usingCustom = (path == ResolvedPath::Fen || path == ResolvedPath::Pgn);
+        const int kind = usingCustom ? 1 : 3;
+
+        const std::string txt = usingCustom ? "Ready" : "Start position";
+        sf::FloatRect pill = {m_resolvedHeader.left + m_resolvedHeader.width - 140.f, m_resolvedHeader.top - 2.f, 140.f, 18.f};
+        draw_status_pill(rt, m_font, m_theme, pill, txt, kind);
+      }
+
       m_srcAuto.setActive(m_source == Source::Auto);
       m_srcFen.setActive(m_source == Source::Fen);
       m_srcPgn.setActive(m_source == Source::Pgn);
@@ -389,56 +368,48 @@ namespace lilia::view::ui::game_setup
       m_srcFen.draw(rt);
       m_srcPgn.draw(rt);
 
-      // Label: requested vs actual (Auto -> actual)
-      {
-        const std::string actual = actual_source_label();
-        sf::Text s("Using: " + actual, m_font, 12);
-        s.setFillColor(m_theme.subtle);
-        s.setPosition(ui::snap({m_resolvedHeader.left + 140.f, m_resolvedHeader.top}));
-        rt.draw(s);
-      }
-
       m_resolvedFen.draw(rt);
       m_copyResolved.draw(rt);
     }
 
     std::string resolvedFen() const { return compute_resolved_fen(); }
 
-    // True if resolved FEN passes basic validation (or is startpos).
     bool resolvedFenOk() const
     {
       const std::string f = compute_resolved_fen();
       return !validate_fen_basic(f).has_value();
     }
 
-    // External access for orchestrator: used for footer clarity.
+    // Used by the modal footer.
     std::string actual_source_label() const
     {
-      const std::string fenNorm = normalize_fen(m_fenField.text());
-      const bool fenOk = !trim_copy(fenNorm).empty() && !validate_fen_basic(fenNorm).has_value();
-      const bool pgnHasFen = m_pgnStatus.fenFromTag.has_value();
-
-      if (m_source == Source::Fen)
-        return fenOk ? "FEN" : "FEN → Start position";
-      if (m_source == Source::Pgn)
-        return pgnHasFen ? "PGN [FEN]" : "PGN → Start position";
-
-      // Auto
-      if (pgnHasFen)
-        return "Auto → PGN [FEN]";
-      if (fenOk)
-        return "Auto → FEN";
-      return "Auto → Start position";
+      const auto path = resolved_path();
+      switch (path)
+      {
+      case ResolvedPath::Pgn:
+        return "PGN";
+      case ResolvedPath::Fen:
+        return "FEN";
+      case ResolvedPath::Start:
+      default:
+        return "Start position";
+      }
     }
 
-    // Called by modal when paste is triggered on Builder tab.
+    // Used by the modal footer (green/red)
+    bool using_custom_position() const
+    {
+      const auto path = resolved_path();
+      return (path == ResolvedPath::Fen || path == ResolvedPath::Pgn);
+    }
+
     bool paste_auto_from_clipboard()
     {
       const std::string clip = sf::Clipboard::getString().toAnsiString();
       if (looks_like_fen(clip))
       {
         setFenText(clip);
-        m_source = Source::Fen; // “Auto-detect paste” is most predictable as explicit FEN.
+        m_source = Source::Fen;
         return true;
       }
       if (looks_like_pgn(clip))
@@ -448,7 +419,6 @@ namespace lilia::view::ui::game_setup
         return true;
       }
 
-      // fallback: if it has slashes, treat as fen; otherwise pgn
       if (clip.find('/') != std::string::npos)
       {
         setFenText(clip);
@@ -500,11 +470,17 @@ namespace lilia::view::ui::game_setup
     std::function<void()> m_onRequestPgnUpload;
     std::string m_pgnFilename;
 
-    // Validation cache/state
     std::string m_lastFenRaw;
     std::string m_lastPgnRaw;
     bool m_fenValid{true};
     PgnStatus m_pgnStatus{};
+
+    enum class ResolvedPath
+    {
+      Start,
+      Fen,
+      Pgn
+    };
 
     void setup_action(ui::Button &b, const char *txt, std::function<void()> cb)
     {
@@ -547,6 +523,28 @@ namespace lilia::view::ui::game_setup
       m_pgnStatus = validate_pgn_basic(pgnNowRaw);
     }
 
+    ResolvedPath resolved_path() const
+    {
+      const std::string fenNorm = normalize_fen(m_fenField.text());
+      const bool fenOk = !trim_copy(fenNorm).empty() && !validate_fen_basic(fenNorm).has_value();
+      const bool pgnHasFen = m_pgnStatus.fenFromTag.has_value();
+
+      switch (m_source)
+      {
+      case Source::Fen:
+        return fenOk ? ResolvedPath::Fen : ResolvedPath::Start;
+      case Source::Pgn:
+        return pgnHasFen ? ResolvedPath::Pgn : ResolvedPath::Start;
+      case Source::Auto:
+      default:
+        if (pgnHasFen)
+          return ResolvedPath::Pgn;
+        if (fenOk)
+          return ResolvedPath::Fen;
+        return ResolvedPath::Start;
+      }
+    }
+
     std::string compute_resolved_fen() const
     {
       const std::string fenNorm = normalize_fen(m_fenField.text());
@@ -561,7 +559,6 @@ namespace lilia::view::ui::game_setup
         return pgnHasFen ? *m_pgnStatus.fenFromTag : core::START_FEN;
       case Source::Auto:
       default:
-        // prefer explicit [FEN] tag, else valid FEN field, else startpos
         if (pgnHasFen)
           return *m_pgnStatus.fenFromTag;
         if (fenOk)

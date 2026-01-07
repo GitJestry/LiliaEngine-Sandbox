@@ -26,48 +26,50 @@ namespace lilia::view::ui::game_setup
   }
 
   // kind: 0 neutral, 1 ok, 2 warn, 3 err
+  // Visual policy (requested):
+  // - ok: green
+  // - err: red
+  // - neutral: subdued
   static inline void draw_status_pill(sf::RenderTarget &rt, const sf::Font &font, const ui::Theme &theme,
                                       const sf::FloatRect &r, const std::string &txt, int kind)
   {
-    sf::Color bg = withA(theme.panelBorder, 70);
-    sf::Color fg = theme.subtle;
+    // Explicit "valid/invalid" colors (matches your palette defaults)
+    const sf::Color kOk = sf::Color(122, 205, 164);
+    const sf::Color kErr = sf::Color(220, 70, 70);
+
+    sf::Color fill = withA(theme.panelBorder, 45);
+    sf::Color outline = withA(theme.panelBorder, 120);
+    sf::Color text = theme.text;
 
     if (kind == 1)
-    {
-      bg = withA(theme.accent, 70);
-      fg = theme.text;
-    }
-    else if (kind == 2)
-    {
-      bg = withA(sf::Color(255, 170, 0), 70);
-      fg = theme.text;
-    }
+      fill = withA(kOk, 110);
     else if (kind == 3)
-    {
-      bg = withA(sf::Color(220, 80, 80), 80);
-      fg = theme.text;
-    }
+      fill = withA(kErr, 120);
 
     sf::RectangleShape box({r.width, r.height});
     box.setPosition(ui::snap({r.left, r.top}));
-    box.setFillColor(bg);
+    box.setFillColor(fill);
     box.setOutlineThickness(1.f);
-    box.setOutlineColor(withA(sf::Color::Black, 60));
+    box.setOutlineColor(outline);
     rt.draw(box);
 
     sf::Text t(txt, font, 12);
-    t.setFillColor(fg);
-    t.setPosition(ui::snap({r.left + 8.f, r.top + 2.f}));
+    t.setFillColor(text);
+
+    // vertically centered text
+    const auto b = t.getLocalBounds();
+    t.setPosition(ui::snap({r.left + 10.f, r.top + (r.height - b.height) * 0.5f - b.top - 1.f}));
     rt.draw(t);
   }
 
   static inline void draw_section_card(sf::RenderTarget &rt, const ui::Theme &theme, const sf::FloatRect &r)
   {
+    // Cleaner, less “double-outline” look: soft fill + single border.
     sf::RectangleShape box({r.width, r.height});
     box.setPosition(ui::snap({r.left, r.top}));
-    box.setFillColor(withA(theme.panelBorder, 30));
+    box.setFillColor(withA(theme.panelBorder, 22));
     box.setOutlineThickness(1.f);
-    box.setOutlineColor(withA(sf::Color::Black, 40));
+    box.setOutlineColor(withA(theme.panelBorder, 110));
     rt.draw(box);
   }
 
