@@ -302,7 +302,6 @@ namespace lilia::view
 
         if (e.type == sf::Event::Resized)
         {
-          // Critical for crisp text: prevent implicit stretching/scaling.
           sf::View v(sf::FloatRect(0.f, 0.f, float(e.size.width), float(e.size.height)));
           m_window.setView(v);
 
@@ -313,7 +312,9 @@ namespace lilia::view
         if (e.type == sf::Event::MouseMoved)
           mouse = {float(e.mouseMove.x), float(e.mouseMove.y)};
 
-        if (modals.handleEvent(e, mouse))
+        modals.handleEvent(e, mouse);
+
+        if (modals.hasOpenModal())
           continue;
 
         // hover

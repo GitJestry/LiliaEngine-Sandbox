@@ -33,6 +33,8 @@ namespace lilia::view::ui
         m->layout(ws);
     }
 
+    bool hasOpenModal() const { return !m_modals.empty(); }
+
     // Update without dismiss callback.
     void update(float dt, sf::Vector2f mouse)
     {
