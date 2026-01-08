@@ -188,4 +188,37 @@ namespace lilia::view::ui
     rt.draw(inset);
   }
 
+  inline std::string ellipsizeMiddle(const sf::Font &font, unsigned size,
+                                     const std::string &s, float maxWidthPx)
+  {
+    sf::Text t(s, font, size);
+    if (t.getLocalBounds().width <= maxWidthPx)
+      return s;
+
+    const std::string ell = "...";
+    if (s.size() <= 8)
+      return ell;
+
+    int keepL = int(s.size() / 2);
+    int keepR = int(s.size() - keepL);
+
+    keepL = std::max(3, keepL);
+    keepR = std::max(3, keepR);
+
+    while (keepL > 3 && keepR > 3)
+    {
+      std::string out = s.substr(0, size_t(keepL)) + ell + s.substr(s.size() - size_t(keepR));
+      sf::Text tt(out, font, size);
+      if (tt.getLocalBounds().width <= maxWidthPx)
+        return out;
+
+      if (keepL >= keepR)
+        --keepL;
+      else
+        --keepR;
+    }
+
+    return ell;
+  }
+
 } // namespace lilia::view::ui
