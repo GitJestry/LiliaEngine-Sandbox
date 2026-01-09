@@ -125,13 +125,13 @@ namespace lilia::view
 
     // Toasts
     mutable float toastT{0.f};
-    mutable float toastDur{0.9f};
+    mutable float toastDur{2.5f};
     mutable std::string toastMsg{};
     mutable sf::Color toastColor{sf::Color(122, 205, 164)};
 
     // Error toast + shake (kept)
     mutable float errT{0.f};
-    mutable float errDur{1.1f};
+    mutable float errDur{2.5f};
     mutable std::string errMsg{};
     mutable float shakeT{0.f};
     mutable float shakeDur{0.18f};
@@ -228,8 +228,8 @@ namespace lilia::view
       btnLeftClear.setText("Clear", 12);
       btnLeftReset.setText("Reset", 12);
 
-      btnTurnW.setText("White", 12);
-      btnTurnB.setText("Black", 12);
+      btnTurnW.setText("White's Turn", 10);
+      btnTurnB.setText("Blacks Turn", 10);
 
       btnCastleK.setText("K", 12);
       btnCastleQ.setText("Q", 12);
@@ -240,7 +240,7 @@ namespace lilia::view
 
       // piece backgrounds are icon-only
       for (auto &pbx : pieceBtns)
-        pbx.bg.setText("", 12);
+        pbx.bg.setText("", 6);
     }
 
     void hookCallbacks()
@@ -342,8 +342,6 @@ namespace lilia::view
 
       dragging = false;
       dragMouseDown = false;
-
-      showToast("Select an en passant target square.\nClick anywhere else to cancel.", sf::Color(122, 205, 164));
     }
 
     void restoreHeldAfterEpCancelOrCommit()
@@ -435,8 +433,6 @@ namespace lilia::view
       placeWhite = !placeWhite;
       if (selected.kind == ToolKind::Add)
         selected.piece = applyColorToPieceType(lastAddLower, placeWhite);
-
-      showToast(placeWhite ? "Add color: White" : "Add color: Black", sf::Color(122, 205, 164));
     }
 
     void cancelDragToOrigin(bool remember)
@@ -821,7 +817,7 @@ namespace lilia::view
 
         const float cellGap = 10.f;
         const float sep = 18.f;
-        const float cell = std::clamp(std::floor((w - cellGap * 2.f) / 3.f), 46.f, 84.f);
+        const float cell = std::floor((w - cellGap * 2.f) / 3.f);
 
         auto rectAt = [&](int col, int row, float baseY) -> sf::FloatRect
         {
@@ -873,7 +869,7 @@ namespace lilia::view
         x += (4.f * small + 3.f * 6.f + 12.f);
 
         // EP fixed size
-        const float epW = 150.f;
+        const float epW = 50.f;
         btnEp.setBounds({x, y, epW, btnH});
 
         // Row2: fen box + copy
@@ -1069,8 +1065,6 @@ namespace lilia::view
       dragMouseDown = false; // carry mode (click to place)
       dragPiece = chosen;
       dragFrom.reset();
-
-      showToast("Place piece: click a square (Right-click cancels).", sf::Color(122, 205, 164));
     }
 
     void beginPaletteDragToBoard(char chosen)
@@ -1132,7 +1126,6 @@ namespace lilia::view
           paletteDragStarted = false;
 
           enterAddModeForPiece(chosen);
-          showToast("Add mode: selected piece.", sf::Color(122, 205, 164));
           return true;
         }
 
@@ -1208,7 +1201,6 @@ namespace lilia::view
 
         // If it was a "hold" but didn't satisfy the long-press condition earlier, still treat as long press.
         enterAddModeForPiece(chosen);
-        showToast("Add mode: selected piece.", sf::Color(122, 205, 164));
         return true;
       }
 
@@ -1643,21 +1635,16 @@ namespace lilia::view
     void drawHotkeysField(sf::RenderTarget &rt, sf::Vector2f off) const
     {
       sf::RectangleShape box({hotkeysRect.width, hotkeysRect.height});
-      box.setPosition(ui::snap({hotkeysRect.left + off.x, hotkeysRect.top + off.y}));
+      box.setPosition(ui::snap({hotkeysRect.left + off.x, hotkeysRect.top + off.y + 40.f}));
       box.setFillColor(ui::darken(theme->panel, 7));
       box.setOutlineThickness(1.f);
       box.setOutlineColor(ui::darken(theme->panel, 20));
       rt.draw(box);
 
-      sf::Text t0("Hotkeys", *font, 12);
-      t0.setFillColor(theme->subtle);
-      t0.setPosition(ui::snap({hotkeysRect.left + off.x + 10.f, hotkeysRect.top + off.y + 8.f}));
-      rt.draw(t0);
-
       // Always-visible hotkeys + the new interaction hints (so players notice immediately).
-      const unsigned fs = 12;
+      const unsigned fs = 13;
       const float x = hotkeysRect.left + off.x + 10.f;
-      float y = hotkeysRect.top + off.y + 28.f;
+      float y = hotkeysRect.top + off.y + 50.f;
 
       const float maxW = hotkeysRect.width - 20.f;
 
@@ -1665,15 +1652,15 @@ namespace lilia::view
       {
         std::string out = ui::ellipsizeMiddle(*font, fs, s, maxW);
         sf::Text tt(out, *font, fs);
-        tt.setFillColor(theme->text);
+        tt.setFillColor(theme->subtle);
         tt.setPosition(ui::snap({x, y}));
         rt.draw(tt);
-        y += 16.f;
+        y += 30.f;
       };
 
-      line("Tab: mode");
-      line("T: color");
-      line("1-6: piece");
+      line("Toggle mode  (Tab)");
+      line("Toggle Color (T)");
+      line("Select Piece (1-6)");
     }
 
     void drawSidePanels(sf::RenderTarget &rt, sf::Vector2f off, sf::Vector2f shake) const
@@ -1682,14 +1669,6 @@ namespace lilia::view
 
       drawPanel(rt, off, leftRect, "Tools");
       drawPanel(rt, off, rightRect, "Pieces");
-
-      // Tool selector label
-      {
-        sf::Text lbl("Mode", *font, 12);
-        lbl.setFillColor(theme->subtle);
-        lbl.setPosition(ui::snap({toolSegRect.left + off.x, toolSegRect.top + off.y - 18.f}));
-        rt.draw(lbl);
-      }
 
       // Segmented state control visuals (makes state change unmistakable)
       drawToolSegmentedControl(rt, off);
@@ -1729,17 +1708,6 @@ namespace lilia::view
 
       btnLeftReset.draw(rt, off);
 
-      // Piece labels
-      sf::Text labelW("White", *font, 12);
-      labelW.setFillColor(theme->subtle);
-      labelW.setPosition(ui::snap({rightRect.left + off.x + 10.f, rightRect.top + off.y + 32.f}));
-      rt.draw(labelW);
-
-      sf::Text labelB("Black", *font, 12);
-      labelB.setFillColor(theme->subtle);
-      labelB.setPosition(ui::snap({pieceBtns[6].r.left + off.x, pieceBtns[6].r.top + off.y - 18.f}));
-      rt.draw(labelB);
-
       // Draw piece buttons + icons
       for (int i = 0; i < 12; ++i)
       {
@@ -1753,14 +1721,19 @@ namespace lilia::view
           active = true;
 
         pieceBtns[i].bg.setActive(active);
-        pieceBtns[i].bg.draw(rt, off);
 
         sf::Sprite spr = spriteForPiece(pc);
         if (spr.getTexture())
         {
           const auto r = pieceBtns[i].r;
+          float yoffset = 0.f;
+          if (i >= 6)
+            yoffset = 50.f;
+          sf::Vector2f buttonOff = off + sf::Vector2f(0.f, yoffset);
+          pieceBtns[i].bg.draw(rt, buttonOff);
+
           spr.setPosition(ui::snap({r.left + off.x + r.width * 0.5f,
-                                    r.top + off.y + r.height * 0.5f + pieceYOffset * 0.25f}));
+                                    r.top + off.y + r.height * 0.5f + pieceYOffset * 0.25f + yoffset}));
           rt.draw(spr);
         }
       }
@@ -1774,13 +1747,6 @@ namespace lilia::view
       bg.setOutlineThickness(1.f);
       bg.setOutlineColor(ui::darken(theme->panel, 18));
       rt.draw(bg);
-
-      {
-        sf::Text t("Turn", *font, 12);
-        t.setFillColor(theme->subtle);
-        t.setPosition(ui::snap({btnTurnW.bounds().left + off.x, btnTurnW.bounds().top + off.y - 16.f}));
-        rt.draw(t);
-      }
 
       btnTurnW.setActive(meta.sideToMove == 'w');
       btnTurnB.setActive(meta.sideToMove == 'b');
@@ -2115,10 +2081,9 @@ namespace lilia::view
       const float w = std::min(560.f, bottomRect.width * 0.78f);
       const float h = 36.f;
 
-      sf::FloatRect r{
-          fenRect.left + (fenRect.width - w) * 0.5f,
-          fenRect.top - 44.f,
-          w, h};
+      sf::FloatRect r{boardRect.left + (boardRect.width - w) * 0.5f,
+                      boardRect.top - 54.f,
+                      w, h};
 
       sf::RectangleShape box({r.width, r.height});
       box.setPosition(ui::snap({r.left + off.x, r.top + off.y}));
@@ -2127,7 +2092,7 @@ namespace lilia::view
       box.setOutlineColor(sf::Color(0, 0, 0, sf::Uint8(70 * a)));
       rt.draw(box);
 
-      sf::Text t(toastMsg, *font, 12);
+      sf::Text t(toastMsg, *font, 14);
       t.setFillColor(sf::Color(255, 255, 255, sf::Uint8(255 * a)));
       t.setPosition(ui::snap({r.left + off.x + 10.f, r.top + off.y + 8.f}));
       rt.draw(t);
@@ -2150,7 +2115,7 @@ namespace lilia::view
       box.setOutlineColor(sf::Color(0, 0, 0, sf::Uint8(80 * a)));
       rt.draw(box);
 
-      sf::Text t(errMsg, *font, 12);
+      sf::Text t(errMsg, *font, 14);
       t.setFillColor(sf::Color(255, 255, 255, sf::Uint8(255 * a)));
       t.setPosition(ui::snap({r.left + off.x + 10.f, r.top + off.y + 6.f}));
       rt.draw(t);

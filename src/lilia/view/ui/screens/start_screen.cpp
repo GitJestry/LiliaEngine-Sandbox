@@ -94,7 +94,7 @@ namespace lilia::view
     ui::Button loadBtn;
     loadBtn.setTheme(&theme);
     loadBtn.setFont(m_font);
-    loadBtn.setText("Load Game or create/input Startpos", 16);
+    loadBtn.setText("Load Game", 16);
 
     // Track modals
     ui::PalettePickerModal *paletteModal = nullptr;
@@ -200,7 +200,7 @@ namespace lilia::view
       const float loadH = 42.f;
       const float gap = 12.f;
 
-      const float loadW = std::min(640.f, panel.width - 90.f);
+      const float loadW = std::min(640.f, panel.width / 4);
       const float loadX = panel.left + (panel.width - loadW) * 0.5f;
       const float loadY = panel.top + panel.height - bottomPad - loadH;
 
