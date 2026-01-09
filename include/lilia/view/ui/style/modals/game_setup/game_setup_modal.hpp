@@ -62,8 +62,6 @@ namespace lilia::view::ui
 
     ui::Button m_close{};
     ui::Button m_continue{};
-    ui::Button m_historyBtn{};
-    ui::Button m_backBtn{};
 
     mutable ui::Button m_tabPgnFen{};
     mutable ui::Button m_tabBuild{};

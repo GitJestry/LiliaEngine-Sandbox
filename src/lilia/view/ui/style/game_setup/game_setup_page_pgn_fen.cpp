@@ -19,7 +19,7 @@ namespace lilia::view::ui::game_setup
     m_pgnField.setFont(m_font);
     m_pgnField.setFocusManager(&m_focus);
     m_pgnField.setCharacterSize(14);
-    m_pgnField.setPlaceholder("Paste PGN here... (optional [FEN \"...\"])");
+    m_pgnField.setPlaceholder("Paste PGN here");
     m_pgnField.setText("");
 
     // Buttons
@@ -28,7 +28,7 @@ namespace lilia::view::ui::game_setup
     setup_action(m_resetFen, "Reset", [this]
                  { m_fenField.setText(core::START_FEN); });
 
-    setup_action(m_uploadPgn, "Upload...", [this]
+    setup_action(m_uploadPgn, "Upload", [this]
                  {
       if (m_onRequestPgnUpload) m_onRequestPgnUpload(); });
 
@@ -103,8 +103,8 @@ namespace lilia::view::ui::game_setup
       m_fenHeader = ui::rowConsume(inner, 18.f, 8.f);
 
       sf::FloatRect row = ui::rowConsume(inner, 36.f, 8.f);
-      const float btnW = 84.f;
-      const float btnH = 30.f;
+      const float btnW = 64.f;
+      const float btnH = 28.f;
       const float btnGap = 8.f;
       const float btnGroupW = btnW * 2.f + btnGap;
 
@@ -116,8 +116,8 @@ namespace lilia::view::ui::game_setup
       buttons.width = btnGroupW;
 
       m_fenField.setBounds(field);
-      m_pasteFen.setBounds({buttons.left, row.top + 3.f, btnW, btnH});
-      m_resetFen.setBounds({buttons.left + btnW + btnGap, row.top + 3.f, btnW, btnH});
+      m_pasteFen.setBounds({buttons.left + 8.f, row.top + 3.f, btnW, btnH});
+      m_resetFen.setBounds({buttons.left + btnW + btnGap + 8.f, row.top + 3.f, btnW, btnH});
 
       m_fenStatusLine = ui::rowConsume(inner, 18.f, 0.f);
     }
@@ -128,15 +128,15 @@ namespace lilia::view::ui::game_setup
 
       m_pgnHeader = ui::rowConsume(inner, 18.f, 8.f);
 
-      const float btnW = 92.f;
+      const float btnW = 64.f;
       const float btnH = 28.f;
       const float btnGap = 8.f;
       const float groupW = btnW * 3.f + btnGap * 2.f;
 
       const float bx = m_pgnHeader.left + m_pgnHeader.width - groupW;
-      m_uploadPgn.setBounds({bx, m_pgnHeader.top - 2.f, btnW, btnH});
-      m_pastePgn.setBounds({bx + (btnW + btnGap), m_pgnHeader.top - 2.f, btnW, btnH});
-      m_clearPgn.setBounds({bx + (btnW + btnGap) * 2.f, m_pgnHeader.top - 2.f, btnW, btnH});
+      m_uploadPgn.setBounds({bx, m_pgnHeader.top - 8.f, btnW, btnH});
+      m_pastePgn.setBounds({bx + (btnW + btnGap), m_pgnHeader.top - 8.f, btnW, btnH});
+      m_clearPgn.setBounds({bx + (btnW + btnGap) * 2.f, m_pgnHeader.top - 8.f, btnW, btnH});
 
       const float statusH = 18.f;
       const float pgnAreaH = std::max(160.f, inner.height - statusH - 10.f);
@@ -273,8 +273,7 @@ namespace lilia::view::ui::game_setup
 
       const int kind = empty ? 0 : (ok ? 1 : 3);
       const std::string txt = empty ? "Empty" : (ok ? "Valid" : "Invalid");
-
-      sf::FloatRect pill = {m_fenHeader.left + m_fenHeader.width - 108.f, m_fenHeader.top - 2.f, 108.f, 18.f};
+      sf::FloatRect pill = {m_fenHeader.left, m_fenHeader.top + 72.f, 60.f, 18.f};
       draw_status_pill(rt, m_font, m_theme, pill, txt, kind);
     }
 
@@ -321,22 +320,12 @@ namespace lilia::view::ui::game_setup
         }
       }
 
-      sf::FloatRect pill = {m_pgnStatusLine.left, m_pgnStatusLine.top, 120.f, m_pgnStatusLine.height};
+      sf::FloatRect pill = {m_pgnStatusLine.left, m_pgnStatusLine.top, 60.f, m_pgnStatusLine.height};
       draw_status_pill(rt, m_font, m_theme, pill, txt, kind);
     }
 
     // --- Resolved ---
     draw_label(rt, m_font, m_theme, m_resolvedHeader.left, m_resolvedHeader.top, "Position");
-
-    {
-      const auto path = resolved_path();
-      const bool usingCustom = (path == ResolvedPath::Fen || path == ResolvedPath::Pgn);
-      const int kind = usingCustom ? 1 : 3;
-
-      const std::string txt = usingCustom ? "Ready" : "Start position";
-      sf::FloatRect pill = {m_resolvedHeader.left + m_resolvedHeader.width - 140.f, m_resolvedHeader.top - 2.f, 140.f, 18.f};
-      draw_status_pill(rt, m_font, m_theme, pill, txt, kind);
-    }
 
     m_srcAuto.setActive(m_source == Source::Auto);
     m_srcFen.setActive(m_source == Source::Fen);
@@ -419,7 +408,7 @@ namespace lilia::view::ui::game_setup
   {
     b.setTheme(&m_theme);
     b.setFont(m_font);
-    b.setText(txt, 13);
+    b.setText(txt, 12);
     b.setOnClick(std::move(cb));
   }
 
@@ -427,7 +416,7 @@ namespace lilia::view::ui::game_setup
   {
     b.setTheme(&m_theme);
     b.setFont(m_font);
-    b.setText(txt, 13);
+    b.setText(txt, 16);
     b.setOnClick([this, s]
                  { m_source = s; });
   }

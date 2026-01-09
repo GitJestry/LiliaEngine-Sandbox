@@ -17,7 +17,7 @@ namespace lilia::view::ui::game_setup
   }
 
   static inline void draw_label(sf::RenderTarget &rt, const sf::Font &font, const ui::Theme &theme,
-                                float x, float y, const std::string &txt, unsigned size = 13)
+                                float x, float y, const std::string &txt, unsigned size = 16)
   {
     sf::Text t(txt, font, size);
     t.setFillColor(theme.subtle);
@@ -58,7 +58,7 @@ namespace lilia::view::ui::game_setup
 
     // vertically centered text
     const auto b = t.getLocalBounds();
-    t.setPosition(ui::snap({r.left + 10.f, r.top + (r.height - b.height) * 0.5f - b.top - 1.f}));
+    t.setPosition(ui::snap({r.left + 4.f, r.top + (r.height - b.height) * 0.5f - b.top}));
     rt.draw(t);
   }
 

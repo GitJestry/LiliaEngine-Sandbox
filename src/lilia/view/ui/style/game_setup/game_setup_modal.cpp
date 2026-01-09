@@ -13,12 +13,7 @@ namespace lilia::view::ui
     m_title.setFillColor(m_theme.text);
     m_title.setString("Load Game / Create Start Position");
 
-    setup_action(m_historyBtn, "History", [this]
-                 { m_showHistory = true; });
-    setup_action(m_backBtn, "Back", [this]
-                 { m_showHistory = false; });
-
-    setup_action(m_close, "Close", [this]
+    setup_action(m_close, "x", [this]
                  { requestDismiss(); });
 
     setup_action(m_continue, "Use Position", [this]
@@ -59,22 +54,20 @@ namespace lilia::view::ui
     m_title.setPosition(ui::snap({header.left, header.top + 9.f}));
 
     const float hBtnH = 30.f;
-    const float closeW = 92.f;
+    const float closeW = 30.f;
     const float navW = 120.f;
 
     m_close.setBounds({header.left + header.width - closeW, header.top + 7.f, closeW, hBtnH});
 
     const float navX = header.left + header.width - closeW - 10.f - navW;
-    m_historyBtn.setBounds({navX, header.top + 7.f, navW, hBtnH});
-    m_backBtn.setBounds({navX, header.top + 7.f, navW, hBtnH});
 
     sf::FloatRect footer = {m_rect.left + 18.f, m_rect.top + m_rect.height - 66.f,
                             m_rect.width - 36.f, 48.f};
 
-    m_usingPill = {footer.left, footer.top + 10.f, 260.f, 28.f};
+    m_usingPill = {footer.left, footer.top + 25.f, 260.f, 28.f};
 
     const float useW = 240.f;
-    m_continue.setBounds({footer.left + footer.width - useW, footer.top + 6.f, useW, 36.f});
+    m_continue.setBounds({footer.left + footer.width - useW, footer.top + 20.f, useW, 36.f});
 
     m_pages = {m_rect.left + 18.f, header.top + header.height + 12.f, m_rect.width - 36.f,
                m_rect.height - 18.f - (header.height + 12.f) - 66.f};
@@ -114,11 +107,6 @@ namespace lilia::view::ui
     m_close.updateHover(mouse);
     m_continue.updateHover(mouse);
 
-    if (!m_showHistory)
-      m_historyBtn.updateHover(mouse);
-    else
-      m_backBtn.updateHover(mouse);
-
     if (m_showHistory)
     {
       m_pageHistory.updateHover(mouse);
@@ -154,11 +142,6 @@ namespace lilia::view::ui
     win.draw(panel);
 
     win.draw(m_title);
-
-    if (!m_showHistory)
-      m_historyBtn.draw(win);
-    else
-      m_backBtn.draw(win);
 
     if (!m_showHistory)
     {
@@ -237,13 +220,6 @@ namespace lilia::view::ui
     if (!m_showHistory)
     {
       if (m_continue.handleEvent(e, mouse))
-        return true;
-      if (m_historyBtn.handleEvent(e, mouse))
-        return true;
-    }
-    else
-    {
-      if (m_backBtn.handleEvent(e, mouse))
         return true;
     }
 

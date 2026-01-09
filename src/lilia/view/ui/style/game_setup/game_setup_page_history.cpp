@@ -29,7 +29,7 @@ namespace lilia::view::ui::game_setup
     draw_section_card(rt, m_theme, m_card);
 
     sf::Text p(
-        "History is currently a placeholder.\nRecommended: show saved positions + imported PGNs here with:\n- preview board\n- source indicator (FEN/PGN/Builder)\n- last used timestamp\n- one-click “Use Position”",
+        "History is currently a placeholder",
         m_font, 14);
     p.setFillColor(m_theme.subtle);
     p.setPosition(ui::snap({m_card.left + 12.f, m_card.top + 12.f}));
