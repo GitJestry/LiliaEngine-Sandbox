@@ -38,10 +38,14 @@ namespace lilia::view
     sf::FloatRect rightRect{};
     sf::FloatRect bottomRect{};
     sf::FloatRect fenRect{};
-    sf::FloatRect shortcutsRect{};
     sf::FloatRect fenBoxRect{};
 
-    float sq{44.f};
+    // New: explicit layout zones in left panel for clean/symmetric alignment
+    sf::FloatRect toolSegRect{};     // segmented tool selector container
+    sf::FloatRect addColorRowRect{}; // "Add color" row baseline
+    sf::FloatRect hotkeysRect{};     // always-visible hotkeys field
+
+    float sq{50.f};
     float pieceYOffset{0.f};
 
     Board board{};
@@ -53,22 +57,28 @@ namespace lilia::view
     enum class ToolKind
     {
       Move,
-      Piece
+      Add,
+      Delete
     };
+
     struct ToolSelection
     {
       ToolKind kind{ToolKind::Move};
       char piece{'.'};
+
+      static ToolSelection addPiece(char p) { return {ToolKind::Add, p}; }
       static ToolSelection move() { return {ToolKind::Move, '.'}; }
-      static ToolSelection pieceSel(char p) { return {ToolKind::Piece, p}; }
+      static ToolSelection del() { return {ToolKind::Delete, '.'}; }
     };
 
+    // Start state must be Move.
     ToolSelection selected = ToolSelection::move();
     bool placeWhite{true};
     char lastAddLower{'p'};
 
     // Drag
     bool dragging{false};
+    bool dragMouseDown{false}; // true while tied to pressed LMB; false = "piece in hand" carry mode
     char dragPiece{'.'};
     std::optional<std::pair<int, int>> dragFrom{};
 
@@ -77,8 +87,41 @@ namespace lilia::view
     sf::Vector2f offset{};
     std::optional<std::pair<int, int>> hoverSquare{};
 
+    // Paint (hold LMB in Add/Delete and sweep across board)
+    bool paintDown{false};
+    std::optional<std::pair<int, int>> lastPaintSq{};
+
+    // Palette: click/drag/long-press behavior
+    bool palettePress{false};
+    int paletteIdx{-1};
+    sf::Vector2f palettePressLocal{};
+    sf::Clock paletteClock{};
+    bool paletteDragStarted{false};
+    bool paletteOneShot{false};        // one-off placement from palette while in Move
+    ToolSelection paletteReturnTool{}; // tool to restore after one-shot placement
+    static constexpr float kPaletteLongPressS = 0.28f;
+    static constexpr float kPaletteDragStartPx = 7.f;
+
+    // Tool selector animation (very noticeable, sliding state highlight)
+    mutable float toolSelPos{0.f}; // 0=Move, 1=Add, 2=Delete (animated)
+
     // EP selection mode
     bool epSelecting{false};
+
+    struct EpHoldState
+    {
+      ToolSelection selected{};
+      bool placeWhite{true};
+      char lastAddLower{'p'};
+
+      bool dragging{false};
+      char dragPiece{'.'};
+      std::optional<std::pair<int, int>> dragFrom{};
+
+      std::optional<std::pair<int, int>> epBefore{};
+    };
+
+    std::optional<EpHoldState> epHold{};
 
     // Toasts
     mutable float toastT{0.f};
@@ -106,15 +149,13 @@ namespace lilia::view
     mutable std::array<sf::Sprite, 12> pieceTpl{};
 
     // UI buttons (reuse your existing Button)
-    mutable ui::Button btnLeftWhite, btnLeftBlack;
-    mutable ui::Button btnLeftAdd, btnLeftMove;
+    mutable ui::Button btnLeftMove, btnLeftAdd, btnLeftDelete;
     mutable ui::Button btnLeftClear, btnLeftReset;
 
     mutable ui::Button btnTurnW, btnTurnB;
     mutable ui::Button btnCastleK, btnCastleQ, btnCastlek, btnCastleq;
     mutable ui::Button btnEp;
     mutable ui::Button btnCopyFen;
-    mutable ui::Button btnShortcuts;
 
     struct PieceBtn
     {
@@ -124,8 +165,6 @@ namespace lilia::view
     };
     mutable std::array<PieceBtn, 12> pieceBtns{};
 
-    bool showShortcuts{false};
-
     // ---------- construction / defaults ----------
     Impl()
     {
@@ -134,7 +173,24 @@ namespace lilia::view
       if (!s_lastFen.empty())
         setFromFen(s_lastFen, false);
 
-      enterAddDefault();
+      // Start on Move (do not auto-enter Add)
+      selected = ToolSelection::move();
+      lastAddLower = 'p';
+      toolSelPos = 0.f;
+    }
+
+    static float toolIndex(ToolKind k)
+    {
+      switch (k)
+      {
+      case ToolKind::Move:
+        return 0.f;
+      case ToolKind::Add:
+        return 1.f;
+      case ToolKind::Delete:
+        return 2.f;
+      }
+      return 0.f;
     }
 
     void applyThemeFont()
@@ -146,10 +202,9 @@ namespace lilia::view
           b.setFont(*font);
       };
 
-      apply(btnLeftWhite);
-      apply(btnLeftBlack);
-      apply(btnLeftAdd);
       apply(btnLeftMove);
+      apply(btnLeftAdd);
+      apply(btnLeftDelete);
       apply(btnLeftClear);
       apply(btnLeftReset);
 
@@ -161,16 +216,15 @@ namespace lilia::view
       apply(btnCastleq);
       apply(btnEp);
       apply(btnCopyFen);
-      apply(btnShortcuts);
 
       for (auto &pbx : pieceBtns)
         apply(pbx.bg);
 
-      // Static texts (sizes can be tuned if you want)
-      btnLeftWhite.setText("White", 12);
-      btnLeftBlack.setText("Black", 12);
-      btnLeftAdd.setText("Add", 12);
-      btnLeftMove.setText("Move", 12);
+      // Tool selector: make it look like a distinct "state control" (uppercase + slightly larger)
+      btnLeftMove.setText("MOVE", 10);
+      btnLeftAdd.setText("ADD", 10);
+      btnLeftDelete.setText("DELETE", 10);
+
       btnLeftClear.setText("Clear", 12);
       btnLeftReset.setText("Reset", 12);
 
@@ -183,7 +237,6 @@ namespace lilia::view
       btnCastleq.setText("q", 12);
 
       btnCopyFen.setText("Copy", 12);
-      btnShortcuts.setText("Shortcuts", 12);
 
       // piece backgrounds are icon-only
       for (auto &pbx : pieceBtns)
@@ -192,25 +245,30 @@ namespace lilia::view
 
     void hookCallbacks()
     {
-      // Left panel
-      btnLeftWhite.setOnClick([&]
-                              {
-        placeWhite = true;
-        if (selected.kind == ToolKind::Piece)
-          selected.piece = applyColorToPieceType(lastAddLower, true);
-        rememberCurrent(); });
-
-      btnLeftBlack.setOnClick([&]
-                              {
-        placeWhite = false;
-        if (selected.kind == ToolKind::Piece)
-          selected.piece = applyColorToPieceType(lastAddLower, false);
-        rememberCurrent(); });
+      // Left panel tool states
+      btnLeftMove.setOnClick([&]
+                             {
+        cancelDragToOrigin(false);
+        selected = ToolSelection::move();
+        rememberCurrentIfStable(); });
 
       btnLeftAdd.setOnClick([&]
-                            { enterAddDefault(); rememberCurrent(); });
-      btnLeftMove.setOnClick([&]
-                             { selected = ToolSelection::move(); rememberCurrent(); });
+                            {
+        cancelDragToOrigin(false);
+        if (selected.kind != ToolKind::Add)
+        {
+          selected.kind = ToolKind::Add;
+          if (selected.piece == '.')
+            selected.piece = applyColorToPieceType(lastAddLower, placeWhite);
+        }
+        rememberCurrentIfStable(); });
+
+      btnLeftDelete.setOnClick([&]
+                               {
+        cancelDragToOrigin(false);
+        selected = ToolSelection::del();
+        rememberCurrentIfStable(); });
+
       btnLeftClear.setOnClick([&]
                               { clear(true); });
       btnLeftReset.setOnClick([&]
@@ -218,11 +276,11 @@ namespace lilia::view
 
       // Turn
       btnTurnW.setOnClick([&]
-                          { meta.sideToMove = 'w'; sanitizeMeta(); rememberCurrent(); });
+                          { meta.sideToMove = 'w'; sanitizeMeta(); rememberCurrentIfStable(); });
       btnTurnB.setOnClick([&]
-                          { meta.sideToMove = 'b'; sanitizeMeta(); rememberCurrent(); });
+                          { meta.sideToMove = 'b'; sanitizeMeta(); rememberCurrentIfStable(); });
 
-      // Castling toggles with structural validation (per your request).
+      // Castling toggles with structural validation.
       btnCastleK.setOnClick([&]
                             { toggleCastle(true, true); });
       btnCastleQ.setOnClick([&]
@@ -232,20 +290,15 @@ namespace lilia::view
       btnCastleq.setOnClick([&]
                             { toggleCastle(false, false); });
 
-      // EP select tool:
+      // EP select tool: modal "quick event" that holds state (including a piece in hand)
       btnEp.setOnClick([&]
                        {
-        // clicking again clears and exits
-        if (epSelecting || meta.epTarget)
+        if (epSelecting)
         {
-          epSelecting = false;
-          meta.epTarget.reset();
-          rememberCurrent();
+          cancelEpSelection();
           return;
         }
-
-        epSelecting = true;
-        showToast("Select an en passant target square.", sf::Color(122, 205, 164)); });
+        beginEpSelection(); });
 
       // Copy FEN
       btnCopyFen.setOnClick([&]
@@ -259,24 +312,88 @@ namespace lilia::view
         sf::Clipboard::setString(fen());
         showToast("FEN copied to clipboard.", sf::Color(122, 205, 164)); });
 
-      // Shortcuts
-      btnShortcuts.setOnClick([&]
-                              {
-        showShortcuts = !showShortcuts;
-        rebuildGeometry(); });
-
-      // Piece buttons
+      // Piece buttons are now handled with custom interactions (quick click, drag, long press).
+      // Keep their onClick empty to avoid conflicting behavior.
       for (int i = 0; i < 12; ++i)
       {
         pieceBtns[i].pc = pieceCharFromIndex(i);
-        pieceBtns[i].bg.setOnClick([&, i]
-                                   {
-          const char chosen = pieceBtns[i].pc;
-          placeWhite = std::isupper(static_cast<unsigned char>(chosen));
-          lastAddLower = char(std::tolower(static_cast<unsigned char>(chosen)));
-          selected = ToolSelection::pieceSel(chosen);
-          rememberCurrent(); });
+        pieceBtns[i].bg.setOnClick([&] {});
       }
+    }
+
+    // ---------- EP selection lifecycle ----------
+    void beginEpSelection()
+    {
+      EpHoldState h;
+      h.selected = selected;
+      h.placeWhite = placeWhite;
+      h.lastAddLower = lastAddLower;
+
+      h.dragging = dragging;
+      h.dragPiece = dragPiece;
+      h.dragFrom = dragFrom;
+
+      h.epBefore = meta.epTarget;
+
+      epHold = h;
+      epSelecting = true;
+
+      selected = ToolSelection::move();
+
+      dragging = false;
+      dragMouseDown = false;
+
+      showToast("Select an en passant target square.\nClick anywhere else to cancel.", sf::Color(122, 205, 164));
+    }
+
+    void restoreHeldAfterEpCancelOrCommit()
+    {
+      if (!epHold)
+        return;
+
+      selected = epHold->selected;
+      placeWhite = epHold->placeWhite;
+      lastAddLower = epHold->lastAddLower;
+
+      if (epHold->dragging && epHold->dragPiece != '.' && epHold->dragFrom)
+      {
+        dragging = true;
+        dragMouseDown = false; // carry mode
+        dragPiece = epHold->dragPiece;
+        dragFrom = epHold->dragFrom;
+
+        auto [ox, oy] = *dragFrom;
+        if (pb::inBounds(ox, oy) && board[oy][ox] == dragPiece)
+          board[oy][ox] = '.';
+      }
+      else
+      {
+        dragging = false;
+        dragMouseDown = false;
+        dragPiece = '.';
+        dragFrom.reset();
+      }
+
+      epHold.reset();
+      refreshKings();
+      sanitizeMeta();
+    }
+
+    void cancelEpSelection()
+    {
+      if (epHold)
+        meta.epTarget = epHold->epBefore;
+
+      epSelecting = false;
+      restoreHeldAfterEpCancelOrCommit();
+    }
+
+    void commitEpSelection(int x, int y)
+    {
+      meta.epTarget = std::make_pair(x, y);
+      epSelecting = false;
+      restoreHeldAfterEpCancelOrCommit();
+      rememberCurrentIfStable();
     }
 
     // ---------- state helpers ----------
@@ -294,10 +411,72 @@ namespace lilia::view
       return pieces[idx];
     }
 
-    void enterAddDefault()
+    void cycleTool()
     {
-      lastAddLower = 'p';
-      selected = ToolSelection::pieceSel(applyColorToPieceType('p', placeWhite));
+      cancelDragToOrigin(false);
+
+      if (selected.kind == ToolKind::Move)
+      {
+        selected.kind = ToolKind::Add;
+        selected.piece = applyColorToPieceType(lastAddLower, placeWhite);
+      }
+      else if (selected.kind == ToolKind::Add)
+      {
+        selected = ToolSelection::del();
+      }
+      else
+      {
+        selected = ToolSelection::move();
+      }
+    }
+
+    void togglePlaceColor()
+    {
+      placeWhite = !placeWhite;
+      if (selected.kind == ToolKind::Add)
+        selected.piece = applyColorToPieceType(lastAddLower, placeWhite);
+
+      showToast(placeWhite ? "Add color: White" : "Add color: Black", sf::Color(122, 205, 164));
+    }
+
+    void cancelDragToOrigin(bool remember)
+    {
+      if (!dragging)
+        return;
+
+      dragging = false;
+      dragMouseDown = false;
+
+      if (dragFrom && dragPiece != '.')
+      {
+        auto [ox, oy] = *dragFrom;
+        board[oy][ox] = dragPiece;
+      }
+
+      dragPiece = '.';
+      dragFrom.reset();
+
+      refreshKings();
+      sanitizeMeta();
+      if (remember)
+        rememberCurrentIfStable();
+    }
+
+    void cancelPaletteCarryOrDrag()
+    {
+      if (!dragging)
+        return;
+
+      dragging = false;
+      dragMouseDown = false;
+      dragPiece = '.';
+      dragFrom.reset();
+
+      // If this was a one-shot palette action, restore the tool immediately.
+      if (paletteOneShot)
+        selected = paletteReturnTool;
+
+      paletteOneShot = false;
     }
 
     void refreshKings()
@@ -308,9 +487,6 @@ namespace lilia::view
     void sanitizeMeta()
     {
       pb::sanitizeMeta(board, meta);
-      // EP tool should never be "selecting" if EP already set (single source of truth).
-      if (meta.epTarget && epSelecting)
-        epSelecting = false;
     }
 
     void rememberCurrent()
@@ -319,10 +495,16 @@ namespace lilia::view
       s_lastFen = fen();
     }
 
+    void rememberCurrentIfStable()
+    {
+      if (dragging)
+        return;
+      rememberCurrent();
+    }
+
     // ---------- FEN ----------
     std::string fen() const
     {
-      // (const) call through pb::fen, but meta may need sanitize in mutable contexts; callers generally call rememberCurrent().
       return pb::fen(board, meta);
     }
 
@@ -406,12 +588,12 @@ namespace lilia::view
       sanitizeMeta();
 
       if (remember)
-        rememberCurrent();
+        rememberCurrentIfStable();
 
       return true;
     }
 
-    // ---------- EP selection ----------
+    // ---------- EP selection helpers ----------
     std::optional<std::pair<int, int>> squareFromMouse(sf::Vector2f local) const
     {
       if (!boardRect.contains(local))
@@ -434,7 +616,7 @@ namespace lilia::view
       if (flag)
       {
         flag = false;
-        rememberCurrent();
+        rememberCurrentIfStable();
         return;
       }
 
@@ -445,7 +627,7 @@ namespace lilia::view
       }
 
       flag = true;
-      rememberCurrent();
+      rememberCurrentIfStable();
     }
 
     // ---------- clear/reset ----------
@@ -454,8 +636,17 @@ namespace lilia::view
       pb::clearBoard(board);
 
       dragging = false;
+      dragMouseDown = false;
       dragPiece = '.';
       dragFrom.reset();
+
+      paintDown = false;
+      lastPaintSq.reset();
+
+      palettePress = false;
+      paletteIdx = -1;
+      paletteDragStarted = false;
+      paletteOneShot = false;
 
       meta.sideToMove = 'w';
       meta.castleK = meta.castleQ = meta.castlek = meta.castleq = false;
@@ -464,10 +655,11 @@ namespace lilia::view
       meta.fullmove = 1;
 
       epSelecting = false;
+      epHold.reset();
 
       refreshKings();
       if (remember)
-        rememberCurrent();
+        rememberCurrentIfStable();
     }
 
     void resetToStart(bool remember)
@@ -475,7 +667,6 @@ namespace lilia::view
       clear(false);
       setFromFen(core::START_FEN, false);
 
-      // Startpos defaults:
       meta.sideToMove = 'w';
       meta.castleK = meta.castleQ = meta.castlek = meta.castleq = true;
       meta.epTarget.reset();
@@ -483,20 +674,37 @@ namespace lilia::view
       meta.fullmove = 1;
 
       epSelecting = false;
+      epHold.reset();
 
       sanitizeMeta();
       if (remember)
-        rememberCurrent();
+        rememberCurrentIfStable();
     }
 
     void setFromFen(const std::string &fenStr, bool remember)
     {
       pb::setFromFen(board, meta, fenStr);
+
       epSelecting = false;
+      epHold.reset();
+
+      dragging = false;
+      dragMouseDown = false;
+      dragPiece = '.';
+      dragFrom.reset();
+
+      paintDown = false;
+      lastPaintSq.reset();
+
+      palettePress = false;
+      paletteIdx = -1;
+      paletteDragStarted = false;
+      paletteOneShot = false;
+
       refreshKings();
       sanitizeMeta();
       if (remember)
-        rememberCurrent();
+        rememberCurrentIfStable();
     }
 
     // ---------- layout ----------
@@ -523,23 +731,23 @@ namespace lilia::view
       if (bounds.width <= 0.f || bounds.height <= 0.f)
         return;
 
-      const float pad = 14.f;
-      const float gap = 14.f;
-      const float topInset = 16.f;
+      // Increased overall usable area and board presence:
+      // tighter padding/gaps + slightly narrower side panels + higher minimum board size.
+      const float pad = 12.f;
+      const float gap = 12.f;
+      const float topInset = 12.f;
 
-      const float fenH = 84.f;
-      const float shortcutsGap = 10.f;
-      const float shortcutsH = 88.f;
-      const float bottomH = fenH + (showShortcuts ? (shortcutsGap + shortcutsH) : 0.f);
+      const float fenH = 92.f;
+      const float bottomH = fenH;
 
-      const float sideW = std::clamp(bounds.width * 0.20f, 160.f, 240.f);
+      const float sideW = std::clamp(bounds.width * 0.18f, 150.f, 220.f);
 
       float availW = bounds.width - pad * 2.f - sideW * 2.f - gap * 2.f;
       float availHTotal = bounds.height - pad * 2.f - topInset;
 
-      float boardMaxH = std::max(240.f, availHTotal - bottomH);
+      float boardMaxH = std::max(320.f, availHTotal - bottomH);
       float boardSize = std::min(availW, boardMaxH);
-      boardSize = std::max(240.f, boardSize);
+      boardSize = std::max(320.f, boardSize);
 
       sq = boardSize / 8.f;
       pieceYOffset = sq * 0.03f;
@@ -555,6 +763,7 @@ namespace lilia::view
       const float boardTop = blockTop;
 
       boardRect = {boardLeft, boardTop, boardSize, boardSize};
+
       leftRect = {bounds.left + pad, boardTop, sideW, boardSize};
       rightRect = {bounds.left + bounds.width - pad - sideW, boardTop, sideW, boardSize};
 
@@ -565,43 +774,43 @@ namespace lilia::view
 
       fenRect = {bottomRect.left, bottomRect.top, bottomRect.width, fenH};
 
-      if (showShortcuts)
-      {
-        shortcutsRect = {bottomRect.left,
-                         fenRect.top + fenRect.height + shortcutsGap,
-                         bottomRect.width,
-                         shortcutsH};
-      }
-      else
-      {
-        shortcutsRect = {};
-      }
-
-      // Left panel button layout
+      // Left panel: Segmented tool selector at the top (highly visible)
       {
         const float x = leftRect.left + 10.f;
         const float w = leftRect.width - 20.f;
-        const float h = 34.f;
+        const float h = 36.f;
+
+        const float y = leftRect.top + 52.f;
+
+        toolSegRect = {x, y, w, h};
+
+        const float segGap = 6.f;
+        const float segW = std::floor((w - segGap * 2.f) / 3.f);
+
+        btnLeftMove.setBounds({x + 0.f * (segW + segGap), y, segW, h});
+        btnLeftAdd.setBounds({x + 1.f * (segW + segGap), y, segW, h});
+        btnLeftDelete.setBounds({x + 2.f * (segW + segGap), y, segW, h});
+
+        // Add color row + always-visible hotkeys field below
+        const float yColor = y + h + 16.f;
+        addColorRowRect = {x, yColor, w, 18.f};
+
+        const float hkY = yColor + 22.f;
+        const float hkH = 98.f;
+        hotkeysRect = {x, hkY, w, hkH};
+
+        // Clear / Reset anchored at the bottom of the left panel (kept symmetrical)
+        const float btnH = 34.f;
         const float g = 10.f;
+        const float bottomPad = 10.f;
+        const float block = btnH * 2.f + g;
+        const float yBottom = leftRect.top + leftRect.height - bottomPad - block;
 
-        float y = leftRect.top + 52.f;
-        const float half = std::floor(w * 0.5f);
-
-        btnLeftWhite.setBounds({x, y, half, h});
-        btnLeftBlack.setBounds({x + half, y, w - half, h});
-        y += h + g;
-
-        btnLeftAdd.setBounds({x, y, half, h});
-        btnLeftMove.setBounds({x + half, y, w - half, h});
-        y += h + g;
-
-        y += 6.f;
-        btnLeftClear.setBounds({x, y, w, h});
-        y += h + g;
-        btnLeftReset.setBounds({x, y, w, h});
+        btnLeftClear.setBounds({x, yBottom, w, btnH});
+        btnLeftReset.setBounds({x, yBottom + btnH + g, w, btnH});
       }
 
-      // Right panel piece grid layout
+      // Right panel: piece grid layout (no hotkeys button anymore; grid is vertically centered cleaner)
       {
         const float padR = 10.f;
         const float left = rightRect.left + padR;
@@ -612,7 +821,7 @@ namespace lilia::view
 
         const float cellGap = 10.f;
         const float sep = 18.f;
-        const float cell = std::clamp(std::floor((w - cellGap * 2.f) / 3.f), 44.f, 78.f);
+        const float cell = std::clamp(std::floor((w - cellGap * 2.f) / 3.f), 46.f, 84.f);
 
         auto rectAt = [&](int col, int row, float baseY) -> sf::FloatRect
         {
@@ -642,40 +851,35 @@ namespace lilia::view
       // FEN panel layout
       {
         sf::FloatRect inner = insetRect(fenRect, 10.f);
-        sf::FloatRect row1 = consumeRow(inner, 30.f, 8.f);
-        sf::FloatRect row2 = consumeRow(inner, 32.f, 0.f);
+        sf::FloatRect row1 = consumeRow(inner, 32.f, 8.f);
+        sf::FloatRect row2 = consumeRow(inner, 34.f, 0.f);
 
-        const float btnH = 28.f;
+        const float btnH = 30.f;
         const float y = row1.top + 1.f;
         float x = row1.left;
 
         // Turn segmented
-        const float turnW = 78.f;
+        const float turnW = 84.f;
         btnTurnW.setBounds({x, y, turnW, btnH});
         btnTurnB.setBounds({x + turnW, y, turnW, btnH});
         x += (turnW * 2.f + 12.f);
 
         // Castling toggles
-        const float small = 30.f;
+        const float small = 32.f;
         btnCastleK.setBounds({x, y, small, btnH});
         btnCastleQ.setBounds({x + (small + 6.f), y, small, btnH});
         btnCastlek.setBounds({x + 2.f * (small + 6.f), y, small, btnH});
         btnCastleq.setBounds({x + 3.f * (small + 6.f), y, small, btnH});
         x += (4.f * small + 3.f * 6.f + 12.f);
 
-        // Right aligned shortcuts
-        const float rightBtnW = 120.f;
-        btnShortcuts.setBounds({row1.left + row1.width - rightBtnW, y, rightBtnW, btnH});
-
-        // EP button takes remaining space
-        const float rightLimit = btnShortcuts.bounds().left - 12.f;
-        const float epW = std::max(120.f, rightLimit - x);
+        // EP fixed size
+        const float epW = 150.f;
         btnEp.setBounds({x, y, epW, btnH});
 
         // Row2: fen box + copy
-        const float copyW = 92.f;
-        btnCopyFen.setBounds({row2.left + row2.width - copyW, row2.top + 1.f, copyW, 30.f});
-        fenBoxRect = {row2.left, row2.top + 1.f, row2.width - copyW - 10.f, 30.f};
+        const float copyW = 110.f;
+        btnCopyFen.setBounds({row2.left + row2.width - copyW, row2.top + 1.f, copyW, 32.f});
+        fenBoxRect = {row2.left, row2.top + 1.f, row2.width - copyW - 10.f, 32.f};
       }
 
       texReady = false;
@@ -813,13 +1017,12 @@ namespace lilia::view
       const sf::Vector2f local{mouse.x - off.x, mouse.y - off.y};
       hoverSquare = squareFromMouse(local);
 
-      // Buttons hover
       auto hov = [&](ui::Button &b)
       { b.updateHover(mouse, off); };
-      hov(btnLeftWhite);
-      hov(btnLeftBlack);
-      hov(btnLeftAdd);
+
       hov(btnLeftMove);
+      hov(btnLeftAdd);
+      hov(btnLeftDelete);
       hov(btnLeftClear);
       hov(btnLeftReset);
 
@@ -831,10 +1034,195 @@ namespace lilia::view
       hov(btnCastleq);
       hov(btnEp);
       hov(btnCopyFen);
-      hov(btnShortcuts);
 
       for (auto &pbx : pieceBtns)
         pbx.bg.updateHover(mouse, off);
+    }
+
+    std::optional<int> paletteIndexAt(sf::Vector2f local) const
+    {
+      for (int i = 0; i < 12; ++i)
+        if (pieceBtns[i].r.contains(local))
+          return i;
+      return std::nullopt;
+    }
+
+    void enterAddModeForPiece(char chosen)
+    {
+      placeWhite = std::isupper(static_cast<unsigned char>(chosen));
+      lastAddLower = char(std::tolower(static_cast<unsigned char>(chosen)));
+      selected = ToolSelection::addPiece(chosen);
+      rememberCurrentIfStable();
+    }
+
+    void beginOneShotCarryFromPalette(char chosen)
+    {
+      // One-shot add: pick up a piece (no tool switch), place once, then return to Move.
+      cancelDragToOrigin(false);
+
+      paletteOneShot = true;
+      paletteReturnTool = ToolSelection::move();
+
+      selected = ToolSelection::move();
+
+      dragging = true;
+      dragMouseDown = false; // carry mode (click to place)
+      dragPiece = chosen;
+      dragFrom.reset();
+
+      showToast("Place piece: click a square (Right-click cancels).", sf::Color(122, 205, 164));
+    }
+
+    void beginPaletteDragToBoard(char chosen)
+    {
+      cancelDragToOrigin(false);
+
+      paletteOneShot = true;
+      paletteReturnTool = ToolSelection::move();
+      selected = ToolSelection::move();
+
+      dragging = true;
+      dragMouseDown = true; // tied to LMB
+      dragPiece = chosen;
+      dragFrom.reset();
+    }
+
+    bool handlePaletteInteraction(const sf::Event &e, sf::Vector2f mouse, sf::Vector2f off)
+    {
+      const sf::Vector2f local{mouse.x - off.x, mouse.y - off.y};
+
+      // Cancel one-shot carry quickly via RMB (fluid UX)
+      if (e.type == sf::Event::MouseButtonPressed &&
+          e.mouseButton.button == sf::Mouse::Right &&
+          dragging && !dragMouseDown && paletteOneShot)
+      {
+        cancelPaletteCarryOrDrag();
+        return true;
+      }
+
+      if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left)
+      {
+        auto idx = paletteIndexAt(local);
+        if (!idx)
+          return false;
+
+        palettePress = true;
+        paletteIdx = *idx;
+        palettePressLocal = local;
+        paletteClock.restart();
+        paletteDragStarted = false;
+
+        // Consume so the board does not start a Move pick-up beneath.
+        return true;
+      }
+
+      if (e.type == sf::Event::MouseMoved && palettePress && paletteIdx >= 0 && paletteIdx < 12)
+      {
+        const float t = paletteClock.getElapsedTime().asSeconds();
+        const sf::Vector2f d = local - palettePressLocal;
+        const float dist = std::sqrt(d.x * d.x + d.y * d.y);
+
+        const char chosen = pieceBtns[paletteIdx].pc;
+
+        // Long press (without drag): switch to Add mode for that piece.
+        if (!paletteDragStarted && t >= kPaletteLongPressS && dist < kPaletteDragStartPx)
+        {
+          palettePress = false;
+          paletteIdx = -1;
+          paletteDragStarted = false;
+
+          enterAddModeForPiece(chosen);
+          showToast("Add mode: selected piece.", sf::Color(122, 205, 164));
+          return true;
+        }
+
+        // Drag start: immediate palette-to-board placement flow (Move-state one-shot)
+        if (!paletteDragStarted && dist >= kPaletteDragStartPx)
+        {
+          paletteDragStarted = true;
+
+          // This interaction is explicitly requested for Move: drag from palette => place once => return to Move.
+          // If user is not in Move, we still allow drag placement but do not force tool changes.
+          beginPaletteDragToBoard(chosen);
+          return true;
+        }
+
+        return true;
+      }
+
+      if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left &&
+          palettePress && paletteIdx >= 0 && paletteIdx < 12)
+      {
+        const float t = paletteClock.getElapsedTime().asSeconds();
+        const char chosen = pieceBtns[paletteIdx].pc;
+
+        // Release after palette drag: perform drop now.
+        if (paletteDragStarted && dragging && dragMouseDown && dragPiece == chosen)
+        {
+          palettePress = false;
+          paletteIdx = -1;
+          paletteDragStarted = false;
+
+          dragging = false;
+          dragMouseDown = false;
+
+          auto sqr = squareFromMouse(local);
+          if (sqr)
+          {
+            auto [tx, ty] = *sqr;
+            if (!trySet(tx, ty, chosen, true))
+            {
+              invalidAction("Invalid drop.\nKings must be unique per color.");
+            }
+          }
+
+          dragPiece = '.';
+          dragFrom.reset();
+
+          // Always return to Move after a palette drag placement (per requirement).
+          selected = ToolSelection::move();
+          paletteOneShot = false;
+
+          refreshKings();
+          sanitizeMeta();
+          return true;
+        }
+
+        // Short click (no drag): in Move => one-shot carry, in non-Move => normal Add selection
+        palettePress = false;
+        paletteIdx = -1;
+        paletteDragStarted = false;
+
+        if (t < kPaletteLongPressS)
+        {
+          if (selected.kind == ToolKind::Move)
+          {
+            beginOneShotCarryFromPalette(chosen);
+            return true;
+          }
+
+          // If not in Move, keep existing intuition: choose piece and go to Add mode.
+          enterAddModeForPiece(chosen);
+          return true;
+        }
+
+        // If it was a "hold" but didn't satisfy the long-press condition earlier, still treat as long press.
+        enterAddModeForPiece(chosen);
+        showToast("Add mode: selected piece.", sf::Color(122, 205, 164));
+        return true;
+      }
+
+      // If palette press is active and user releases outside: reset the press state.
+      if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left &&
+          palettePress)
+      {
+        palettePress = false;
+        paletteIdx = -1;
+        paletteDragStarted = false;
+        return false;
+      }
+
+      return false;
     }
 
     bool handleEvent(const sf::Event &e, sf::Vector2f mouse, sf::Vector2f off)
@@ -847,17 +1235,55 @@ namespace lilia::view
 
       const sf::Vector2f local{mouse.x - off.x, mouse.y - off.y};
 
+      // EP selection is modal: it consumes the next click anywhere.
+      if (epSelecting)
+      {
+        if (e.type == sf::Event::KeyPressed && e.key.code == sf::Keyboard::Escape)
+        {
+          cancelEpSelection();
+          return true;
+        }
+
+        if (e.type == sf::Event::MouseButtonPressed &&
+            (e.mouseButton.button == sf::Mouse::Left || e.mouseButton.button == sf::Mouse::Right))
+        {
+          if (e.mouseButton.button == sf::Mouse::Right)
+          {
+            cancelEpSelection();
+            return true;
+          }
+
+          auto sqr = squareFromMouse(local);
+          if (sqr)
+          {
+            auto [x, y] = *sqr;
+            if (pb::isValidEnPassantTarget(board, x, y, meta.sideToMove))
+            {
+              commitEpSelection(x, y);
+              return true;
+            }
+          }
+
+          cancelEpSelection();
+          return true;
+        }
+
+        return true;
+      }
+
       // Keyboard
       if (e.type == sf::Event::KeyPressed)
       {
-        const bool shift = e.key.shift;
-
         if (e.key.code == sf::Keyboard::Tab)
         {
-          placeWhite = !placeWhite;
-          if (selected.kind == ToolKind::Piece)
-            selected.piece = applyColorToPieceType(lastAddLower, placeWhite);
-          rememberCurrent();
+          cycleTool();
+          return true;
+        }
+
+        if (e.key.code == sf::Keyboard::T)
+        {
+          togglePlaceColor();
+          rememberCurrentIfStable();
           return true;
         }
 
@@ -865,38 +1291,7 @@ namespace lilia::view
         {
           meta.sideToMove = (meta.sideToMove == 'w') ? 'b' : 'w';
           sanitizeMeta();
-          rememberCurrent();
-          return true;
-        }
-
-        if (e.key.code == sf::Keyboard::H)
-        {
-          showShortcuts = !showShortcuts;
-          rebuildGeometry();
-          return true;
-        }
-
-        if (e.key.code == sf::Keyboard::A)
-        {
-          enterAddDefault();
-          return true;
-        }
-
-        if (e.key.code == sf::Keyboard::M)
-        {
-          selected = ToolSelection::move();
-          return true;
-        }
-
-        if (e.key.code == sf::Keyboard::C)
-        {
-          clear(true);
-          return true;
-        }
-
-        if (e.key.code == sf::Keyboard::R)
-        {
-          resetToStart(true);
+          rememberCurrentIfStable();
           return true;
         }
 
@@ -917,34 +1312,23 @@ namespace lilia::view
         if (placed != '.')
         {
           lastAddLower = placed;
-          const bool white = shift ? false : placeWhite;
-          selected = ToolSelection::pieceSel(applyColorToPieceType(placed, white));
-          rememberCurrent();
+          selected = ToolSelection::addPiece(applyColorToPieceType(placed, placeWhite));
+          rememberCurrentIfStable();
           return true;
         }
       }
 
-      // RMB deletes square (board only)
-      if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Right)
-      {
-        auto sqr = squareFromMouse(local);
-        if (!sqr)
-          return false;
-
-        auto [x, y] = *sqr;
-        trySet(x, y, '.', true);
+      // Palette interaction (before buttons/board so it feels responsive and never conflicts)
+      if (handlePaletteInteraction(e, mouse, off))
         return true;
-      }
 
-      // Route mouse events to buttons first (prevents fighting with board)
+      // Route mouse events to buttons first (excluding piece palette)
       auto routeButtons = [&]() -> bool
       {
         auto h = [&](ui::Button &b) -> bool
         { return b.handleEvent(e, mouse, off); };
 
         if (h(btnCopyFen))
-          return true;
-        if (h(btnShortcuts))
           return true;
 
         if (h(btnTurnW) || h(btnTurnB))
@@ -954,22 +1338,111 @@ namespace lilia::view
         if (h(btnEp))
           return true;
 
-        if (h(btnLeftWhite) || h(btnLeftBlack))
-          return true;
-        if (h(btnLeftAdd) || h(btnLeftMove))
+        if (h(btnLeftMove) || h(btnLeftAdd) || h(btnLeftDelete))
           return true;
         if (h(btnLeftClear) || h(btnLeftReset))
           return true;
-
-        for (auto &pbx : pieceBtns)
-          if (pbx.bg.handleEvent(e, mouse, off))
-            return true;
 
         return false;
       };
 
       if (routeButtons())
+      {
+        // If a button consumes the mouse release while a drag is in progress,
+        // convert it into "piece in hand" carry mode.
+        if (e.type == sf::Event::MouseButtonReleased &&
+            e.mouseButton.button == sf::Mouse::Left &&
+            dragging && dragMouseDown)
+        {
+          dragMouseDown = false;
+        }
+
+        // Stop painting if UI consumed the release.
+        if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left)
+        {
+          paintDown = false;
+          lastPaintSq.reset();
+        }
+
         return true;
+      }
+
+      // Paint sweep in Add/Delete: apply on move while LMB held
+      if (e.type == sf::Event::MouseMoved && paintDown && !dragging &&
+          (selected.kind == ToolKind::Add || selected.kind == ToolKind::Delete))
+      {
+        auto sqr = squareFromMouse(local);
+        if (!sqr)
+          return true;
+
+        if (!lastPaintSq || *lastPaintSq != *sqr)
+        {
+          auto [x, y] = *sqr;
+
+          if (selected.kind == ToolKind::Delete)
+          {
+            if (at(x, y) != '.')
+              trySet(x, y, '.', true);
+          }
+          else
+          {
+            if (!trySet(x, y, selected.piece, true))
+              invalidAction("Kings must be unique per color.\nUse Move to reposition an existing king.");
+          }
+
+          lastPaintSq = sqr;
+        }
+
+        return true;
+      }
+
+      // If we are carrying a piece (dragging==true but mouse is not held), then a click places it.
+      if (dragging && !dragMouseDown &&
+          e.type == sf::Event::MouseButtonPressed &&
+          e.mouseButton.button == sf::Mouse::Left)
+      {
+        auto sqr = squareFromMouse(local);
+        if (sqr)
+        {
+          dragging = false;
+          auto [tx, ty] = *sqr;
+
+          if (!trySet(tx, ty, dragPiece, true))
+          {
+            invalidAction("Invalid drop.\nKings must be unique per color.");
+            if (dragFrom)
+            {
+              auto [ox, oy] = *dragFrom;
+              set(ox, oy, dragPiece);
+              rememberCurrentIfStable();
+            }
+          }
+
+          dragPiece = '.';
+          dragFrom.reset();
+          refreshKings();
+          sanitizeMeta();
+
+          // One-shot palette placement: always return to Move.
+          if (paletteOneShot)
+          {
+            selected = paletteReturnTool;
+            paletteOneShot = false;
+          }
+
+          return true;
+        }
+
+        // Click outside board: cancel carry (back to origin if any; otherwise discard)
+        if (paletteOneShot)
+        {
+          cancelPaletteCarryOrDrag();
+          return true;
+        }
+
+        cancelDragToOrigin(true);
+        return true;
+      }
 
       // Board LMB interactions
       if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left)
@@ -980,22 +1453,23 @@ namespace lilia::view
 
         auto [x, y] = *sqr;
 
-        // EP selection tool consumes the next board click
-        if (epSelecting)
+        // Delete tool (press starts paint)
+        if (selected.kind == ToolKind::Delete)
         {
-          if (!pb::isValidEnPassantTarget(board, x, y, meta.sideToMove))
-          {
-            invalidAction("Invalid en passant square.\nChoose a valid EP target for the side to move.");
-            return true;
-          }
-          meta.epTarget = std::make_pair(x, y);
-          epSelecting = false;
-          rememberCurrent();
+          paintDown = true;
+          lastPaintSq = sqr;
+
+          if (at(x, y) != '.')
+            trySet(x, y, '.', true);
           return true;
         }
 
-        if (selected.kind == ToolKind::Piece)
+        // Add tool (press starts paint)
+        if (selected.kind == ToolKind::Add)
         {
+          paintDown = true;
+          lastPaintSq = sqr;
+
           if (!trySet(x, y, selected.piece, true))
             invalidAction("Kings must be unique per color.\nUse Move to reposition an existing king.");
           return true;
@@ -1006,6 +1480,7 @@ namespace lilia::view
         if (p != '.')
         {
           dragging = true;
+          dragMouseDown = true;
           dragPiece = p;
           dragFrom = std::make_pair(x, y);
 
@@ -1015,15 +1490,20 @@ namespace lilia::view
           return true;
         }
 
-        return false;
+        return true;
       }
 
       if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left)
       {
-        if (!dragging)
+        paintDown = false;
+        lastPaintSq.reset();
+
+        // Only finalize a drag on release if this drag was tied to a held mouse press.
+        if (!dragging || !dragMouseDown)
           return false;
 
         dragging = false;
+        dragMouseDown = false;
 
         auto sqr = squareFromMouse(local);
         if (sqr)
@@ -1036,6 +1516,7 @@ namespace lilia::view
             {
               auto [ox, oy] = *dragFrom;
               set(ox, oy, dragPiece);
+              rememberCurrentIfStable();
             }
           }
         }
@@ -1043,13 +1524,13 @@ namespace lilia::view
         {
           auto [ox, oy] = *dragFrom;
           set(ox, oy, dragPiece);
+          rememberCurrentIfStable();
         }
 
         dragPiece = '.';
         dragFrom.reset();
         refreshKings();
         sanitizeMeta();
-        rememberCurrent();
         return true;
       }
 
@@ -1067,6 +1548,13 @@ namespace lilia::view
       const float dt = clampDt(animClock.restart().asSeconds());
       animate(dt);
 
+      // Smooth animated tool highlight position (very noticeable)
+      {
+        const float target = toolIndex(selected.kind);
+        const float k = std::min(1.f, dt * 14.f);
+        toolSelPos = toolSelPos + (target - toolSelPos) * k;
+      }
+
       sf::RectangleShape bg({bounds.width, bounds.height});
       bg.setPosition(ui::snap({bounds.left + off.x, bounds.top + off.y}));
       bg.setFillColor(theme->panel);
@@ -1083,8 +1571,8 @@ namespace lilia::view
       drawBoard(rt, off, shake);
       drawFenPanel(rt, off);
 
-      if (showShortcuts)
-        drawShortcutsPanel(rt, off);
+      if (epSelecting)
+        drawEpSelectionOverlay(rt, off, shake);
 
       if (toastT > 0.f)
         drawToast(rt, off);
@@ -1108,6 +1596,86 @@ namespace lilia::view
       rt.draw(t);
     }
 
+    void drawToolSegmentedControl(sf::RenderTarget &rt, sf::Vector2f off) const
+    {
+      // Background track
+      sf::RectangleShape track({toolSegRect.width, toolSegRect.height});
+      track.setPosition(ui::snap({toolSegRect.left + off.x, toolSegRect.top + off.y}));
+      track.setFillColor(ui::darken(theme->panel, 8));
+      track.setOutlineThickness(1.f);
+      track.setOutlineColor(ui::darken(theme->panel, 20));
+      rt.draw(track);
+
+      // Sliding active indicator (the "state" look)
+      const float segGap = 6.f;
+      const float segW = std::floor((toolSegRect.width - segGap * 2.f) / 3.f);
+      const float x0 = toolSegRect.left;
+      const float y0 = toolSegRect.top;
+
+      const float indicatorX = x0 + toolSelPos * (segW + segGap);
+      sf::RectangleShape active({segW, toolSegRect.height});
+      active.setPosition(ui::snap({indicatorX + off.x, y0 + off.y}));
+      active.setFillColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 46));
+      active.setOutlineThickness(2.f);
+      active.setOutlineColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 200));
+      rt.draw(active);
+
+      // Subtle state dots (extra visual affordance)
+      auto dotAt = [&](int i)
+      {
+        const float cx = x0 + i * (segW + segGap) + segW * 0.5f;
+        const float cy = y0 + toolSegRect.height - 7.f;
+
+        sf::CircleShape c(3.2f);
+        c.setPosition(ui::snap({cx + off.x - 3.2f, cy + off.y - 3.2f}));
+        if (int(std::round(toolIndex(selected.kind))) == i)
+          c.setFillColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 220));
+        else
+          c.setFillColor(sf::Color(255, 255, 255, 70));
+        rt.draw(c);
+      };
+
+      dotAt(0);
+      dotAt(1);
+      dotAt(2);
+    }
+
+    void drawHotkeysField(sf::RenderTarget &rt, sf::Vector2f off) const
+    {
+      sf::RectangleShape box({hotkeysRect.width, hotkeysRect.height});
+      box.setPosition(ui::snap({hotkeysRect.left + off.x, hotkeysRect.top + off.y}));
+      box.setFillColor(ui::darken(theme->panel, 7));
+      box.setOutlineThickness(1.f);
+      box.setOutlineColor(ui::darken(theme->panel, 20));
+      rt.draw(box);
+
+      sf::Text t0("Hotkeys", *font, 12);
+      t0.setFillColor(theme->subtle);
+      t0.setPosition(ui::snap({hotkeysRect.left + off.x + 10.f, hotkeysRect.top + off.y + 8.f}));
+      rt.draw(t0);
+
+      // Always-visible hotkeys + the new interaction hints (so players notice immediately).
+      const unsigned fs = 12;
+      const float x = hotkeysRect.left + off.x + 10.f;
+      float y = hotkeysRect.top + off.y + 28.f;
+
+      const float maxW = hotkeysRect.width - 20.f;
+
+      auto line = [&](const std::string &s)
+      {
+        std::string out = ui::ellipsizeMiddle(*font, fs, s, maxW);
+        sf::Text tt(out, *font, fs);
+        tt.setFillColor(theme->text);
+        tt.setPosition(ui::snap({x, y}));
+        rt.draw(tt);
+        y += 16.f;
+      };
+
+      line("Tab: mode");
+      line("T: color");
+      line("1-6: piece");
+    }
+
     void drawSidePanels(sf::RenderTarget &rt, sf::Vector2f off, sf::Vector2f shake) const
     {
       (void)shake;
@@ -1115,19 +1683,46 @@ namespace lilia::view
       drawPanel(rt, off, leftRect, "Tools");
       drawPanel(rt, off, rightRect, "Pieces");
 
-      // Left active states
-      btnLeftWhite.setActive(placeWhite);
-      btnLeftBlack.setActive(!placeWhite);
+      // Tool selector label
+      {
+        sf::Text lbl("Mode", *font, 12);
+        lbl.setFillColor(theme->subtle);
+        lbl.setPosition(ui::snap({toolSegRect.left + off.x, toolSegRect.top + off.y - 18.f}));
+        rt.draw(lbl);
+      }
 
-      btnLeftAdd.setActive(selected.kind == ToolKind::Piece);
+      // Segmented state control visuals (makes state change unmistakable)
+      drawToolSegmentedControl(rt, off);
+
+      // Active states
       btnLeftMove.setActive(selected.kind == ToolKind::Move);
+      btnLeftAdd.setActive(selected.kind == ToolKind::Add);
+      btnLeftDelete.setActive(selected.kind == ToolKind::Delete);
 
-      // Draw left buttons
-      btnLeftWhite.draw(rt, off);
-      btnLeftBlack.draw(rt, off);
-      btnLeftAdd.draw(rt, off);
+      // Draw tool buttons on top of the segmented visuals
       btnLeftMove.draw(rt, off);
+      btnLeftAdd.draw(rt, off);
+      btnLeftDelete.draw(rt, off);
 
+      // Placement color indicator (and always-visible hotkeys field below it)
+      {
+        float x = addColorRowRect.left + off.x;
+        float y = addColorRowRect.top + off.y;
+
+        sf::Text lbl("Add color:", *font, 12);
+        lbl.setFillColor(theme->subtle);
+        lbl.setPosition(ui::snap({x, y}));
+        rt.draw(lbl);
+
+        sf::Text val(placeWhite ? "White (T)" : "Black (T)", *font, 12);
+        val.setFillColor(theme->text);
+        val.setPosition(ui::snap({x + 74.f, y}));
+        rt.draw(val);
+      }
+
+      drawHotkeysField(rt, off);
+
+      // Clear / Reset at bottom
       btnLeftClear.setAccent(true);
       btnLeftClear.draw(rt, off);
       btnLeftClear.setAccent(false);
@@ -1149,7 +1744,13 @@ namespace lilia::view
       for (int i = 0; i < 12; ++i)
       {
         const char pc = pieceBtns[i].pc;
-        const bool active = (selected.kind == ToolKind::Piece && selected.piece == pc);
+
+        // Active highlight:
+        // - Add mode highlights selected piece
+        // - Move + one-shot carry highlights the carried palette piece
+        bool active = (selected.kind == ToolKind::Add && selected.piece == pc);
+        if (!active && paletteOneShot && dragging && dragPiece == pc)
+          active = true;
 
         pieceBtns[i].bg.setActive(active);
         pieceBtns[i].bg.draw(rt, off);
@@ -1167,7 +1768,6 @@ namespace lilia::view
 
     void drawFenPanel(sf::RenderTarget &rt, sf::Vector2f off) const
     {
-      // Panel
       sf::RectangleShape bg({fenRect.width, fenRect.height});
       bg.setPosition(ui::snap({fenRect.left + off.x, fenRect.top + off.y}));
       bg.setFillColor(ui::darken(theme->panel, 2));
@@ -1175,11 +1775,16 @@ namespace lilia::view
       bg.setOutlineColor(ui::darken(theme->panel, 18));
       rt.draw(bg);
 
-      // Update dynamic button labels/states
+      {
+        sf::Text t("Turn", *font, 12);
+        t.setFillColor(theme->subtle);
+        t.setPosition(ui::snap({btnTurnW.bounds().left + off.x, btnTurnW.bounds().top + off.y - 16.f}));
+        rt.draw(t);
+      }
+
       btnTurnW.setActive(meta.sideToMove == 'w');
       btnTurnB.setActive(meta.sideToMove == 'b');
 
-      // Castling: enabled if it’s already active OR structurally possible to enable.
       btnCastleK.setEnabled(meta.castleK || pb::hasCastleStructure(board, true, true));
       btnCastleQ.setEnabled(meta.castleQ || pb::hasCastleStructure(board, true, false));
       btnCastlek.setEnabled(meta.castlek || pb::hasCastleStructure(board, false, true));
@@ -1190,10 +1795,9 @@ namespace lilia::view
       btnCastlek.setActive(meta.castlek);
       btnCastleq.setActive(meta.castleq);
 
-      // EP label
       std::string epLbl;
       if (epSelecting)
-        epLbl = "EP: select...";
+        epLbl = "EP: select";
       else if (meta.epTarget)
         epLbl = "EP: " + pb::epString(meta);
       else
@@ -1201,7 +1805,6 @@ namespace lilia::view
       btnEp.setText(epLbl, 12);
       btnEp.setActive(epSelecting || meta.epTarget.has_value());
 
-      // Draw buttons
       btnTurnW.draw(rt, off);
       btnTurnB.draw(rt, off);
 
@@ -1212,10 +1815,6 @@ namespace lilia::view
 
       btnEp.draw(rt, off);
 
-      btnShortcuts.setActive(showShortcuts);
-      btnShortcuts.draw(rt, off);
-
-      // FEN box
       const bool ok = pb::kingsOk(board);
 
       sf::RectangleShape fenBox({fenBoxRect.width, fenBoxRect.height});
@@ -1225,7 +1824,6 @@ namespace lilia::view
       fenBox.setOutlineColor(ok ? sf::Color(122, 205, 164, 220) : sf::Color(220, 70, 70, 220));
       rt.draw(fenBox);
 
-      // Ellipsize cleanly (uses helper added to ui/style.hpp)
       const float maxW = fenBoxRect.width - 16.f;
       const unsigned fs = 13;
       std::string fenStr = fen();
@@ -1238,7 +1836,6 @@ namespace lilia::view
                                     fenBoxRect.top + off.y + (fenBoxRect.height - b.height) * 0.5f - b.top}));
       rt.draw(fenText);
 
-      // Copy
       btnCopyFen.setEnabled(ok);
       btnCopyFen.setAccent(true);
       btnCopyFen.draw(rt, off);
@@ -1254,7 +1851,7 @@ namespace lilia::view
       frame.setOutlineColor(ui::darken(theme->panel, 18));
       rt.draw(frame);
 
-      const bool previewing = (!dragging && selected.kind == ToolKind::Piece && hoverSquare.has_value());
+      const bool previewingAdd = (!dragging && selected.kind == ToolKind::Add && hoverSquare.has_value());
 
       for (int y = 0; y < 8; ++y)
       {
@@ -1270,7 +1867,7 @@ namespace lilia::view
           if (p != '.')
           {
             bool dimUnder = false;
-            if (previewing && hoverSquare)
+            if (previewingAdd && hoverSquare)
             {
               auto [hx, hy] = *hoverSquare;
               dimUnder = (hx == x && hy == y);
@@ -1280,7 +1877,7 @@ namespace lilia::view
         }
       }
 
-      // EP selection: show valid targets
+      // EP selection: show valid targets (DO NOT dim the board itself).
       if (epSelecting)
       {
         const int y = (meta.sideToMove == 'w') ? 2 : 5;
@@ -1289,12 +1886,18 @@ namespace lilia::view
           if (!pb::isValidEnPassantTarget(board, x, y, meta.sideToMove))
             continue;
 
+          sf::RectangleShape fill({sq, sq});
+          fill.setPosition(ui::snap({boardRect.left + off.x + shake.x + x * sq,
+                                     boardRect.top + off.y + y * sq}));
+          fill.setFillColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 40));
+          rt.draw(fill);
+
           sf::RectangleShape o({sq, sq});
           o.setPosition(ui::snap({boardRect.left + off.x + shake.x + x * sq,
                                   boardRect.top + off.y + y * sq}));
           o.setFillColor(sf::Color(0, 0, 0, 0));
-          o.setOutlineThickness(3.f);
-          o.setOutlineColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 175));
+          o.setOutlineThickness(4.f);
+          o.setOutlineColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 210));
           rt.draw(o);
         }
       }
@@ -1312,41 +1915,119 @@ namespace lilia::view
         rt.draw(o);
       }
 
-      // Hover square
+      // Hover square + tool-specific overlays
       if (hoverSquare)
       {
         auto [hx, hy] = *hoverSquare;
-        sf::RectangleShape h({sq, sq});
-        h.setPosition(ui::snap({boardRect.left + off.x + shake.x + hx * sq,
-                                boardRect.top + off.y + hy * sq}));
-        h.setFillColor(sf::Color(255, 255, 255, 0));
-        h.setOutlineThickness(2.f);
-        h.setOutlineColor(sf::Color(255, 255, 255, 90));
-        rt.draw(h);
+
+        const sf::Vector2f sqPos = ui::snap({boardRect.left + off.x + shake.x + hx * sq,
+                                             boardRect.top + off.y + hy * sq});
+
+        if (!dragging && selected.kind == ToolKind::Delete)
+        {
+          const char p = at(hx, hy);
+          if (p != '.')
+          {
+            sf::RectangleShape fill({sq, sq});
+            fill.setPosition(sqPos);
+            fill.setFillColor(sf::Color(220, 70, 70, 70));
+            rt.draw(fill);
+
+            sf::RectangleShape border({sq, sq});
+            border.setPosition(sqPos);
+            border.setFillColor(sf::Color::Transparent);
+            border.setOutlineThickness(3.f);
+            border.setOutlineColor(sf::Color(220, 70, 70, 220));
+            rt.draw(border);
+
+            sf::VertexArray xmark(sf::Lines, 4);
+            xmark[0].position = {sqPos.x + 6.f, sqPos.y + 6.f};
+            xmark[1].position = {sqPos.x + sq - 6.f, sqPos.y + sq - 6.f};
+            xmark[2].position = {sqPos.x + sq - 6.f, sqPos.y + 6.f};
+            xmark[3].position = {sqPos.x + 6.f, sqPos.y + sq - 6.f};
+            xmark[0].color = xmark[1].color = xmark[2].color = xmark[3].color = sf::Color(255, 255, 255, 170);
+            rt.draw(xmark);
+          }
+          else
+          {
+            sf::RectangleShape h({sq, sq});
+            h.setPosition(sqPos);
+            h.setFillColor(sf::Color(255, 255, 255, 0));
+            h.setOutlineThickness(2.f);
+            h.setOutlineColor(sf::Color(255, 255, 255, 70));
+            rt.draw(h);
+          }
+        }
+        else
+        {
+          sf::RectangleShape h({sq, sq});
+          h.setPosition(sqPos);
+          h.setFillColor(sf::Color(255, 255, 255, 0));
+          h.setOutlineThickness(2.f);
+          h.setOutlineColor(sf::Color(255, 255, 255, 90));
+          rt.draw(h);
+        }
 
         // Ghost preview in add mode
-        if (!dragging && selected.kind == ToolKind::Piece)
+        if (!dragging && selected.kind == ToolKind::Add)
         {
+          sf::RectangleShape tint({sq, sq});
+          tint.setPosition(sqPos);
+          tint.setFillColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 36));
+          rt.draw(tint);
+
+          sf::RectangleShape ring({sq, sq});
+          ring.setPosition(sqPos);
+          ring.setFillColor(sf::Color::Transparent);
+          ring.setOutlineThickness(3.f);
+          ring.setOutlineColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 150));
+          rt.draw(ring);
+
           sf::Sprite ghost = spriteForPiece(selected.piece);
           if (ghost.getTexture())
           {
             const bool illegal = wouldViolateKingUniqueness(hx, hy, selected.piece);
 
+            const sf::Vector2f center = ui::snap({sqPos.x + sq * 0.5f,
+                                                  sqPos.y + sq * 0.5f + pieceYOffset});
+
+            auto drawOutlinedGhost = [&](sf::Color outline, sf::Color fill)
+            {
+              sf::Sprite o = ghost;
+              o.setColor(outline);
+
+              static const std::array<sf::Vector2f, 4> offs{
+                  sf::Vector2f{-1.f, 0.f},
+                  sf::Vector2f{1.f, 0.f},
+                  sf::Vector2f{0.f, -1.f},
+                  sf::Vector2f{0.f, 1.f},
+              };
+
+              for (auto d : offs)
+              {
+                o.setPosition(ui::snap({center.x + d.x, center.y + d.y}));
+                rt.draw(o);
+              }
+
+              ghost.setColor(fill);
+              ghost.setPosition(center);
+              rt.draw(ghost);
+            };
+
             sf::Sprite shadow = ghost;
-            shadow.setColor(sf::Color(0, 0, 0, 120));
-            shadow.setPosition(ui::snap({boardRect.left + off.x + shake.x + hx * sq + sq * 0.5f + 2.f,
-                                         boardRect.top + off.y + hy * sq + sq * 0.5f + pieceYOffset + 3.f}));
+            shadow.setColor(sf::Color(0, 0, 0, 130));
+            shadow.setPosition(ui::snap({center.x + 2.f, center.y + 3.f}));
             rt.draw(shadow);
 
-            ghost.setColor(illegal ? sf::Color(255, 120, 120, 200) : sf::Color(255, 255, 255, 220));
-            ghost.setPosition(ui::snap({boardRect.left + off.x + shake.x + hx * sq + sq * 0.5f,
-                                        boardRect.top + off.y + hy * sq + sq * 0.5f + pieceYOffset}));
-            rt.draw(ghost);
+            if (illegal)
+              drawOutlinedGhost(sf::Color(60, 0, 0, 180), sf::Color(255, 120, 120, 235));
+            else
+              drawOutlinedGhost(sf::Color(0, 0, 0, 170), sf::Color(255, 255, 255, 240));
           }
         }
       }
 
-      // Drag sprite
+      // Drag/carry sprite (includes palette one-shot and palette drag)
       if (dragging && dragPiece != '.')
       {
         sf::Sprite ghost = spriteForPiece(dragPiece);
@@ -1364,6 +2045,51 @@ namespace lilia::view
       }
     }
 
+    void drawEpSelectionOverlay(sf::RenderTarget &rt, sf::Vector2f off, sf::Vector2f shake) const
+    {
+      const sf::Color dimC(0, 0, 0, 120);
+
+      const float bL = boardRect.left + off.x + shake.x;
+      const float bT = boardRect.top + off.y;
+      const float bR = bL + boardRect.width;
+      const float bB = bT + boardRect.height;
+
+      const float oL = bounds.left + off.x;
+      const float oT = bounds.top + off.y;
+      const float oR = oL + bounds.width;
+      const float oB = oT + bounds.height;
+
+      auto drawRect = [&](float l, float t, float w, float h)
+      {
+        if (w <= 0.f || h <= 0.f)
+          return;
+        sf::RectangleShape r({w, h});
+        r.setPosition(ui::snap({l, t}));
+        r.setFillColor(dimC);
+        rt.draw(r);
+      };
+
+      drawRect(oL, oT, bounds.width, bT - oT);
+      drawRect(oL, bB, bounds.width, oB - bB);
+      drawRect(oL, bT, bL - oL, boardRect.height);
+      drawRect(bR, bT, oR - bR, boardRect.height);
+
+      {
+        const auto r = btnEp.bounds();
+        sf::RectangleShape hl({r.width, r.height});
+        hl.setPosition(ui::snap({r.left + off.x, r.top + off.y}));
+        hl.setFillColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 26));
+        hl.setOutlineThickness(4.f);
+        hl.setOutlineColor(sf::Color(theme->accent.r, theme->accent.g, theme->accent.b, 220));
+        rt.draw(hl);
+      }
+
+      sf::Text t("Select en passant target square.", *font, 13);
+      t.setFillColor(sf::Color(255, 255, 255, 235));
+      t.setPosition(ui::snap({boardRect.left + off.x + shake.x + 8.f, boardRect.top + off.y - 22.f}));
+      rt.draw(t);
+    }
+
     void drawPiece(sf::RenderTarget &rt, sf::Vector2f off, sf::Vector2f shake,
                    int x, int y, char p, bool dimUnder) const
     {
@@ -1375,7 +2101,7 @@ namespace lilia::view
                                 boardRect.top + off.y + y * sq + sq * 0.5f + pieceYOffset}));
 
       if (dimUnder)
-        spr.setColor(sf::Color(255, 255, 255, 85));
+        spr.setColor(sf::Color(255, 255, 255, 45));
 
       rt.draw(spr);
     }
@@ -1386,7 +2112,7 @@ namespace lilia::view
         return;
 
       const float a = std::clamp(toastT / toastDur, 0.f, 1.f);
-      const float w = std::min(520.f, bottomRect.width * 0.75f);
+      const float w = std::min(560.f, bottomRect.width * 0.78f);
       const float h = 36.f;
 
       sf::FloatRect r{
@@ -1410,7 +2136,7 @@ namespace lilia::view
     void drawError(sf::RenderTarget &rt, sf::Vector2f off) const
     {
       const float a = std::clamp(errT / errDur, 0.f, 1.f);
-      const float w = std::min(520.f, boardRect.width * 0.92f);
+      const float w = std::min(560.f, boardRect.width * 0.92f);
       const float h = 44.f;
 
       sf::FloatRect r{boardRect.left + (boardRect.width - w) * 0.5f,
@@ -1428,75 +2154,6 @@ namespace lilia::view
       t.setFillColor(sf::Color(255, 255, 255, sf::Uint8(255 * a)));
       t.setPosition(ui::snap({r.left + off.x + 10.f, r.top + off.y + 6.f}));
       rt.draw(t);
-    }
-
-    void drawShortcutsPanel(sf::RenderTarget &rt, sf::Vector2f off) const
-    {
-      if (shortcutsRect.width <= 0.f || shortcutsRect.height <= 0.f)
-        return;
-
-      sf::RectangleShape bg({shortcutsRect.width, shortcutsRect.height});
-      bg.setPosition(ui::snap({shortcutsRect.left + off.x, shortcutsRect.top + off.y}));
-      bg.setFillColor(ui::darken(theme->panel, 6));
-      bg.setOutlineThickness(1.f);
-      bg.setOutlineColor(ui::darken(theme->panel, 18));
-      rt.draw(bg);
-
-      sf::Text title("Shortcuts", *font, 12);
-      title.setFillColor(theme->subtle);
-      title.setPosition(ui::snap({shortcutsRect.left + off.x + 10.f, shortcutsRect.top + off.y + 8.f}));
-      rt.draw(title);
-
-      struct Item
-      {
-        const char *k;
-        const char *v;
-      };
-      static constexpr std::array<Item, 10> items{{
-          {"A", "Add"},
-          {"M", "Move"},
-          {"Tab", "Toggle add color"},
-          {"1-6", "Pieces"},
-          {"Shift+1-6", "Force black"},
-          {"Space", "Toggle turn"},
-          {"RMB", "Delete square"},
-          {"H", "Toggle shortcuts"},
-          {"C", "Clear"},
-          {"R", "Reset"},
-      }};
-
-      float x = shortcutsRect.left + off.x + 10.f;
-      float y = shortcutsRect.top + off.y + 28.f;
-
-      const float lineH = 18.f;
-      const float maxW = shortcutsRect.width - 20.f;
-
-      for (const auto &it : items)
-      {
-        sf::Text k(it.k, *font, 11);
-        sf::Text v(it.v, *font, 11);
-        k.setFillColor(theme->text);
-        v.setFillColor(theme->subtle);
-
-        auto kb = k.getLocalBounds();
-        auto vb = v.getLocalBounds();
-
-        const float itemW = (kb.width + 18.f + vb.width + 18.f);
-        if (x - (shortcutsRect.left + off.x + 10.f) + itemW > maxW)
-        {
-          x = shortcutsRect.left + off.x + 10.f;
-          y += lineH;
-        }
-
-        k.setPosition(ui::snap({x, y}));
-        rt.draw(k);
-        v.setPosition(ui::snap({x + kb.width + 18.f, y}));
-        rt.draw(v);
-
-        x += itemW;
-        if (y > shortcutsRect.top + off.y + shortcutsRect.height - 24.f)
-          break;
-      }
     }
   };
 
@@ -1520,7 +2177,8 @@ namespace lilia::view
     else
       m->resetToStart(false);
 
-    m->enterAddDefault();
+    // Start on Move (per requirement)
+    m->selected = Impl::ToolSelection::move();
   }
 
   void PositionBuilder::setTheme(const ui::Theme *t)
