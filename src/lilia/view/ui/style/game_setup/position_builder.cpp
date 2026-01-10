@@ -165,6 +165,15 @@ namespace lilia::view
     };
     mutable std::array<PieceBtn, 12> pieceBtns{};
 
+    // --- placement failure reporting (for correct user-facing message) ---
+    enum class SetFailReason
+    {
+      None,
+      KingUniqueness,
+      PawnOnLastRank
+    };
+    mutable SetFailReason lastSetFail{SetFailReason::None};
+
     // ---------- construction / defaults ----------
     Impl()
     {
@@ -191,6 +200,58 @@ namespace lilia::view
         return 2.f;
       }
       return 0.f;
+    }
+
+    // ---------- pawn-on-last-rank rule ----------
+    static bool isPawn(char p)
+    {
+      const char l = char(std::tolower(static_cast<unsigned char>(p)));
+      return l == 'p';
+    }
+
+    static bool isLastRank(int y) { return y == 0 || y == 7; }
+
+    static bool pawnsOk(const Board &b)
+    {
+      for (int x = 0; x < 8; ++x)
+      {
+        if (b[0][x] == 'P' || b[0][x] == 'p')
+          return false;
+        if (b[7][x] == 'P' || b[7][x] == 'p')
+          return false;
+      }
+      return true;
+    }
+
+    bool wouldViolatePawnLastRank(int /*x*/, int y, char newP) const
+    {
+      if (!isPawn(newP))
+        return false;
+      return isLastRank(y);
+    }
+
+    std::string failMsgAdd() const
+    {
+      switch (lastSetFail)
+      {
+      case SetFailReason::PawnOnLastRank:
+        return "Invalid placement.\nPawns cannot be placed on the first or eighth rank.";
+      case SetFailReason::KingUniqueness:
+      default:
+        return "Kings must be unique per color.\nUse Move to reposition an existing king.";
+      }
+    }
+
+    std::string failMsgDrop() const
+    {
+      switch (lastSetFail)
+      {
+      case SetFailReason::PawnOnLastRank:
+        return "Invalid drop.\nPawns cannot be placed on the first or eighth rank.";
+      case SetFailReason::KingUniqueness:
+      default:
+        return "Invalid drop.\nKings must be unique per color.";
+      }
     }
 
     void applyThemeFont()
@@ -303,9 +364,9 @@ namespace lilia::view
       // Copy FEN
       btnCopyFen.setOnClick([&]
                             {
-        if (!pb::kingsOk(board))
+        if (!pb::kingsOk(board) || !pawnsOk(board))
         {
-          invalidAction("Cannot copy FEN.\nPosition must contain exactly one king per side.");
+          invalidAction("Cannot copy FEN.\nPosition must contain exactly one king per side\nand no pawns on the first or eighth rank.");
           return;
         }
         sanitizeMeta();
@@ -508,6 +569,8 @@ namespace lilia::view
     {
       if (!pb::kingsOk(board))
         return {};
+      if (!pawnsOk(board))
+        return {};
       return fen();
     }
 
@@ -576,8 +639,20 @@ namespace lilia::view
 
     bool trySet(int x, int y, char p, bool remember)
     {
-      if ((p == 'K' || p == 'k') && wouldViolateKingUniqueness(x, y, p))
+      lastSetFail = SetFailReason::None;
+
+      // Rule: pawns may not be placed on the first or eighth rank.
+      if ((p == 'P' || p == 'p') && isLastRank(y))
+      {
+        lastSetFail = SetFailReason::PawnOnLastRank;
         return false;
+      }
+
+      if ((p == 'K' || p == 'k') && wouldViolateKingUniqueness(x, y, p))
+      {
+        lastSetFail = SetFailReason::KingUniqueness;
+        return false;
+      }
 
       set(x, y, p);
       refreshKings();
@@ -806,7 +881,7 @@ namespace lilia::view
         btnLeftReset.setBounds({x, yBottom + btnH + g, w, btnH});
       }
 
-      // Right panel: piece grid layout (no hotkeys button anymore; grid is vertically centered cleaner)
+      // Right panel: piece grid layout
       {
         const float padR = 10.f;
         const float left = rightRect.left + padR;
@@ -832,7 +907,11 @@ namespace lilia::view
         pieceBtns[4].r = rectAt(1, 1, y0);
         pieceBtns[5].r = rectAt(2, 1, y0);
 
-        float y1 = y0 + 2.f * cell + cellGap + sep;
+        // Fix: black piece buttons were drawn with an extra Y offset previously, causing hover/click mismatch.
+        // Bake that offset into geometry instead so visuals and hit-testing align.
+        static constexpr float kBlackPaletteYOffset = 50.f;
+        float y1 = y0 + 2.f * cell + cellGap + sep + kBlackPaletteYOffset;
+
         pieceBtns[6].r = rectAt(0, 0, y1);
         pieceBtns[7].r = rectAt(1, 0, y1);
         pieceBtns[8].r = rectAt(2, 0, y1);
@@ -1165,7 +1244,7 @@ namespace lilia::view
             auto [tx, ty] = *sqr;
             if (!trySet(tx, ty, chosen, true))
             {
-              invalidAction("Invalid drop.\nKings must be unique per color.");
+              invalidAction(failMsgDrop());
             }
           }
 
@@ -1379,7 +1458,7 @@ namespace lilia::view
           else
           {
             if (!trySet(x, y, selected.piece, true))
-              invalidAction("Kings must be unique per color.\nUse Move to reposition an existing king.");
+              invalidAction(failMsgAdd());
           }
 
           lastPaintSq = sqr;
@@ -1401,7 +1480,7 @@ namespace lilia::view
 
           if (!trySet(tx, ty, dragPiece, true))
           {
-            invalidAction("Invalid drop.\nKings must be unique per color.");
+            invalidAction(failMsgDrop());
             if (dragFrom)
             {
               auto [ox, oy] = *dragFrom;
@@ -1463,7 +1542,7 @@ namespace lilia::view
           lastPaintSq = sqr;
 
           if (!trySet(x, y, selected.piece, true))
-            invalidAction("Kings must be unique per color.\nUse Move to reposition an existing king.");
+            invalidAction(failMsgAdd());
           return true;
         }
 
@@ -1503,7 +1582,7 @@ namespace lilia::view
           auto [tx, ty] = *sqr;
           if (!trySet(tx, ty, dragPiece, true))
           {
-            invalidAction("Invalid drop.\nKings must be unique per color.");
+            invalidAction(failMsgDrop());
             if (dragFrom)
             {
               auto [ox, oy] = *dragFrom;
@@ -1652,7 +1731,7 @@ namespace lilia::view
       {
         std::string out = ui::ellipsizeMiddle(*font, fs, s, maxW);
         sf::Text tt(out, *font, fs);
-        tt.setFillColor(theme->subtle);
+        tt.setFillColor(theme->text);
         tt.setPosition(ui::snap({x, y}));
         rt.draw(tt);
         y += 30.f;
@@ -1708,7 +1787,7 @@ namespace lilia::view
 
       btnLeftReset.draw(rt, off);
 
-      // Draw piece buttons + icons
+      // Draw piece buttons + icons (no extra per-color draw offset; geometry matches hit-testing)
       for (int i = 0; i < 12; ++i)
       {
         const char pc = pieceBtns[i].pc;
@@ -1726,14 +1805,11 @@ namespace lilia::view
         if (spr.getTexture())
         {
           const auto r = pieceBtns[i].r;
-          float yoffset = 0.f;
-          if (i >= 6)
-            yoffset = 50.f;
-          sf::Vector2f buttonOff = off + sf::Vector2f(0.f, yoffset);
-          pieceBtns[i].bg.draw(rt, buttonOff);
+
+          pieceBtns[i].bg.draw(rt, off);
 
           spr.setPosition(ui::snap({r.left + off.x + r.width * 0.5f,
-                                    r.top + off.y + r.height * 0.5f + pieceYOffset * 0.25f + yoffset}));
+                                    r.top + off.y + r.height * 0.5f + pieceYOffset * 0.25f}));
           rt.draw(spr);
         }
       }
@@ -1781,7 +1857,7 @@ namespace lilia::view
 
       btnEp.draw(rt, off);
 
-      const bool ok = pb::kingsOk(board);
+      const bool ok = pb::kingsOk(board) && pawnsOk(board);
 
       sf::RectangleShape fenBox({fenBoxRect.width, fenBoxRect.height});
       fenBox.setPosition(ui::snap({fenBoxRect.left + off.x, fenBoxRect.top + off.y}));
@@ -1952,7 +2028,9 @@ namespace lilia::view
           sf::Sprite ghost = spriteForPiece(selected.piece);
           if (ghost.getTexture())
           {
-            const bool illegal = wouldViolateKingUniqueness(hx, hy, selected.piece);
+            const bool illegal =
+                wouldViolateKingUniqueness(hx, hy, selected.piece) ||
+                wouldViolatePawnLastRank(hx, hy, selected.piece);
 
             const sf::Vector2f center = ui::snap({sqPos.x + sq * 0.5f,
                                                   sqPos.y + sq * 0.5f + pieceYOffset});
