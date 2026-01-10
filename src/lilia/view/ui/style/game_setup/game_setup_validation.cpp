@@ -4,7 +4,6 @@
 #include <cctype>
 #include <sstream>
 
-// Reuse your PositionBuilder rule engine as the single source of truth.
 #include "lilia/view/ui/style/modals/game_setup/position_builder_rules.hpp"
 
 namespace lilia::view::ui::game_setup
@@ -32,28 +31,6 @@ namespace lilia::view::ui::game_setup
   {
     s.erase(std::remove(s.begin(), s.end(), '\r'), s.end());
     s.erase(std::remove(s.begin(), s.end(), '\n'), s.end());
-  }
-
-  static bool is_piece_placement_char(char c)
-  {
-    switch (c)
-    {
-    case 'p':
-    case 'r':
-    case 'n':
-    case 'b':
-    case 'q':
-    case 'k':
-    case 'P':
-    case 'R':
-    case 'N':
-    case 'B':
-    case 'Q':
-    case 'K':
-      return true;
-    default:
-      return false;
-    }
   }
 
   std::string normalize_fen(std::string fen)
@@ -88,67 +65,7 @@ namespace lilia::view::ui::game_setup
   std::optional<std::string> validate_fen_basic(const std::string &fenRaw)
   {
     const std::string fen = normalize_fen(fenRaw);
-    auto parts = split_ws(fen);
-    if (parts.size() != 6)
-      return std::string("needs 6 fields");
-
-    const std::string &placement = parts[0];
-    int ranks = 0;
-    int fileCount = 0;
-
-    for (char c : placement)
-    {
-      if (c == '/')
-      {
-        if (fileCount != 8)
-          return std::string("rank not 8");
-        ranks += 1;
-        fileCount = 0;
-        continue;
-      }
-      if (c >= '1' && c <= '8')
-      {
-        fileCount += (c - '0');
-        continue;
-      }
-      if (!is_piece_placement_char(c))
-        return std::string("bad char");
-      fileCount += 1;
-      if (fileCount > 8)
-        return std::string("rank overflow");
-    }
-
-    if (fileCount != 8)
-      return std::string("last rank not 8");
-    if (ranks != 7)
-      return std::string("not 8 ranks");
-
-    if (!(parts[1] == "w" || parts[1] == "b"))
-      return std::string("turn not w/b");
-
-    const std::string &cs = parts[2];
-    if (cs != "-")
-    {
-      for (char c : cs)
-        if (!(c == 'K' || c == 'Q' || c == 'k' || c == 'q'))
-          return std::string("castling invalid");
-    }
-
-    const std::string &ep = parts[3];
-    if (ep != "-")
-    {
-      if (ep.size() != 2)
-        return std::string("ep invalid");
-      if (!(ep[0] >= 'a' && ep[0] <= 'h'))
-        return std::string("ep file invalid");
-
-      // Stricter + correct FEN convention: EP target must be on rank 3 or 6.
-      if (!(ep[1] == '3' || ep[1] == '6'))
-        return std::string("ep rank invalid");
-    }
-
-    // halfmove/fullmove: permissive
-    return std::nullopt;
+    return pb::validateFenBasic(fen);
   }
 
   std::string sanitize_fen_playable(const std::string &fenRaw)
@@ -157,39 +74,340 @@ namespace lilia::view::ui::game_setup
     if (trim_copy(norm).empty())
       return {};
 
-    if (validate_fen_basic(norm).has_value())
+    if (pb::validateFenBasic(norm).has_value())
       return {};
 
     pb::Board b{};
     pb::FenMeta m{};
     pb::setFromFen(b, m, norm); // parses + pb::sanitizeMeta(b,m)
-    return pb::fen(b, m);       // canonical output (incl. EP/castling corrected)
+
+    // "playable" means your builder constraints apply:
+    if (!pb::kingsOk(b) || !pb::pawnsOk(b))
+      return {};
+
+    return pb::fen(b, m);
+  }
+
+  // ---------- PGN helpers (basic but materially improved) ----------
+
+  static bool parse_tag_pair_line(const std::string &line, std::string &outKey, std::string &outVal)
+  {
+    // Accept: [Key "Value"]
+    // Very small, strict parser (no escapes).
+    std::string s = trim_copy(line);
+    if (s.size() < 5)
+      return false;
+    if (s.front() != '[' || s.back() != ']')
+      return false;
+
+    s = s.substr(1, s.size() - 2); // inside brackets
+    s = trim_copy(s);
+
+    // key until space
+    size_t sp = s.find(' ');
+    if (sp == std::string::npos || sp == 0)
+      return false;
+
+    std::string key = s.substr(0, sp);
+    std::string rest = trim_copy(s.substr(sp + 1));
+    if (rest.size() < 2 || rest.front() != '"')
+      return false;
+
+    // find closing quote
+    size_t qend = rest.find('"', 1);
+    if (qend == std::string::npos)
+      return false;
+
+    std::string val = rest.substr(1, qend - 1);
+    std::string tail = trim_copy(rest.substr(qend + 1));
+    if (!tail.empty())
+      return false;
+
+    outKey = key;
+    outVal = val;
+    return true;
+  }
+
+  static std::string strip_brace_comments(std::string s)
+  {
+    // Remove {...} (non-nested, common in PGN)
+    std::string out;
+    out.reserve(s.size());
+    bool in = false;
+    for (char c : s)
+    {
+      if (!in && c == '{')
+      {
+        in = true;
+        continue;
+      }
+      if (in && c == '}')
+      {
+        in = false;
+        continue;
+      }
+      if (!in)
+        out.push_back(c);
+    }
+    return out;
+  }
+
+  static std::string strip_semicolon_comments(std::string s)
+  {
+    // Remove ';' to end-of-line comments
+    std::string out;
+    out.reserve(s.size());
+    bool inComment = false;
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+      char c = s[i];
+      if (!inComment && c == ';')
+      {
+        inComment = true;
+        continue;
+      }
+      if (inComment && c == '\n')
+      {
+        inComment = false;
+        out.push_back(c);
+        continue;
+      }
+      if (!inComment)
+        out.push_back(c);
+    }
+    return out;
+  }
+
+  static std::string strip_variations(std::string s)
+  {
+    // Remove (...) variations (supports nesting)
+    std::string out;
+    out.reserve(s.size());
+    int depth = 0;
+    for (char c : s)
+    {
+      if (c == '(')
+      {
+        ++depth;
+        continue;
+      }
+      if (c == ')')
+      {
+        if (depth > 0)
+          --depth;
+        continue;
+      }
+      if (depth == 0)
+        out.push_back(c);
+    }
+    return out;
+  }
+
+  static bool is_result_token(const std::string &tok)
+  {
+    return tok == "1-0" || tok == "0-1" || tok == "1/2-1/2" || tok == "*";
+  }
+
+  static bool is_move_number_token(const std::string &tok)
+  {
+    // Examples: "1." or "23..." or "7.."
+    if (tok.empty())
+      return false;
+
+    size_t i = 0;
+    while (i < tok.size() && std::isdigit(static_cast<unsigned char>(tok[i])))
+      ++i;
+    if (i == 0)
+      return false;
+
+    // Must be followed by '.' one or more
+    size_t dots = 0;
+    while (i < tok.size() && tok[i] == '.')
+    {
+      ++dots;
+      ++i;
+    }
+    if (dots == 0)
+      return false;
+
+    // No other chars
+    return i == tok.size();
+  }
+
+  static bool looks_like_san(std::string tok)
+  {
+    tok = trim_copy(tok);
+    if (tok.empty())
+      return false;
+
+    // Drop NAG tokens like $1
+    if (!tok.empty() && tok[0] == '$')
+      return false;
+
+    // Strip trailing annotation/check markers: ! ? + #
+    while (!tok.empty())
+    {
+      char c = tok.back();
+      if (c == '!' || c == '?' || c == '+' || c == '#')
+        tok.pop_back();
+      else
+        break;
+    }
+    if (tok.empty())
+      return false;
+
+    // Strip optional e.p. suffix
+    auto ends_with = [](const std::string &s, const std::string &suffix)
+    {
+      return s.size() >= suffix.size() &&
+             s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+    if (ends_with(tok, "e.p."))
+      tok.resize(tok.size() - 4);
+    else if (ends_with(tok, "ep"))
+      tok.resize(tok.size() - 2);
+
+    tok = trim_copy(tok);
+    if (tok.empty())
+      return false;
+
+    // Castling
+    if (tok == "O-O" || tok == "O-O-O")
+      return true;
+
+    auto isFile = [](char c)
+    { return c >= 'a' && c <= 'h'; };
+    auto isRank = [](char c)
+    { return c >= '1' && c <= '8'; };
+    auto isPiece = [](char c)
+    { return c == 'K' || c == 'Q' || c == 'R' || c == 'B' || c == 'N'; };
+    auto isPromo = [](char c)
+    { return c == 'Q' || c == 'R' || c == 'B' || c == 'N'; };
+
+    // Handle promotion suffix: e8=Q or e8Q
+    std::string core = tok;
+    if (core.size() >= 4 && core[core.size() - 2] == '=' && isPromo(core.back()))
+    {
+      core = core.substr(0, core.size() - 2);
+    }
+    else if (core.size() >= 3 && isPromo(core.back()))
+    {
+      // allow e8Q (non-standard but seen)
+      char df = core[core.size() - 3];
+      char dr = core[core.size() - 2];
+      if (isFile(df) && isRank(dr))
+        core = core.substr(0, core.size() - 1);
+    }
+
+    if (core.size() < 2)
+      return false;
+
+    // Destination square must be at end of core
+    const char destFile = core[core.size() - 2];
+    const char destRank = core[core.size() - 1];
+    if (!isFile(destFile) || !isRank(destRank))
+      return false;
+
+    std::string pre = core.substr(0, core.size() - 2);
+
+    // Optional capture 'x' in pre
+    bool capture = false;
+    size_t xPos = pre.find('x');
+    if (xPos != std::string::npos)
+    {
+      capture = true;
+      // must be only one 'x'
+      if (pre.find('x', xPos + 1) != std::string::npos)
+        return false;
+      pre.erase(xPos, 1);
+    }
+
+    if (pre.empty())
+    {
+      // Pawn push (e4)
+      return true;
+    }
+
+    if (isPiece(pre.front()))
+    {
+      // Piece move: [Piece][disambig]{capture}dest
+      std::string dis = pre.substr(1);
+      if (dis.size() > 2)
+        return false;
+      for (char c : dis)
+      {
+        if (!isFile(c) && !isRank(c))
+          return false;
+      }
+      (void)capture;
+      return true;
+    }
+
+    // Pawn capture must have origin file only: exd5 => after removing 'x', pre == "e"
+    if (pre.size() == 1 && isFile(pre[0]))
+      return capture; // must be a capture if origin file present
+
+    return false;
   }
 
   std::optional<std::string> extract_fen_tag(const std::string &pgn)
   {
-    const std::string key = "[FEN \"";
-    const size_t pos = pgn.find(key);
-    if (pos == std::string::npos)
-      return std::nullopt;
+    // Prefer tag-pair parsing over substring search.
+    std::istringstream iss(pgn);
+    std::string line;
+    while (std::getline(iss, line))
+    {
+      line = trim_copy(line);
+      if (line.empty())
+        continue;
+      if (line.front() != '[')
+        break; // done with tag section
 
-    const size_t start = pos + key.size();
-    const size_t end = pgn.find("\"]", start);
-    if (end == std::string::npos)
-      return std::nullopt;
+      std::string k, v;
+      if (!parse_tag_pair_line(line, k, v))
+        continue;
 
-    return pgn.substr(start, end - start);
+      if (k == "FEN")
+        return v;
+    }
+    return std::nullopt;
   }
 
   PgnStatus validate_pgn_basic(const std::string &pgnRaw)
   {
     PgnStatus st{};
-    const std::string pgn = trim_copy(pgnRaw);
+    std::string pgn = pgnRaw;
+    pgn = trim_copy(pgn);
 
     if (pgn.empty())
     {
       st.kind = PgnStatus::Kind::Empty;
       return st;
+    }
+
+    // Validate tag-pair section if present; extract FEN if present.
+    {
+      std::istringstream iss(pgn);
+      std::string line;
+      bool sawAnyTag = false;
+      while (std::getline(iss, line))
+      {
+        std::string t = trim_copy(line);
+        if (t.empty())
+          continue;
+
+        if (t.front() != '[')
+          break;
+
+        sawAnyTag = true;
+        std::string k, v;
+        if (!parse_tag_pair_line(t, k, v))
+        {
+          st.kind = PgnStatus::Kind::Error;
+          return st;
+        }
+      }
+      (void)sawAnyTag;
     }
 
     if (auto fen = extract_fen_tag(pgn))
@@ -205,14 +423,69 @@ namespace lilia::view::ui::game_setup
       return st;
     }
 
-    const bool looksLikeMoves =
-        (pgn.find("1.") != std::string::npos) || (pgn.find("...") != std::string::npos);
+    // Basic movetext plausibility:
+    // - strip comments/variations
+    // - require at least one plausible SAN/castle move OR a valid result token.
+    std::string movetext = pgn;
+    movetext = strip_semicolon_comments(movetext);
+    movetext = strip_brace_comments(movetext);
+    movetext = strip_variations(movetext);
 
-    const bool hasResult =
-        (pgn.find("1-0") != std::string::npos) || (pgn.find("0-1") != std::string::npos) ||
-        (pgn.find("1/2-1/2") != std::string::npos);
+    // Remove tag lines
+    {
+      std::istringstream iss(movetext);
+      std::ostringstream oss;
+      std::string line;
+      bool inTags = true;
+      while (std::getline(iss, line))
+      {
+        std::string t = trim_copy(line);
+        if (inTags && !t.empty() && t.front() == '[')
+          continue;
+        inTags = false;
+        oss << line << '\n';
+      }
+      movetext = oss.str();
+    }
 
-    st.kind = (looksLikeMoves || hasResult) ? PgnStatus::Kind::OkNoFen : PgnStatus::Kind::Error;
+    movetext = trim_copy(movetext);
+    if (movetext.empty())
+    {
+      // PGN with only tags is acceptable in this "basic" validator.
+      st.kind = PgnStatus::Kind::OkNoFen;
+      return st;
+    }
+
+    auto toks = split_ws(movetext);
+
+    bool hasResult = false;
+    int sanMoves = 0;
+
+    for (const auto &tok : toks)
+    {
+      if (is_result_token(tok))
+      {
+        hasResult = true;
+        continue;
+      }
+      if (is_move_number_token(tok))
+        continue;
+
+      // ignore NAGs: $<digits>
+      if (!tok.empty() && tok[0] == '$')
+        continue;
+
+      if (looks_like_san(tok))
+        ++sanMoves;
+    }
+
+    if (sanMoves > 0 || hasResult)
+    {
+      st.kind = PgnStatus::Kind::OkNoFen;
+      return st;
+    }
+
+    st.kind = PgnStatus::Kind::Error;
     return st;
   }
 

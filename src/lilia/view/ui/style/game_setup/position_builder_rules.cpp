@@ -62,10 +62,60 @@ namespace lilia::view::pb
     return wk == 1 && bk == 1;
   }
 
+  bool pawnsOk(const Board &b)
+  {
+    auto isPawn = [](char c)
+    { return c == 'P' || c == 'p'; };
+
+    // rank 8 (y=0) and rank 1 (y=7)
+    for (int x = 0; x < 8; ++x)
+    {
+      if (isPawn(at(b, x, 0)))
+        return false;
+      if (isPawn(at(b, x, 7)))
+        return false;
+    }
+    return true;
+  }
+
+  PlacementFailReason validateSetPiece(const Board &b, int x, int y, char newP)
+  {
+    if (!inBounds(x, y))
+      return PlacementFailReason::None;
+
+    if (newP == '.')
+      return PlacementFailReason::None;
+
+    // Pawn on last rank is never allowed in the builder.
+    if ((newP == 'P' || newP == 'p') && (y == 0 || y == 7))
+      return PlacementFailReason::PawnOnLastRank;
+
+    // King uniqueness: cannot have two kings of same color.
+    if (newP == 'K' || newP == 'k')
+    {
+      const char old = at(b, x, y);
+      if (old == newP)
+        return PlacementFailReason::None;
+
+      int count = 0;
+      for (int yy = 0; yy < 8; ++yy)
+        for (int xx = 0; xx < 8; ++xx)
+        {
+          if (xx == x && yy == y)
+            continue;
+          if (at(b, xx, yy) == newP)
+            ++count;
+        }
+
+      if (count >= 1)
+        return PlacementFailReason::KingUniqueness;
+    }
+
+    return PlacementFailReason::None;
+  }
+
   bool hasCastleStructure(const Board &b, bool white, bool kingSide)
   {
-    // "Structurally possible" as per your builder’s design (and your request):
-    // king on e-file back rank, rook on a/h back rank.
     const int y = white ? 7 : 0;
     const char K = white ? 'K' : 'k';
     const char R = white ? 'R' : 'r';
@@ -78,18 +128,17 @@ namespace lilia::view::pb
 
   bool isValidEnPassantTarget(const Board &b, int x, int y, char sideToMove)
   {
-    // Strict validity (as requested): target square must be a legal ep target for side to move.
     if (!inBounds(x, y))
       return false;
     if (at(b, x, y) != '.')
       return false;
 
     const bool stmWhite = (sideToMove == 'w');
-    const int requiredY = stmWhite ? 2 : 5; // rank 6 (y=2) if white to move; rank 3 (y=5) if black to move
+    const int requiredY = stmWhite ? 2 : 5;
     if (y != requiredY)
       return false;
 
-    const int pawnY = y + (stmWhite ? 1 : -1); // pawn that moved two squares sits behind target
+    const int pawnY = y + (stmWhite ? 1 : -1);
     if (!inBounds(x, pawnY))
       return false;
 
@@ -97,7 +146,6 @@ namespace lilia::view::pb
     if (at(b, x, pawnY) != movedPawn)
       return false;
 
-    // Capturing pawn of side-to-move must be adjacent on pawnY.
     const char captPawn = stmWhite ? 'P' : 'p';
     bool adj = false;
     if (x > 0 && at(b, x - 1, pawnY) == captPawn)
@@ -116,7 +164,6 @@ namespace lilia::view::pb
     m.halfmove = std::max(0, m.halfmove);
     m.fullmove = std::max(1, m.fullmove);
 
-    // Castling rights cannot be "on" if the required king/rook are not present on start squares.
     if (m.castleK && !hasCastleStructure(b, true, true))
       m.castleK = false;
     if (m.castleQ && !hasCastleStructure(b, true, false))
@@ -126,7 +173,6 @@ namespace lilia::view::pb
     if (m.castleq && !hasCastleStructure(b, false, false))
       m.castleq = false;
 
-    // EP cannot be "on" if it is not a valid EP target right now.
     if (m.epTarget)
     {
       auto [ex, ey] = *m.epTarget;
@@ -193,7 +239,6 @@ namespace lilia::view::pb
 
   std::string fen(const Board &b, const FenMeta &m)
   {
-    // Note: caller should sanitizeMeta(b,m) before calling if they want strict consistency.
     return placementToFen(b) + " " + std::string(1, m.sideToMove) + " " +
            castlingString(m) + " " + epString(m) + " " +
            std::to_string(m.halfmove) + " " + std::to_string(m.fullmove);
@@ -209,11 +254,129 @@ namespace lilia::view::pb
     return out;
   }
 
+  static bool is_piece_placement_char(char c)
+  {
+    switch (c)
+    {
+    case 'p':
+    case 'r':
+    case 'n':
+    case 'b':
+    case 'q':
+    case 'k':
+    case 'P':
+    case 'R':
+    case 'N':
+    case 'B':
+    case 'Q':
+    case 'K':
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  static std::vector<std::string> split_char(const std::string &s, char delim)
+  {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : s)
+    {
+      if (c == delim)
+      {
+        out.push_back(cur);
+        cur.clear();
+      }
+      else
+      {
+        cur.push_back(c);
+      }
+    }
+    out.push_back(cur);
+    return out;
+  }
+
+  std::optional<std::string> validateFenBasic(const std::string &fen)
+  {
+    const auto parts = split_ws(fen);
+    if (parts.size() != 6)
+      return std::string("needs 6 fields");
+
+    const std::string &placement = parts[0];
+
+    // placement ranks
+    const auto ranks = split_char(placement, '/');
+    if (ranks.size() != 8)
+      return std::string("not 8 ranks");
+
+    // builder rule: no pawns on rank 8 or rank 1
+    auto hasPawn = [](const std::string &rankStr)
+    {
+      return rankStr.find('P') != std::string::npos || rankStr.find('p') != std::string::npos;
+    };
+    if (hasPawn(ranks.front()) || hasPawn(ranks.back()))
+      return std::string("pawn on last rank");
+
+    // structural rank validation
+    for (const auto &r : ranks)
+    {
+      int fileCount = 0;
+      for (char c : r)
+      {
+        if (c >= '1' && c <= '8')
+        {
+          fileCount += (c - '0');
+        }
+        else
+        {
+          if (!is_piece_placement_char(c))
+            return std::string("bad char");
+          fileCount += 1;
+        }
+
+        if (fileCount > 8)
+          return std::string("rank overflow");
+      }
+
+      if (fileCount != 8)
+        return std::string("rank not 8");
+    }
+
+    // side to move
+    if (!(parts[1] == "w" || parts[1] == "b"))
+      return std::string("turn not w/b");
+
+    // castling field characters
+    const std::string &cs = parts[2];
+    if (cs != "-")
+    {
+      for (char c : cs)
+      {
+        if (!(c == 'K' || c == 'Q' || c == 'k' || c == 'q'))
+          return std::string("castling invalid");
+      }
+    }
+
+    // ep field shape
+    const std::string &ep = parts[3];
+    if (ep != "-")
+    {
+      if (ep.size() != 2)
+        return std::string("ep invalid");
+      if (!(ep[0] >= 'a' && ep[0] <= 'h'))
+        return std::string("ep file invalid");
+      if (!(ep[1] == '3' || ep[1] == '6'))
+        return std::string("ep rank invalid");
+    }
+
+    // halfmove/fullmove: intentionally permissive here (sanitizeMeta clamps later)
+    return std::nullopt;
+  }
+
   void setFromFen(Board &b, FenMeta &m, const std::string &fenStr)
   {
     clearBoard(b);
 
-    // Safe defaults
     m.sideToMove = 'w';
     m.castleK = m.castleQ = m.castlek = m.castleq = false;
     m.epTarget.reset();

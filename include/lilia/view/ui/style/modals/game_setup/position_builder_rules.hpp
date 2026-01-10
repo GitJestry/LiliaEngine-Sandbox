@@ -36,6 +36,24 @@ namespace lilia::view::pb
   void countKings(const Board &b, int &whiteKings, int &blackKings);
   bool kingsOk(const Board &b);
 
+  // --- pawn constraints ---
+  // Blocks any position where pawns are placed on rank 8 or rank 1 (i.e., y==0 or y==7).
+  // This is a hard rule for a position builder: such pawns must be represented as promoted pieces.
+  bool pawnsOk(const Board &b);
+
+  // --- per-move placement validation (single source of truth for UI placement rules) ---
+  enum class PlacementFailReason
+  {
+    None,
+    KingUniqueness, // cannot place a 2nd king of same color
+    PawnOnLastRank  // pawns cannot be placed on rank 1 or 8
+  };
+
+  // Validates whether placing `newP` at (x,y) is allowed under builder rules.
+  // - Accepts '.' (always allowed)
+  // - Does NOT mutate the board.
+  PlacementFailReason validateSetPiece(const Board &b, int x, int y, char newP);
+
   // --- castling / en-passant validation ---
   bool hasCastleStructure(const Board &b, bool white, bool kingSide);
   bool isValidEnPassantTarget(const Board &b, int x, int y, char sideToMove);
@@ -54,5 +72,10 @@ namespace lilia::view::pb
 
   // Convenience: fill board with '.'.
   void clearBoard(Board &b);
+
+  // --- FEN structural validation (single source of truth for UI / setup validation) ---
+  // Expects a normalized FEN with 6 fields (placement side castling ep halfmove fullmove).
+  // Returns error string if invalid, otherwise std::nullopt.
+  std::optional<std::string> validateFenBasic(const std::string &fen);
 
 } // namespace lilia::view::pb

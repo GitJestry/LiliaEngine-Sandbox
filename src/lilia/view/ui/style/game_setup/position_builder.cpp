@@ -202,34 +202,6 @@ namespace lilia::view
       return 0.f;
     }
 
-    // ---------- pawn-on-last-rank rule ----------
-    static bool isPawn(char p)
-    {
-      const char l = char(std::tolower(static_cast<unsigned char>(p)));
-      return l == 'p';
-    }
-
-    static bool isLastRank(int y) { return y == 0 || y == 7; }
-
-    static bool pawnsOk(const Board &b)
-    {
-      for (int x = 0; x < 8; ++x)
-      {
-        if (b[0][x] == 'P' || b[0][x] == 'p')
-          return false;
-        if (b[7][x] == 'P' || b[7][x] == 'p')
-          return false;
-      }
-      return true;
-    }
-
-    bool wouldViolatePawnLastRank(int /*x*/, int y, char newP) const
-    {
-      if (!isPawn(newP))
-        return false;
-      return isLastRank(y);
-    }
-
     std::string failMsgAdd() const
     {
       switch (lastSetFail)
@@ -364,7 +336,7 @@ namespace lilia::view
       // Copy FEN
       btnCopyFen.setOnClick([&]
                             {
-        if (!pb::kingsOk(board) || !pawnsOk(board))
+        if (!pb::kingsOk(board) || !pb::pawnsOk(board))
         {
           invalidAction("Cannot copy FEN.\nPosition must contain exactly one king per side\nand no pawns on the first or eighth rank.");
           return;
@@ -569,7 +541,7 @@ namespace lilia::view
     {
       if (!pb::kingsOk(board))
         return {};
-      if (!pawnsOk(board))
+      if (!pb::pawnsOk(board))
         return {};
       return fen();
     }
@@ -637,20 +609,28 @@ namespace lilia::view
       return count >= 1;
     }
 
+    static SetFailReason mapFail(pb::PlacementFailReason r)
+    {
+      switch (r)
+      {
+      case pb::PlacementFailReason::PawnOnLastRank:
+        return SetFailReason::PawnOnLastRank;
+      case pb::PlacementFailReason::KingUniqueness:
+        return SetFailReason::KingUniqueness;
+      case pb::PlacementFailReason::None:
+      default:
+        return SetFailReason::None;
+      }
+    }
+
     bool trySet(int x, int y, char p, bool remember)
     {
       lastSetFail = SetFailReason::None;
 
-      // Rule: pawns may not be placed on the first or eighth rank.
-      if ((p == 'P' || p == 'p') && isLastRank(y))
+      const pb::PlacementFailReason v = pb::validateSetPiece(board, x, y, p);
+      if (v != pb::PlacementFailReason::None)
       {
-        lastSetFail = SetFailReason::PawnOnLastRank;
-        return false;
-      }
-
-      if ((p == 'K' || p == 'k') && wouldViolateKingUniqueness(x, y, p))
-      {
-        lastSetFail = SetFailReason::KingUniqueness;
+        lastSetFail = mapFail(v);
         return false;
       }
 
@@ -1857,7 +1837,7 @@ namespace lilia::view
 
       btnEp.draw(rt, off);
 
-      const bool ok = pb::kingsOk(board) && pawnsOk(board);
+      const bool ok = pb::kingsOk(board) && pb::pawnsOk(board);
 
       sf::RectangleShape fenBox({fenBoxRect.width, fenBoxRect.height});
       fenBox.setPosition(ui::snap({fenBoxRect.left + off.x, fenBoxRect.top + off.y}));
@@ -2029,8 +2009,7 @@ namespace lilia::view
           if (ghost.getTexture())
           {
             const bool illegal =
-                wouldViolateKingUniqueness(hx, hy, selected.piece) ||
-                wouldViolatePawnLastRank(hx, hy, selected.piece);
+                pb::validateSetPiece(board, hx, hy, selected.piece) != pb::PlacementFailReason::None;
 
             const sf::Vector2f center = ui::snap({sqPos.x + sq * 0.5f,
                                                   sqPos.y + sq * 0.5f + pieceYOffset});
