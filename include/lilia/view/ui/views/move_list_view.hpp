@@ -50,6 +50,7 @@ namespace lilia::view
       Rematch,
       ShowFen
     };
+
     [[nodiscard]] Option getOptionAt(const Entity::Position &pos) const;
     void setGameOver(bool over);
 

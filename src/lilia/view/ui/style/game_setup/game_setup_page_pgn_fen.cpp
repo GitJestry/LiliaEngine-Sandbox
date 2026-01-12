@@ -2,6 +2,8 @@
 
 #include <SFML/Window/Clipboard.hpp>
 
+#include <algorithm>
+
 namespace lilia::view::ui::game_setup
 {
   PagePgnFen::PagePgnFen(const sf::Font &font, const ui::Theme &theme, ui::FocusManager &focus)
@@ -66,7 +68,32 @@ namespace lilia::view::ui::game_setup
     m_fenField.setText(s);
   }
 
-  void PagePgnFen::setPgnText(const std::string &pgn) { m_pgnField.setText(pgn); }
+  void PagePgnFen::setPgnText(const std::string &pgn, bool fromUpload)
+  {
+    std::string s = pgn;
+
+    // IMPORTANT: do NOT strip '\n' from PGN (newlines are meaningful separators).
+    // We only remove '\r' so the editor stores LF consistently.
+    s.erase(std::remove(s.begin(), s.end(), '\r'), s.end());
+
+    // Upload should show header first; paste/manual edits can keep end behavior.
+    m_pgnField.setText(std::move(s), /*scrollToEnd=*/!fromUpload);
+
+    // If user uploads a PGN, default the resolved path to PGN.
+    if (fromUpload)
+      m_source = Source::Pgn;
+
+    revalidate(true);
+    refresh_resolved_field();
+  }
+
+  std::string PagePgnFen::pgnText() const { return m_pgnField.text(); }
+  std::string PagePgnFen::pgnFilename() const { return m_pgnFilename; }
+
+  bool PagePgnFen::hasPgnText() const
+  {
+    return !trim_copy(m_pgnField.text()).empty();
+  }
 
   void PagePgnFen::setSource(Source s) { m_source = s; }
   Source PagePgnFen::source() const { return m_source; }
@@ -311,7 +338,7 @@ namespace lilia::view::ui::game_setup
         else if (m_pgnStatus.kind == PgnStatus::Kind::OkNoFen)
         {
           kind = 1;
-          txt = "Moves";
+          txt = "Valid";
         }
         else
         {
@@ -448,17 +475,22 @@ namespace lilia::view::ui::game_setup
   PagePgnFen::ResolvedPath PagePgnFen::resolved_path() const
   {
     const bool fenOk = m_fenOk;
-    const bool pgnHasFen = m_pgnStatus.fenFromTag.has_value();
+
+    const bool pgnOk =
+        (m_pgnStatus.kind == PgnStatus::Kind::OkFen) ||
+        (m_pgnStatus.kind == PgnStatus::Kind::OkNoFen);
 
     switch (m_source)
     {
     case Source::Fen:
       return fenOk ? ResolvedPath::Fen : ResolvedPath::Start;
+
     case Source::Pgn:
-      return pgnHasFen ? ResolvedPath::Pgn : ResolvedPath::Start;
+      return pgnOk ? ResolvedPath::Pgn : ResolvedPath::Start;
+
     case Source::Auto:
     default:
-      if (pgnHasFen)
+      if (pgnOk)
         return ResolvedPath::Pgn;
       if (fenOk)
         return ResolvedPath::Fen;
@@ -469,7 +501,6 @@ namespace lilia::view::ui::game_setup
   std::string PagePgnFen::compute_resolved_fen() const
   {
     const bool fenOk = m_fenOk;
-    const bool pgnHasFen = m_pgnStatus.fenFromTag.has_value();
 
     switch (m_source)
     {
@@ -477,12 +508,20 @@ namespace lilia::view::ui::game_setup
       return fenOk ? m_fenSanitized : core::START_FEN;
 
     case Source::Pgn:
-      return pgnHasFen ? *m_pgnStatus.fenFromTag : core::START_FEN;
+      if (m_pgnStatus.kind == PgnStatus::Kind::OkFen && m_pgnStatus.fenFromTag)
+        return *m_pgnStatus.fenFromTag;
+
+      if (m_pgnStatus.kind == PgnStatus::Kind::OkNoFen)
+        return core::START_FEN; // replay still starts from standard
+
+      return core::START_FEN;
 
     case Source::Auto:
     default:
-      if (pgnHasFen)
+      if (m_pgnStatus.kind == PgnStatus::Kind::OkFen && m_pgnStatus.fenFromTag)
         return *m_pgnStatus.fenFromTag;
+      if (m_pgnStatus.kind == PgnStatus::Kind::OkNoFen)
+        return core::START_FEN;
       if (fenOk)
         return m_fenSanitized;
       return core::START_FEN;

@@ -10,6 +10,7 @@
 #include "lilia/view/ui/screens/game_view.hpp"
 #include "lilia/view/ui/screens/start_screen.hpp"
 #include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/model/analysis/pgn_reader.hpp"
 
 namespace lilia::app
 {
@@ -68,10 +69,30 @@ namespace lilia::app
         lilia::view::GameView gameView(window, blackIsBot, whiteIsBot);
         lilia::controller::GameController gameController(gameView, chessGame);
 
-        gameController.startGame(startFen, whiteIsBot, blackIsBot,
-                                 whiteThinkMs, whiteDepth,
-                                 blackThinkMs, blackDepth,
-                                 timeEnabled, baseSeconds, incrementSeconds);
+        if (cfg.startMode == view::StartMode::ReplayPgn)
+        {
+          lilia::model::analysis::GameRecord rec;
+          std::string err;
+          if (!lilia::model::analysis::parsePgnToRecord(cfg.pgnText, rec, &err))
+          {
+            // Fallback: if parse fails, just start from cfg.fen
+            gameController.startGame(startFen, whiteIsBot, blackIsBot,
+                                     whiteThinkMs, whiteDepth,
+                                     blackThinkMs, blackDepth,
+                                     timeEnabled, baseSeconds, incrementSeconds);
+          }
+          else
+          {
+            gameController.startReplay(rec);
+          }
+        }
+        else
+        {
+          gameController.startGame(startFen, whiteIsBot, blackIsBot,
+                                   whiteThinkMs, whiteDepth,
+                                   blackThinkMs, blackDepth,
+                                   timeEnabled, baseSeconds, incrementSeconds);
+        }
 
         sf::Clock clock;
         while (window.isOpen() &&

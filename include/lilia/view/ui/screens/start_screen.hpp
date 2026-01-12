@@ -7,8 +7,18 @@
 #include "lilia/view/ui/style/modals/bot_catalog_modal.hpp"
 #include "lilia/view/ui/style/theme_cache.hpp"
 
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+
 namespace lilia::view
 {
+
+  enum class StartMode
+  {
+    NewGame,
+    ReplayPgn
+  };
 
   struct StartConfig
   {
@@ -19,10 +29,15 @@ namespace lilia::view
     EngineChoice blackEngine{};
 
     std::string fen;
+    StartMode startMode{StartMode::NewGame};
 
     int timeBaseSeconds{300};
     int timeIncrementSeconds{0};
     bool timeEnabled{false};
+
+    std::string pgnText;
+    std::string pgnFilename;
+    std::string pgnPath;
   };
 
   class StartScreen

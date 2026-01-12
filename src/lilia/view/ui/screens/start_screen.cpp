@@ -1,10 +1,16 @@
 #include "lilia/view/ui/screens/start_screen.hpp"
 
 #include <SFML/Graphics.hpp>
+#include <SFML/Window/Clipboard.hpp>
 
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #include "lilia/view/ui/style/color_palette_manager.hpp"
 #include "lilia/view/ui/interaction/focus.hpp"
@@ -16,10 +22,88 @@
 #include "lilia/view/ui/render/render_constants.hpp"
 
 #include "lilia/view/ui/style/modals/game_setup/game_setup_modal.hpp"
+#include "lilia/view/ui/style/modals/game_setup/game_setup_validation.hpp"
 #include "lilia/view/ui/style/modals/palette_picker_modal.hpp"
 
 namespace lilia::view
 {
+  namespace
+  {
+    static void stripTrailingNewlines(std::string &s)
+    {
+      while (!s.empty() && (s.back() == '\n' || s.back() == '\r'))
+        s.pop_back();
+    }
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <commdlg.h>
+
+    static std::optional<std::string> openPgnFileDialog()
+    {
+      char fileBuf[MAX_PATH] = {0};
+
+      OPENFILENAMEA ofn;
+      ZeroMemory(&ofn, sizeof(ofn));
+      ofn.lStructSize = sizeof(ofn);
+      ofn.lpstrFile = fileBuf;
+      ofn.nMaxFile = MAX_PATH;
+      ofn.lpstrFilter = "PGN Files\0*.pgn;*.PGN;*.txt\0All Files\0*.*\0\0";
+      ofn.nFilterIndex = 1;
+      ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_EXPLORER;
+
+      if (GetOpenFileNameA(&ofn))
+        return std::string(fileBuf);
+
+      return std::nullopt;
+    }
+
+#else
+
+    static std::optional<std::string> popenReadAll(const std::string &cmd)
+    {
+      FILE *pipe = popen(cmd.c_str(), "r");
+      if (!pipe)
+        return std::nullopt;
+
+      std::string out;
+      char buf[1024];
+      while (fgets(buf, sizeof(buf), pipe))
+        out += buf;
+
+      pclose(pipe);
+      stripTrailingNewlines(out);
+      if (out.empty())
+        return std::nullopt;
+      return out;
+    }
+
+    static std::optional<std::string> openPgnFileDialog()
+    {
+#if defined(__APPLE__)
+      // Standard macOS tool; avoids adding dependencies.
+      auto path = popenReadAll("osascript -e 'POSIX path of (choose file with prompt \"Select PGN file\")' 2>/dev/null");
+      if (path)
+        return path;
+#else
+      // Linux: prefer zenity, then kdialog.
+      auto path = popenReadAll("zenity --file-selection --title=\"Select PGN file\" 2>/dev/null");
+      if (path)
+        return path;
+
+      path = popenReadAll("kdialog --getopenfilename . \"*.pgn *.PGN *.txt|PGN files\" 2>/dev/null");
+      if (path)
+        return path;
+#endif
+      return std::nullopt;
+    }
+
+#endif
+
+  } // namespace
 
   StartScreen::StartScreen(sf::RenderWindow &window) : m_window(window)
   {
@@ -163,10 +247,34 @@ namespace lilia::view
 
     loadBtn.setOnClick([&]
                        {
-    auto m = std::make_unique<ui::GameSetupModal>(m_font, theme, focus);
-    setupModal = m.get();
-    modals.push(std::move(m));
-    modals.layout(m_window.getSize()); });
+      auto m = std::make_unique<ui::GameSetupModal>(m_font, theme, focus);
+      setupModal = m.get();
+
+      // Provide the upload callback while the modal is open.
+      setupModal->setOnRequestPgnUpload([&, modalPtr = setupModal]
+      {
+        // Open dialog (platform-specific). Fallback: clipboard contains a path.
+        std::optional<std::string> path = openPgnFileDialog();
+        if (!path || path->empty())
+        {
+          const std::string clip = sf::Clipboard::getString().toAnsiString();
+          if (!clip.empty())
+            path = clip;
+        }
+
+        if (!path || path->empty())
+          return;
+
+        auto imported = ui::game_setup::import_pgn_file(*path);
+        if (!imported)
+          return;
+
+        modalPtr->setPgnFilename(imported->filename);
+        modalPtr->setPgnText(imported->pgn);
+      });
+
+      modals.push(std::move(m));
+      modals.layout(m_window.getSize()); });
 
     bool done = false;
     sf::Clock frame;
@@ -293,6 +401,7 @@ namespace lilia::view
     while (m_window.isOpen() && !done)
     {
       float dt = frame.restart().asSeconds();
+      (void)dt;
 
       sf::Event e{};
       while (m_window.pollEvent(e))
@@ -395,6 +504,23 @@ namespace lilia::view
       {
         if (auto fen = setupModal->resultFen())
           cfg.fen = *fen;
+
+        // If PGN exists, treat this as "Replay PGN" load.
+        if (auto pgn = setupModal->resultPgn())
+        {
+          cfg.pgnText = *pgn;
+          cfg.startMode = StartMode::ReplayPgn;
+
+          if (auto fn = setupModal->resultPgnFilename())
+            cfg.pgnFilename = *fn;
+        }
+        else
+        {
+          cfg.pgnText.clear();
+          cfg.pgnFilename.clear();
+          cfg.startMode = StartMode::NewGame;
+        }
+
         setupModal = nullptr;
       } });
 

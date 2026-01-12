@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 
 #include "lilia/view/ui/style/modals/game_setup/position_builder_rules.hpp"
@@ -79,31 +81,375 @@ namespace lilia::view::ui::game_setup
 
     pb::Board b{};
     pb::FenMeta m{};
-    pb::setFromFen(b, m, norm); // parses + pb::sanitizeMeta(b,m)
+    pb::setFromFen(b, m, norm);
 
-    // "playable" means your builder constraints apply:
     if (!pb::kingsOk(b) || !pb::pawnsOk(b))
       return {};
 
     return pb::fen(b, m);
   }
 
-  // ---------- PGN helpers (basic but materially improved) ----------
+  namespace
+  {
+    static void stripTrailingNewlines(std::string &s)
+    {
+      while (!s.empty() && (s.back() == '\n' || s.back() == '\r'))
+        s.pop_back();
+    }
+
+    static void normalizeLineEndings(std::string &s)
+    {
+      std::string out;
+      out.reserve(s.size());
+
+      for (std::size_t i = 0; i < s.size(); ++i)
+      {
+        const char c = s[i];
+        if (c == '\r')
+        {
+          if (i + 1 < s.size() && s[i + 1] == '\n')
+            ++i;
+          out.push_back('\n');
+        }
+        else
+        {
+          out.push_back(c);
+        }
+      }
+      s.swap(out);
+    }
+
+    static std::string readAllTextFile(const std::string &path)
+    {
+      std::ifstream in(path, std::ios::binary);
+      if (!in)
+        return {};
+
+      std::ostringstream ss;
+      ss << in.rdbuf();
+      std::string s = ss.str();
+
+      if (s.size() >= 3 &&
+          (static_cast<unsigned char>(s[0]) == 0xEF) &&
+          (static_cast<unsigned char>(s[1]) == 0xBB) &&
+          (static_cast<unsigned char>(s[2]) == 0xBF))
+      {
+        s.erase(0, 3);
+      }
+
+      return s;
+    }
+
+    static std::string filenameOnly(const std::string &path)
+    {
+      try
+      {
+        return std::filesystem::path(path).filename().string();
+      }
+      catch (...)
+      {
+        return {};
+      }
+    }
+
+    static bool hasPgnTagHeader(const std::string &pgn)
+    {
+      std::size_t i = 0;
+      while (i < pgn.size() && std::isspace(static_cast<unsigned char>(pgn[i])))
+        ++i;
+      return (i < pgn.size() && pgn[i] == '[');
+    }
+
+    static void rtrimInPlace(std::string &s)
+    {
+      while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
+        s.pop_back();
+    }
+
+    static std::string firstGameOnly(std::string pgn)
+    {
+      normalizeLineEndings(pgn);
+
+      const std::size_t firstEvent = pgn.find("[Event ");
+      if (firstEvent != std::string::npos)
+      {
+        const std::size_t nextEvent = pgn.find("[Event ", firstEvent + 1);
+        if (nextEvent != std::string::npos)
+        {
+          std::string cut = pgn.substr(0, nextEvent);
+          rtrimInPlace(cut);
+          return cut;
+        }
+      }
+
+      auto isWS = [](char c)
+      { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
+
+      auto isStandaloneTokenAt = [&](std::size_t pos, const std::string &tok) -> bool
+      {
+        if (pos + tok.size() > pgn.size())
+          return false;
+        if (pgn.compare(pos, tok.size(), tok) != 0)
+          return false;
+
+        const char prev = (pos == 0) ? ' ' : pgn[pos - 1];
+        const char next = (pos + tok.size() >= pgn.size()) ? ' ' : pgn[pos + tok.size()];
+        const bool prevOk = isWS(prev) || prev == '(' || prev == '{' || prev == ';';
+        const bool nextOk = isWS(next) || next == ')' || next == '}' || next == ';';
+        return prevOk && nextOk;
+      };
+
+      const std::string tokens[] = {"1-0", "0-1", "1/2-1/2", "*"};
+      for (std::size_t i = 0; i < pgn.size(); ++i)
+      {
+        for (const auto &tok : tokens)
+        {
+          if (!isStandaloneTokenAt(i, tok))
+            continue;
+
+          const std::size_t end = i + tok.size();
+
+          std::size_t j = end;
+          while (j < pgn.size() && std::isspace(static_cast<unsigned char>(pgn[j])))
+            ++j;
+
+          if (j < pgn.size() && pgn[j] == '[')
+          {
+            std::string cut = pgn.substr(0, end);
+            rtrimInPlace(cut);
+            return cut;
+          }
+        }
+      }
+
+      return pgn;
+    }
+
+    static std::string decoratePgnForEditor(std::string pgn, const std::string &fileName)
+    {
+      if (hasPgnTagHeader(pgn))
+        return pgn;
+
+      std::ostringstream out;
+      out << "[Event \"Imported PGN\"]\n"
+          << "[Site \"?\"]\n"
+          << "[Date \"????.??.??\"]\n"
+          << "[Round \"?\"]\n"
+          << "[White \"?\"]\n"
+          << "[Black \"?\"]\n"
+          << "[Result \"*\"]\n";
+      if (!fileName.empty())
+        out << "[Annotator \"File: " << fileName << "\"]\n";
+      out << "\n";
+      out << pgn;
+      return out.str();
+    }
+
+    static void mergeSplitMoveNumberDigits(std::string &pgn, std::size_t movetextStart)
+    {
+      for (std::size_t i = movetextStart; i + 3 < pgn.size();)
+      {
+        if (!std::isdigit(static_cast<unsigned char>(pgn[i])))
+        {
+          ++i;
+          continue;
+        }
+
+        std::size_t j = i + 1;
+        bool sawWs = false;
+        while (j < pgn.size() && (pgn[j] == ' ' || pgn[j] == '\t'))
+        {
+          sawWs = true;
+          ++j;
+        }
+        if (!sawWs || j >= pgn.size() || !std::isdigit(static_cast<unsigned char>(pgn[j])))
+        {
+          ++i;
+          continue;
+        }
+
+        std::size_t k = i;
+        while (k < pgn.size() &&
+               (std::isdigit(static_cast<unsigned char>(pgn[k])) || pgn[k] == ' ' || pgn[k] == '\t'))
+        {
+          ++k;
+        }
+        if (k >= pgn.size() || pgn[k] != '.')
+        {
+          ++i;
+          continue;
+        }
+
+        std::string digits;
+        digits.reserve(k - i);
+        for (std::size_t p = i; p < k; ++p)
+        {
+          if (std::isdigit(static_cast<unsigned char>(pgn[p])))
+            digits.push_back(pgn[p]);
+        }
+
+        pgn.replace(i, k - i, digits);
+        i += digits.size();
+      }
+    }
+
+    static void splitGluedSanAndMoveNumbers(std::string &pgn, std::size_t movetextStart)
+    {
+      for (std::size_t i = movetextStart + 1; i + 2 < pgn.size(); ++i)
+      {
+        if (!std::isdigit(static_cast<unsigned char>(pgn[i])) ||
+            !std::isdigit(static_cast<unsigned char>(pgn[i + 1])))
+          continue;
+
+        const char prev = pgn[i - 1];
+        if (!std::isalpha(static_cast<unsigned char>(prev)))
+          continue;
+
+        if (pgn[i] < '1' || pgn[i] > '8')
+          continue;
+
+        std::size_t j = i + 1;
+        while (j < pgn.size() && std::isdigit(static_cast<unsigned char>(pgn[j])))
+          ++j;
+
+        if (j < pgn.size() && pgn[j] == '.')
+        {
+          pgn.insert(i + 1, 1, ' ');
+          ++i;
+        }
+      }
+    }
+
+    static void insertSpaceBeforeMoveNumberToken(std::string &pgn, std::size_t movetextStart)
+    {
+      auto isWS = [](char c)
+      { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
+
+      for (std::size_t i = movetextStart + 1; i < pgn.size(); ++i)
+      {
+        if (!std::isdigit(static_cast<unsigned char>(pgn[i])))
+          continue;
+
+        const char prev = pgn[i - 1];
+        if (isWS(prev) || std::isdigit(static_cast<unsigned char>(prev)))
+          continue;
+
+        if (prev == '.' || prev == '(' || prev == '{')
+          continue;
+
+        std::size_t j = i;
+        while (j < pgn.size() && std::isdigit(static_cast<unsigned char>(pgn[j])))
+          ++j;
+
+        if (j < pgn.size() && pgn[j] == '.')
+        {
+          pgn.insert(i, 1, ' ');
+          ++i;
+        }
+      }
+    }
+
+    static std::string normalizePgnFormatting(std::string pgn)
+    {
+      normalizeLineEndings(pgn);
+
+      std::size_t movetextStart = 0;
+      {
+        std::size_t i = 0;
+        while (i < pgn.size() && std::isspace(static_cast<unsigned char>(pgn[i])))
+          ++i;
+
+        if (i < pgn.size() && pgn[i] == '[')
+        {
+          std::vector<std::string> tags;
+          std::size_t pos = i;
+
+          while (pos < pgn.size() && pgn[pos] == '[')
+          {
+            const std::size_t close = pgn.find(']', pos + 1);
+            if (close == std::string::npos)
+              break;
+
+            tags.emplace_back(pgn.substr(pos, close - pos + 1));
+
+            pos = close + 1;
+            while (pos < pgn.size() && (pgn[pos] == ' ' || pgn[pos] == '\t' || pgn[pos] == '\n'))
+              ++pos;
+
+            if (pos < pgn.size() && pgn[pos] == '[')
+              continue;
+
+            break;
+          }
+
+          std::size_t restStart = pos;
+          while (restStart < pgn.size() && (pgn[restStart] == ' ' || pgn[restStart] == '\t' || pgn[restStart] == '\n'))
+            ++restStart;
+
+          const std::string rest = (restStart < pgn.size()) ? pgn.substr(restStart) : std::string{};
+
+          std::string rebuilt;
+          rebuilt.reserve(pgn.size() + tags.size() + 8);
+
+          for (const auto &t : tags)
+          {
+            rebuilt += t;
+            rebuilt += '\n';
+          }
+          rebuilt += '\n';
+          movetextStart = rebuilt.size();
+          rebuilt += rest;
+
+          pgn.swap(rebuilt);
+        }
+        else
+        {
+          movetextStart = 0;
+        }
+      }
+
+      if (movetextStart < pgn.size())
+      {
+        mergeSplitMoveNumberDigits(pgn, movetextStart);
+        splitGluedSanAndMoveNumbers(pgn, movetextStart);
+        insertSpaceBeforeMoveNumberToken(pgn, movetextStart);
+      }
+
+      return pgn;
+    }
+
+  } // namespace
+
+  std::optional<ImportedPgnFile> import_pgn_file(const std::string &path)
+  {
+    ImportedPgnFile out{};
+    out.filename = filenameOnly(path);
+
+    std::string pgn = readAllTextFile(path);
+    if (pgn.empty())
+      return std::nullopt;
+
+    pgn = normalizePgnFormatting(std::move(pgn));
+    pgn = firstGameOnly(std::move(pgn));
+    pgn = normalizePgnFormatting(std::move(pgn));
+    pgn = decoratePgnForEditor(std::move(pgn), out.filename);
+
+    stripTrailingNewlines(pgn);
+    out.pgn = std::move(pgn);
+    return out;
+  }
 
   static bool parse_tag_pair_line(const std::string &line, std::string &outKey, std::string &outVal)
   {
-    // Accept: [Key "Value"]
-    // Very small, strict parser (no escapes).
     std::string s = trim_copy(line);
     if (s.size() < 5)
       return false;
     if (s.front() != '[' || s.back() != ']')
       return false;
 
-    s = s.substr(1, s.size() - 2); // inside brackets
+    s = s.substr(1, s.size() - 2);
     s = trim_copy(s);
 
-    // key until space
     size_t sp = s.find(' ');
     if (sp == std::string::npos || sp == 0)
       return false;
@@ -113,7 +459,6 @@ namespace lilia::view::ui::game_setup
     if (rest.size() < 2 || rest.front() != '"')
       return false;
 
-    // find closing quote
     size_t qend = rest.find('"', 1);
     if (qend == std::string::npos)
       return false;
@@ -128,231 +473,8 @@ namespace lilia::view::ui::game_setup
     return true;
   }
 
-  static std::string strip_brace_comments(std::string s)
-  {
-    // Remove {...} (non-nested, common in PGN)
-    std::string out;
-    out.reserve(s.size());
-    bool in = false;
-    for (char c : s)
-    {
-      if (!in && c == '{')
-      {
-        in = true;
-        continue;
-      }
-      if (in && c == '}')
-      {
-        in = false;
-        continue;
-      }
-      if (!in)
-        out.push_back(c);
-    }
-    return out;
-  }
-
-  static std::string strip_semicolon_comments(std::string s)
-  {
-    // Remove ';' to end-of-line comments
-    std::string out;
-    out.reserve(s.size());
-    bool inComment = false;
-    for (size_t i = 0; i < s.size(); ++i)
-    {
-      char c = s[i];
-      if (!inComment && c == ';')
-      {
-        inComment = true;
-        continue;
-      }
-      if (inComment && c == '\n')
-      {
-        inComment = false;
-        out.push_back(c);
-        continue;
-      }
-      if (!inComment)
-        out.push_back(c);
-    }
-    return out;
-  }
-
-  static std::string strip_variations(std::string s)
-  {
-    // Remove (...) variations (supports nesting)
-    std::string out;
-    out.reserve(s.size());
-    int depth = 0;
-    for (char c : s)
-    {
-      if (c == '(')
-      {
-        ++depth;
-        continue;
-      }
-      if (c == ')')
-      {
-        if (depth > 0)
-          --depth;
-        continue;
-      }
-      if (depth == 0)
-        out.push_back(c);
-    }
-    return out;
-  }
-
-  static bool is_result_token(const std::string &tok)
-  {
-    return tok == "1-0" || tok == "0-1" || tok == "1/2-1/2" || tok == "*";
-  }
-
-  static bool is_move_number_token(const std::string &tok)
-  {
-    // Examples: "1." or "23..." or "7.."
-    if (tok.empty())
-      return false;
-
-    size_t i = 0;
-    while (i < tok.size() && std::isdigit(static_cast<unsigned char>(tok[i])))
-      ++i;
-    if (i == 0)
-      return false;
-
-    // Must be followed by '.' one or more
-    size_t dots = 0;
-    while (i < tok.size() && tok[i] == '.')
-    {
-      ++dots;
-      ++i;
-    }
-    if (dots == 0)
-      return false;
-
-    // No other chars
-    return i == tok.size();
-  }
-
-  static bool looks_like_san(std::string tok)
-  {
-    tok = trim_copy(tok);
-    if (tok.empty())
-      return false;
-
-    // Drop NAG tokens like $1
-    if (!tok.empty() && tok[0] == '$')
-      return false;
-
-    // Strip trailing annotation/check markers: ! ? + #
-    while (!tok.empty())
-    {
-      char c = tok.back();
-      if (c == '!' || c == '?' || c == '+' || c == '#')
-        tok.pop_back();
-      else
-        break;
-    }
-    if (tok.empty())
-      return false;
-
-    // Strip optional e.p. suffix
-    auto ends_with = [](const std::string &s, const std::string &suffix)
-    {
-      return s.size() >= suffix.size() &&
-             s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
-    };
-    if (ends_with(tok, "e.p."))
-      tok.resize(tok.size() - 4);
-    else if (ends_with(tok, "ep"))
-      tok.resize(tok.size() - 2);
-
-    tok = trim_copy(tok);
-    if (tok.empty())
-      return false;
-
-    // Castling
-    if (tok == "O-O" || tok == "O-O-O")
-      return true;
-
-    auto isFile = [](char c)
-    { return c >= 'a' && c <= 'h'; };
-    auto isRank = [](char c)
-    { return c >= '1' && c <= '8'; };
-    auto isPiece = [](char c)
-    { return c == 'K' || c == 'Q' || c == 'R' || c == 'B' || c == 'N'; };
-    auto isPromo = [](char c)
-    { return c == 'Q' || c == 'R' || c == 'B' || c == 'N'; };
-
-    // Handle promotion suffix: e8=Q or e8Q
-    std::string core = tok;
-    if (core.size() >= 4 && core[core.size() - 2] == '=' && isPromo(core.back()))
-    {
-      core = core.substr(0, core.size() - 2);
-    }
-    else if (core.size() >= 3 && isPromo(core.back()))
-    {
-      // allow e8Q (non-standard but seen)
-      char df = core[core.size() - 3];
-      char dr = core[core.size() - 2];
-      if (isFile(df) && isRank(dr))
-        core = core.substr(0, core.size() - 1);
-    }
-
-    if (core.size() < 2)
-      return false;
-
-    // Destination square must be at end of core
-    const char destFile = core[core.size() - 2];
-    const char destRank = core[core.size() - 1];
-    if (!isFile(destFile) || !isRank(destRank))
-      return false;
-
-    std::string pre = core.substr(0, core.size() - 2);
-
-    // Optional capture 'x' in pre
-    bool capture = false;
-    size_t xPos = pre.find('x');
-    if (xPos != std::string::npos)
-    {
-      capture = true;
-      // must be only one 'x'
-      if (pre.find('x', xPos + 1) != std::string::npos)
-        return false;
-      pre.erase(xPos, 1);
-    }
-
-    if (pre.empty())
-    {
-      // Pawn push (e4)
-      return true;
-    }
-
-    if (isPiece(pre.front()))
-    {
-      // Piece move: [Piece][disambig]{capture}dest
-      std::string dis = pre.substr(1);
-      if (dis.size() > 2)
-        return false;
-      for (char c : dis)
-      {
-        if (!isFile(c) && !isRank(c))
-          return false;
-      }
-      (void)capture;
-      return true;
-    }
-
-    // Pawn capture must have origin file only: exd5 => after removing 'x', pre == "e"
-    if (pre.size() == 1 && isFile(pre[0]))
-      return capture; // must be a capture if origin file present
-
-    return false;
-  }
-
   std::optional<std::string> extract_fen_tag(const std::string &pgn)
   {
-    // Prefer tag-pair parsing over substring search.
     std::istringstream iss(pgn);
     std::string line;
     while (std::getline(iss, line))
@@ -361,7 +483,7 @@ namespace lilia::view::ui::game_setup
       if (line.empty())
         continue;
       if (line.front() != '[')
-        break; // done with tag section
+        break;
 
       std::string k, v;
       if (!parse_tag_pair_line(line, k, v))
@@ -376,8 +498,7 @@ namespace lilia::view::ui::game_setup
   PgnStatus validate_pgn_basic(const std::string &pgnRaw)
   {
     PgnStatus st{};
-    std::string pgn = pgnRaw;
-    pgn = trim_copy(pgn);
+    std::string pgn = trim_copy(pgnRaw);
 
     if (pgn.empty())
     {
@@ -385,11 +506,9 @@ namespace lilia::view::ui::game_setup
       return st;
     }
 
-    // Validate tag-pair section if present; extract FEN if present.
     {
       std::istringstream iss(pgn);
       std::string line;
-      bool sawAnyTag = false;
       while (std::getline(iss, line))
       {
         std::string t = trim_copy(line);
@@ -399,7 +518,6 @@ namespace lilia::view::ui::game_setup
         if (t.front() != '[')
           break;
 
-        sawAnyTag = true;
         std::string k, v;
         if (!parse_tag_pair_line(t, k, v))
         {
@@ -407,7 +525,6 @@ namespace lilia::view::ui::game_setup
           return st;
         }
       }
-      (void)sawAnyTag;
     }
 
     if (auto fen = extract_fen_tag(pgn))
@@ -423,69 +540,7 @@ namespace lilia::view::ui::game_setup
       return st;
     }
 
-    // Basic movetext plausibility:
-    // - strip comments/variations
-    // - require at least one plausible SAN/castle move OR a valid result token.
-    std::string movetext = pgn;
-    movetext = strip_semicolon_comments(movetext);
-    movetext = strip_brace_comments(movetext);
-    movetext = strip_variations(movetext);
-
-    // Remove tag lines
-    {
-      std::istringstream iss(movetext);
-      std::ostringstream oss;
-      std::string line;
-      bool inTags = true;
-      while (std::getline(iss, line))
-      {
-        std::string t = trim_copy(line);
-        if (inTags && !t.empty() && t.front() == '[')
-          continue;
-        inTags = false;
-        oss << line << '\n';
-      }
-      movetext = oss.str();
-    }
-
-    movetext = trim_copy(movetext);
-    if (movetext.empty())
-    {
-      // PGN with only tags is acceptable in this "basic" validator.
-      st.kind = PgnStatus::Kind::OkNoFen;
-      return st;
-    }
-
-    auto toks = split_ws(movetext);
-
-    bool hasResult = false;
-    int sanMoves = 0;
-
-    for (const auto &tok : toks)
-    {
-      if (is_result_token(tok))
-      {
-        hasResult = true;
-        continue;
-      }
-      if (is_move_number_token(tok))
-        continue;
-
-      // ignore NAGs: $<digits>
-      if (!tok.empty() && tok[0] == '$')
-        continue;
-
-      if (looks_like_san(tok))
-        ++sanMoves;
-    }
-
-    if (sanMoves > 0 || hasResult)
-    {
-      st.kind = PgnStatus::Kind::OkNoFen;
-      return st;
-    }
-
-    st.kind = PgnStatus::Kind::Error;
+    st.kind = PgnStatus::Kind::OkNoFen;
     return st;
   }
 

@@ -16,6 +16,7 @@ namespace sf
 #include "game_controller_types.hpp"
 #include "input_manager.hpp"
 #include "selection_manager.hpp"
+#include "lilia/model/analysis/game_record.hpp"
 
 namespace lilia::model
 {
@@ -49,6 +50,9 @@ namespace lilia::controller
                    int blackThinkTimeMs = 1000, int blackDepth = 5, bool useTimer = true,
                    int baseSeconds = 0, int incrementSeconds = 0);
 
+    model::analysis::GameRecord buildGameRecord() const;
+    void startReplay(const model::analysis::GameRecord &rec);
+
     void update(float dt);
     void handleEvent(const sf::Event &event);
     void render();
@@ -69,6 +73,7 @@ namespace lilia::controller
 
     bool m_white_is_bot{false};
     bool m_black_is_bot{false};
+    bool m_replay_mode{false};
 
     std::atomic<int> m_eval_cp{0};
     NextAction m_next_action{NextAction::None};

@@ -18,11 +18,28 @@ namespace lilia::view::ui
 
     setup_action(m_continue, "Use Position", [this]
                  {
-      const std::string rf = resolvedFen();
-      if (rf.empty())
-        return;
-      m_resultFen = rf;
-      requestDismiss(); });
+  const std::string rf = resolvedFen();
+  if (rf.empty())
+    return;
+
+  m_resultFen = rf;
+
+  // Capture PGN if user provided it (even if resolved FEN came from Start/FEN).
+  const std::string pgn = m_pagePgnFen.pgnText();
+  if (!game_setup::trim_copy(pgn).empty())
+  {
+    m_resultPgn = pgn;
+    const std::string fn = m_pagePgnFen.pgnFilename();
+    if (!fn.empty())
+      m_resultPgnFilename = fn;
+  }
+  else
+  {
+    m_resultPgn.reset();
+    m_resultPgnFilename.reset();
+  }
+
+  requestDismiss(); });
 
     setup_action(m_tabPgnFen, "PGN / FEN", [this]
                  { m_mode = game_setup::Mode::PgnFen; });
@@ -36,10 +53,14 @@ namespace lilia::view::ui
                                        {
       if (m_onRequestPgnUpload) m_onRequestPgnUpload(); });
   }
-
+  std::optional<std::string> GameSetupModal::resultPgn() const { return m_resultPgn; }
+  std::optional<std::string> GameSetupModal::resultPgnFilename() const { return m_resultPgnFilename; }
   void GameSetupModal::setOnRequestPgnUpload(std::function<void()> cb) { m_onRequestPgnUpload = std::move(cb); }
   void GameSetupModal::setFenText(const std::string &fen) { m_pagePgnFen.setFenText(fen); }
-  void GameSetupModal::setPgnText(const std::string &pgn) { m_pagePgnFen.setPgnText(pgn); }
+  void GameSetupModal::setPgnText(const std::string &pgn)
+  {
+    m_pagePgnFen.setPgnText(pgn, /*fromUpload=*/true);
+  }
   void GameSetupModal::setPgnFilename(const std::string &name) { m_pagePgnFen.setPgnFilename(name); }
   std::optional<std::string> GameSetupModal::resultFen() const { return m_resultFen; }
 
@@ -189,7 +210,23 @@ namespace lilia::view::ui
         const std::string rf = resolvedFen();
         if (rf.empty())
           return true;
+
         m_resultFen = rf;
+
+        const std::string pgn = m_pagePgnFen.pgnText();
+        if (!game_setup::trim_copy(pgn).empty())
+        {
+          m_resultPgn = pgn;
+          const std::string fn = m_pagePgnFen.pgnFilename();
+          if (!fn.empty())
+            m_resultPgnFilename = fn;
+        }
+        else
+        {
+          m_resultPgn.reset();
+          m_resultPgnFilename.reset();
+        }
+
         requestDismiss();
         return true;
       }

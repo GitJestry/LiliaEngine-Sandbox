@@ -44,16 +44,37 @@ namespace lilia::view::ui
     void setPlaceholder(std::string s) { m_placeholder = std::move(s); }
     void setReadOnly(bool ro) { m_readOnly = ro; }
 
-    void setText(std::string s)
+    void setText(std::string s, bool scrollToEnd = true)
     {
       normalizeNewlines_(s);
       m_value = std::move(s);
-      m_caret = m_value.size();
-      m_anchor = m_caret;
+
+      if (scrollToEnd)
+      {
+        m_caret = m_value.size();
+        m_anchor = m_caret;
+      }
+      else
+      {
+        m_caret = 0;
+        m_anchor = 0;
+      }
+
       m_layoutDirty = true;
       m_scrollPx = 0.f;
-      scrollToCaret_(); // end
+
+      if (scrollToEnd)
+      {
+        scrollToCaret_(); // end
+      }
+      else
+      {
+        // Keep at top; ensure layout clamps correctly.
+        ensureLayout_();
+        clampScroll_();
+      }
     }
+
     const std::string &text() const { return m_value; }
 
     void setFocusManager(FocusManager *f) { m_focus = f; }

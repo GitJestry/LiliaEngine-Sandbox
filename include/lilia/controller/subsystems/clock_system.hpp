@@ -35,7 +35,7 @@ namespace lilia::controller
     float time(core::Color c) const;
     std::optional<core::Color> active() const;
 
-    TimeView snapshot(core::Color activeSideFallback) const;
+    model::analysis::TimeView snapshot(core::Color activeSideFallback) const;
 
   private:
     view::GameView &m_view;

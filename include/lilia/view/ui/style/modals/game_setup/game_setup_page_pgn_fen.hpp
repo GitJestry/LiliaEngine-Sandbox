@@ -27,7 +27,11 @@ namespace lilia::view::ui::game_setup
     void setPgnFilename(const std::string &name);
 
     void setFenText(const std::string &fen);
-    void setPgnText(const std::string &pgn);
+    void setPgnText(const std::string &pgn, bool fromUpload = false);
+
+    std::string pgnText() const;
+    std::string pgnFilename() const;
+    bool hasPgnText() const;
 
     void setSource(Source s);
     Source source() const;

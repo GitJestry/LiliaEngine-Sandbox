@@ -44,6 +44,9 @@ namespace lilia::view::ui
 
     bool handleEvent(const sf::Event &e, sf::Vector2f mouse) override;
 
+    std::optional<std::string> resultPgn() const;
+    std::optional<std::string> resultPgnFilename() const;
+
   private:
     const sf::Font &m_font;
     const ui::Theme &m_theme;
@@ -65,6 +68,9 @@ namespace lilia::view::ui
 
     mutable ui::Button m_tabPgnFen{};
     mutable ui::Button m_tabBuild{};
+
+    std::optional<std::string> m_resultPgn;
+    std::optional<std::string> m_resultPgnFilename;
 
     bool m_showHistory{false};
     game_setup::Mode m_mode{game_setup::Mode::PgnFen};
