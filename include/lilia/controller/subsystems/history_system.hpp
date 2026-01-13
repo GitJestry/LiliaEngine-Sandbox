@@ -54,7 +54,8 @@ namespace lilia::controller
     void restoreSelectedPiece();
 
     // Builds history vectors from a record. silent=true avoids sfx on build.
-    bool loadFromRecord(const model::analysis::GameRecord &rec, bool silent = true);
+    bool loadFromRecord(const model::analysis::GameRecord &rec,
+                        bool populateMoveListWithSan = true);
     model::analysis::GameRecord toRecord() const;
 
   private:

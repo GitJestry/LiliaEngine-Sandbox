@@ -5,29 +5,10 @@
 #include "lilia/model/analysis/game_record.hpp"
 #include "lilia/model/analysis/san_notation.hpp"
 #include "lilia/uci/uci_helper.hpp"
+#include "lilia/model/analysis/result_utils.hpp"
 
 namespace lilia::controller
 {
-
-  namespace
-  {
-    inline std::string resultToString(core::GameResult res, core::Color sideToMove)
-    {
-      switch (res)
-      {
-      case core::GameResult::CHECKMATE:
-      case core::GameResult::TIMEOUT:
-        return (sideToMove == core::Color::White) ? "0-1" : "1-0";
-      case core::GameResult::REPETITION:
-      case core::GameResult::MOVERULE:
-      case core::GameResult::STALEMATE:
-      case core::GameResult::INSUFFICIENT:
-        return "1/2-1/2";
-      default:
-        return "";
-      }
-    }
-  } // namespace
 
   HistorySystem::HistorySystem(view::GameView &view, model::ChessGame &game, SelectionManager &sel,
                                view::sound::SoundManager &sfx, std::atomic<int> &evalCp)
@@ -137,7 +118,7 @@ namespace lilia::controller
 
     if (m_game.getResult() != core::GameResult::ONGOING)
     {
-      m_view.setEvalResult(resultToString(m_game.getResult(), m_game.getGameState().sideToMove));
+      m_view.setEvalResult(model::analysis::result_string(m_game.getResult(), m_game.getGameState().sideToMove, /*forPgn=*/false));
     }
 
     m_sel.dehoverSquare();
@@ -187,7 +168,7 @@ namespace lilia::controller
 
     if (enteringFinalState)
     {
-      m_view.setEvalResult(resultToString(m_game.getResult(), m_game.getGameState().sideToMove));
+      m_view.setEvalResult(model::analysis::result_string(m_game.getResult(), m_game.getGameState().sideToMove, /*forPgn=*/false));
     }
 
     if (m_fen_index < m_time_history.size())
@@ -372,7 +353,7 @@ namespace lilia::controller
 
     if (enteringFinalState)
     {
-      m_view.setEvalResult(resultToString(m_game.getResult(), m_game.getGameState().sideToMove));
+      m_view.setEvalResult(model::analysis::result_string(m_game.getResult(), m_game.getGameState().sideToMove, /*forPgn=*/false));
     }
 
     m_view.updateFen(m_fen_history[m_fen_index]);
@@ -425,7 +406,7 @@ namespace lilia::controller
     }
 
     if (m_game.getResult() != core::GameResult::ONGOING)
-      rec.result = resultToString(m_game.getResult(), m_game.getGameState().sideToMove);
+      rec.result = model::analysis::result_string(m_game.getResult(), m_game.getGameState().sideToMove, /*forPgn=*/true);
     else
       rec.result = "*";
 
