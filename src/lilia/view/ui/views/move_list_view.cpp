@@ -10,7 +10,10 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <utility>
+#include <vector>
 
+#include "lilia/model/analysis/eco_opening_db.hpp"
 #include "lilia/view/ui/style/style.hpp"
 #include "lilia/view/ui/style/theme.hpp"
 
@@ -29,7 +32,10 @@ namespace lilia::view
 
     constexpr float kHeaderH = 58.f;
     constexpr float kFenH = 30.f;
-    constexpr float kSubHeaderH = 40.f;
+
+    constexpr float kSubHeaderH_Default = 40.f;
+    constexpr float kSubHeaderH_Replay = 98.f; // bigger: opening title + info list
+
     constexpr float kListTopGap = 8.f;
 
     constexpr float kFooterH = 54.f;
@@ -47,13 +53,14 @@ namespace lilia::view
     constexpr unsigned kSubHeaderFontSize = 16;
     constexpr unsigned kTipFontSize = 13;
 
-    // ---------- Small helpers ----------
+    constexpr unsigned kReplayOpeningFontSize = 16;
+    constexpr unsigned kReplayMetaFontSize = 13;
+
     inline sf::Vector2f centerOf(const sf::FloatRect &r)
     {
       return {r.left + r.width * 0.5f, r.top + r.height * 0.5f};
     }
 
-    // Ellipsize keeping tail (for FEN)
     std::string ellipsizeRightKeepTail(const std::string &s, sf::Text &probe, float maxW)
     {
       probe.setString(s);
@@ -70,7 +77,6 @@ namespace lilia::view
       return s;
     }
 
-    // Tooltip bubble (uses Theme + ui::style primitives)
     void drawTooltip(sf::RenderWindow &win,
                      const sf::Vector2f center,
                      const std::string &label,
@@ -86,13 +92,11 @@ namespace lilia::view
       const float x = ui::snapf(center.x - w * 0.5f);
       const float y = ui::snapf(center.y - h - kTipArrowH - 4.f);
 
-      // shadow
       sf::RectangleShape shadow({w, h});
       shadow.setPosition(ui::snap({x + 2.f, y + 2.f}));
       shadow.setFillColor(sf::Color(0, 0, 0, 50));
       win.draw(shadow);
 
-      // body
       sf::RectangleShape body({w, h});
       body.setPosition(ui::snap({x, y}));
       body.setFillColor(th.toastBg.a ? th.toastBg : ui::darken(th.panel, 12));
@@ -100,7 +104,6 @@ namespace lilia::view
       body.setOutlineColor(th.panelBorder);
       win.draw(body);
 
-      // arrow
       sf::ConvexShape arrow(3);
       arrow.setPoint(0, {center.x - 6.f, y + h});
       arrow.setPoint(1, {center.x + 6.f, y + h});
@@ -108,12 +111,10 @@ namespace lilia::view
       arrow.setFillColor(body.getFillColor());
       win.draw(arrow);
 
-      // text
       t.setPosition(ui::snap({x + kTipPadX - b.left, y + kTipPadY - b.top}));
       win.draw(t);
     }
 
-    // Footer slot using ui::drawBevelButton for consistency
     void drawSlot(sf::RenderTarget &rt,
                   const sf::FloatRect &r,
                   const ui::Theme &th,
@@ -129,7 +130,6 @@ namespace lilia::view
       rt.draw(hair);
     }
 
-    // Icons (vector)
     void drawChevron(sf::RenderWindow &win, const sf::FloatRect &slot, bool left, sf::Color col)
     {
       const float s = std::min(slot.width, slot.height) * 0.50f;
@@ -231,7 +231,6 @@ namespace lilia::view
     {
       if (success)
       {
-        // check mark
         const float s = slot.width * 1.2f;
         const float x = ui::snapf(slot.left + (slot.width - s));
         const float y = ui::snapf(slot.top + (slot.height - s));
@@ -247,7 +246,6 @@ namespace lilia::view
         return;
       }
 
-      // copy icon: 2 squares
       const float w = slot.width * 0.55f;
       const float h = slot.height * 0.55f;
       const float off = w * 0.25f;
@@ -269,6 +267,12 @@ namespace lilia::view
       front.setOutlineThickness(2.f);
       front.setOutlineColor(col);
       win.draw(front);
+    }
+
+    static std::string buildReplayOpeningTitle(const model::analysis::ReplayInfo &h)
+    {
+      // If openingName is missing or is accidentally just "B28", resolve via DB.
+      return lilia::model::analysis::EcoOpeningDb::resolveOpeningTitle(h.eco, h.openingName);
     }
 
   } // namespace
@@ -295,14 +299,32 @@ namespace lilia::view
     return static_cast<float>(m_height) - kFooterH;
   }
 
+  float MoveListView::subHeaderHeightPx() const
+  {
+    return m_replay_header ? kSubHeaderH_Replay : kSubHeaderH_Default;
+  }
+
   float MoveListView::contentTopPx() const
   {
-    return kHeaderH + kFenH + kSubHeaderH + kListTopGap;
+    return kHeaderH + kFenH + subHeaderHeightPx() + kListTopGap;
   }
 
   void MoveListView::setPosition(const Entity::Position &pos)
   {
     m_position = pos;
+  }
+
+  void MoveListView::setReplayHeader(std::optional<model::analysis::ReplayInfo> header)
+  {
+    m_replay_header = std::move(header);
+
+    // If header size changed (replay vs non-replay), keep scroll clamped.
+    const float listH = listHeightPx();
+    const float topY = contentTopPx();
+    const float visible = listH - topY;
+    const float content = static_cast<float>(m_rows.size() + (m_result.empty() ? 0 : 1)) * kRowH;
+    const float maxOff = std::max(0.f, content - visible);
+    m_scroll_offset = std::clamp(m_scroll_offset, 0.f, maxOff);
   }
 
   void MoveListView::setSize(unsigned int width, unsigned int height)
@@ -328,7 +350,6 @@ namespace lilia::view
     const float fenIconSize = 18.f;
     m_bounds_fen_icon = {kPaddingX, kHeaderH + (kFenH - fenIconSize) * 0.5f, fenIconSize, fenIconSize};
 
-    // keep scroll clamped after resize
     const float topY = contentTopPx();
     const float visible = listH - topY;
     const float content = static_cast<float>(m_rows.size() + (m_result.empty() ? 0 : 1)) * kRowH;
@@ -365,7 +386,6 @@ namespace lilia::view
     {
       if (m_rows.empty())
       {
-        // defensive: if someone calls black first, create row
         m_rows.push_back(Row{1u, "", uciMove, 0.f, measureMoveWidth(uciMove)});
       }
       else
@@ -379,7 +399,6 @@ namespace lilia::view
     ++m_move_count;
     m_selected_move = m_move_count ? (m_move_count - 1) : m_selected_move;
 
-    // auto-scroll to bottom
     const float listH = listHeightPx();
     const float topY = contentTopPx();
     const float visible = listH - topY;
@@ -421,6 +440,7 @@ namespace lilia::view
     m_result.clear();
     m_fen_str.clear();
     m_copySuccess = false;
+    m_replay_header.reset();
   }
 
   void MoveListView::setCurrentMove(std::size_t moveIndex)
@@ -437,13 +457,9 @@ namespace lilia::view
     const float visible = listH - topY;
 
     if (rowY < m_scroll_offset)
-    {
       m_scroll_offset = rowY;
-    }
     else if (rowY + kRowH > m_scroll_offset + visible)
-    {
       m_scroll_offset = rowY + kRowH - visible;
-    }
 
     const float content = static_cast<float>(m_rows.size() + (m_result.empty() ? 0 : 1)) * kRowH;
     const float maxOff = std::max(0.f, content - visible);
@@ -461,7 +477,6 @@ namespace lilia::view
     if (localX < 0.f || localY < topY || localX > static_cast<float>(m_width) || localY > listH)
       return static_cast<std::size_t>(-1);
 
-    // content-space Y inside the scroll region
     const float contentY = (localY - topY) + m_scroll_offset;
     const std::size_t rowIndex = static_cast<std::size_t>(std::floor(contentY / kRowH));
 
@@ -473,7 +488,6 @@ namespace lilia::view
     const float xWhite = kPaddingX + kNumColW;
     const float xBlack = xWhite + r.whiteW + kMoveGap;
 
-    // loose vertical acceptance (we already bucketed by rowIndex)
     if (!r.white.empty() && localX >= xWhite && localX <= xWhite + r.whiteW)
       return rowIndex * 2;
     if (!r.black.empty() && localX >= xBlack && localX <= xBlack + r.blackW)
@@ -519,10 +533,8 @@ namespace lilia::view
   void MoveListView::render(sf::RenderWindow &window) const
   {
     const ui::Theme &th = m_theme.uiTheme();
-
     const sf::View oldView = window.getView();
 
-    // --- Panel-local view ---
     sf::View view(sf::FloatRect(0.f, 0.f, static_cast<float>(m_width), static_cast<float>(m_height)));
     view.setViewport(sf::FloatRect(m_position.x / static_cast<float>(window.getSize().x),
                                    m_position.y / static_cast<float>(window.getSize().y),
@@ -534,9 +546,10 @@ namespace lilia::view
     sf::Vector2f mouseLocal = window.mapPixelToCoords(mousePx, view);
 
     const float listH = listHeightPx();
+    const float subH = subHeaderHeightPx();
     const float topY = contentTopPx();
 
-    // --- Panel shadow + border (uses shared style) ---
+    // --- Panel shadow + border ---
     {
       const sf::FloatRect panelRect(0.f, 0.f, static_cast<float>(m_width), static_cast<float>(m_height));
       ui::drawPanelShadow(window, panelRect);
@@ -555,7 +568,6 @@ namespace lilia::view
     bg.setFillColor(th.panel);
     window.draw(bg);
 
-    // header stack (derive from panel for consistent theming)
     sf::Color headerCol = ui::darken(th.panel, 10);
     sf::Color bandCol = th.panel;
     sf::Color hair = th.panelBorder;
@@ -570,7 +582,7 @@ namespace lilia::view
     fenBG.setFillColor(bandCol);
     window.draw(fenBG);
 
-    sf::RectangleShape subBG({static_cast<float>(m_width), kSubHeaderH});
+    sf::RectangleShape subBG({static_cast<float>(m_width), subH});
     subBG.setPosition(0.f, kHeaderH + kFenH);
     subBG.setFillColor(bandCol);
     window.draw(subBG);
@@ -582,7 +594,7 @@ namespace lilia::view
     window.draw(sep);
     sep.setPosition(0.f, kHeaderH + kFenH);
     window.draw(sep);
-    sep.setPosition(0.f, kHeaderH + kFenH + kSubHeaderH);
+    sep.setPosition(0.f, kHeaderH + kFenH + subH);
     window.draw(sep);
     sep.setPosition(0.f, listH);
     window.draw(sep);
@@ -593,8 +605,9 @@ namespace lilia::view
     listBG.setFillColor(bandCol);
     window.draw(listBG);
 
-    // --- Titles ---
-    sf::Text header(m_any_bot ? "Play Bots" : "2 Player", m_font, kHeaderFontSize);
+    // --- Header title ---
+    std::string headerTitle = m_replay_header ? "Replay" : (m_any_bot ? "Play Bots" : "2 Player");
+    sf::Text header(headerTitle, m_font, kHeaderFontSize);
     header.setStyle(sf::Text::Bold);
     header.setFillColor(th.text);
     auto hb = header.getLocalBounds();
@@ -602,15 +615,107 @@ namespace lilia::view
                                  (kHeaderH - hb.height) * 0.5f - hb.top - 2.f}));
     window.draw(header);
 
-    sf::Text sub("Move List", m_font, kSubHeaderFontSize);
-    sub.setStyle(sf::Text::Bold);
-    sub.setFillColor(th.subtle);
-    auto sb = sub.getLocalBounds();
-    sub.setPosition(ui::snap({(m_width - sb.width) * 0.5f - sb.left,
-                              kHeaderH + kFenH + (kSubHeaderH - sb.height) * 0.5f - sb.top - 2.f}));
-    window.draw(sub);
+    // --- Replay subheader: opening title + info list ---
+    const float subY = kHeaderH + kFenH;
+    if (m_replay_header)
+    {
+      const model::analysis::ReplayInfo &rh = *m_replay_header;
 
-    // --- FEN line (icon + text + copy feedback) ---
+      const std::string openingTitle = buildReplayOpeningTitle(rh);
+      const std::string ecoNorm = lilia::model::analysis::EcoOpeningDb::nameForEco(rh.eco).empty()
+                                      ? std::string{}
+                                      : ("ECO " + lilia::model::analysis::EcoOpeningDb::resolveOpeningTitle(rh.eco, rh.eco));
+
+      // Opening title (centered)
+      std::string openDisp = openingTitle.empty() ? "Unknown Opening" : openingTitle;
+      openDisp = ui::ellipsizeMiddle(m_font, kReplayOpeningFontSize, openDisp,
+                                     float(m_width) - 2.f * kPaddingX);
+
+      sf::Text openTxt(openDisp, m_font, kReplayOpeningFontSize);
+      openTxt.setStyle(sf::Text::Bold);
+      openTxt.setFillColor(th.subtle);
+      auto ob = openTxt.getLocalBounds();
+      openTxt.setPosition(ui::snap({(m_width - ob.width) * 0.5f - ob.left,
+                                    subY + 10.f - ob.top}));
+      window.draw(openTxt);
+
+      // Info panel box under opening title
+      const sf::FloatRect infoRect{
+          kPaddingX,
+          subY + 48.f,
+          float(m_width) - 2.f * kPaddingX,
+          subH - 56.f};
+
+      // Box background + frame
+      sf::RectangleShape infoBg({infoRect.width, infoRect.height});
+      infoBg.setPosition(ui::snap({infoRect.left, infoRect.top}));
+      infoBg.setFillColor(ui::darken(th.panel, 4));
+      window.draw(infoBg);
+      ui::drawBevelFrame(window, infoRect, ui::darken(th.panel, 4), th.panelBorder);
+
+      // Build key/value list
+      std::vector<std::pair<std::string, std::string>> items;
+      auto pushKV = [&](const char *k, const std::string &v)
+      {
+        if (!v.empty())
+          items.emplace_back(k, v);
+      };
+
+      pushKV("Event", rh.event);
+      pushKV("Site", rh.site);
+      pushKV("Date", rh.date);
+      pushKV("Round", rh.round);
+
+      // Two-column layout
+      const float innerPad = 10.f;
+      const float colW = (infoRect.width - 2.f * innerPad) * 0.5f;
+      const float leftX = infoRect.left + innerPad;
+      const float rightX = infoRect.left + innerPad + colW;
+
+      const float rowH = 16.f;
+      const float startY = infoRect.top + 8.f;
+
+      for (std::size_t i = 0; i < items.size(); ++i)
+      {
+        const bool right = (i % 2) == 1;
+        const std::size_t row = i / 2;
+
+        const float x = right ? rightX : leftX;
+        const float y = startY + float(row) * rowH;
+
+        const std::string &k = items[i].first;
+        const std::string &v0 = items[i].second;
+
+        sf::Text kTxt(k + ":", m_font, kReplayMetaFontSize);
+        kTxt.setFillColor(th.subtle);
+        kTxt.setPosition(ui::snap({x, y}));
+
+        // Value: ellipsize to fit remaining space in column
+        const float labelW = kTxt.getLocalBounds().width + 6.f;
+        const float maxV = std::max(0.f, colW - labelW - 6.f);
+        const std::string v = ui::ellipsizeMiddle(m_font, kReplayMetaFontSize, v0, maxV);
+
+        sf::Text vTxt(v, m_font, kReplayMetaFontSize);
+        vTxt.setFillColor(th.text);
+        vTxt.setPosition(ui::snap({x + labelW, y}));
+
+        window.draw(kTxt);
+        window.draw(vTxt);
+      }
+    }
+    else
+    {
+      // Non-replay subheader
+      sf::Text sub("Move List", m_font, kSubHeaderFontSize);
+      sub.setStyle(sf::Text::Bold);
+      sub.setFillColor(th.subtle);
+      auto sb = sub.getLocalBounds();
+      sub.setPosition(ui::snap({(m_width - sb.width) * 0.5f - sb.left,
+                                subY + (subH - sb.height) * 0.5f - sb.top - 2.f}));
+      window.draw(sub);
+    }
+
+    // --- FEN line ---
     const bool hovFen = m_bounds_fen_icon.contains(mouseLocal.x, mouseLocal.y);
     bool showCheck = false;
     if (m_copySuccess)
@@ -659,7 +764,7 @@ namespace lilia::view
     fenTxt.setPosition(ui::snap({textX, kHeaderH + (kFenH - fb.height) * 0.5f - fb.top - 2.f}));
     window.draw(fenTxt);
 
-    // --- Clip scrolling content to the list band ---
+    // --- Clip scrolling content ---
     sf::View listView(sf::FloatRect(0.f, topY, static_cast<float>(m_width), listH - topY));
     const auto winSize = window.getSize();
     listView.setViewport(sf::FloatRect(m_position.x / static_cast<float>(winSize.x),
@@ -674,7 +779,6 @@ namespace lilia::view
     const sf::Color rowOdd = ui::darken(th.panel, 2);
     const sf::Color hiRow = ui::lighten(th.buttonActive, 6);
 
-    // alternating rows
     for (std::size_t i = 0; i < totalLines; ++i)
     {
       float y = topY + static_cast<float>(i) * kRowH - m_scroll_offset;
@@ -687,7 +791,6 @@ namespace lilia::view
       window.draw(row);
     }
 
-    // selection highlight
     if (m_selected_move != static_cast<std::size_t>(-1))
     {
       std::size_t rowIdx = m_selected_move / 2;
@@ -706,7 +809,6 @@ namespace lilia::view
       }
     }
 
-    // draw rows
     for (std::size_t i = 0; i < totalLines; ++i)
     {
       float y = topY + static_cast<float>(i) * kRowH - m_scroll_offset + 3.f;
@@ -753,7 +855,7 @@ namespace lilia::view
     // back to panel-local view for footer
     window.setView(view);
 
-    // --- Footer / controls ---
+    // --- Footer ---
     sf::RectangleShape footer({static_cast<float>(m_width), kFooterH});
     footer.setPosition(0.f, listH);
     footer.setFillColor(headerCol);
@@ -767,7 +869,6 @@ namespace lilia::view
 
     const bool pressed = sf::Mouse::isButtonPressed(sf::Mouse::Left);
 
-    // left side (resign OR newbot+rematch)
     if (m_game_over)
     {
       drawSlot(window, m_bounds_new_bot, th, hovNewBot, hovNewBot && pressed);
@@ -782,14 +883,12 @@ namespace lilia::view
       drawCrossX(window, m_bounds_resign, hovResign ? th.accent : th.text);
     }
 
-    // prev/next
     drawSlot(window, m_bounds_prev, th, hovPrev, hovPrev && pressed);
     drawChevron(window, m_bounds_prev, true, hovPrev ? th.accent : th.text);
 
     drawSlot(window, m_bounds_next, th, hovNext, hovNext && pressed);
     drawChevron(window, m_bounds_next, false, hovNext ? th.accent : th.text);
 
-    // tooltips
     if (hovPrev)
       drawTooltip(window, centerOf(m_bounds_prev), "Previous move", m_font, th);
     if (hovNext)

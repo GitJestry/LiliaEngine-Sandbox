@@ -3,6 +3,7 @@
 #include <SFML/Graphics.hpp>
 #include <algorithm>
 #include <cmath>
+#include "theme.hpp"
 
 namespace lilia::view::ui
 {
@@ -219,6 +220,83 @@ namespace lilia::view::ui
     }
 
     return ell;
+  }
+
+  inline std::string joinBullets(const std::vector<std::string> &parts)
+  {
+    std::string out;
+    for (const auto &p : parts)
+    {
+      if (p.empty())
+        continue;
+      if (!out.empty())
+        out += " \u2022 ";
+      out += p;
+    }
+    return out;
+  }
+
+  // Ellipsize keeping tail (useful for FEN and long ids)
+  inline std::string ellipsizeRightKeepTail(const sf::Font &font, unsigned size,
+                                            const std::string &s, float maxW)
+  {
+    sf::Text probe("", font, size);
+    probe.setString(s);
+    if (probe.getLocalBounds().width <= maxW)
+      return s;
+
+    for (std::size_t cut = 0; cut < s.size(); ++cut)
+    {
+      std::string view = "..." + s.substr(cut);
+      probe.setString(view);
+      if (probe.getLocalBounds().width <= maxW)
+        return view;
+    }
+    return "...";
+  }
+
+  // Tooltip bubble (moved from MoveList)
+  inline void drawTooltipBubble(sf::RenderTarget &rt,
+                                const sf::Vector2f center,
+                                const std::string &label,
+                                const sf::Font &font,
+                                const Theme &th,
+                                unsigned fontSize = 13)
+  {
+    sf::Text t(label, font, fontSize);
+    t.setFillColor(th.text);
+    auto b = t.getLocalBounds();
+
+    const float padX = 8.f;
+    const float padY = 5.f;
+    const float arrowH = 6.f;
+
+    const float w = b.width + 2.f * padX;
+    const float h = b.height + 2.f * padY;
+    const float x = snapf(center.x - w * 0.5f);
+    const float y = snapf(center.y - h - arrowH - 4.f);
+
+    sf::RectangleShape shadow({w, h});
+    shadow.setPosition(snap({x + 2.f, y + 2.f}));
+    shadow.setFillColor(sf::Color(0, 0, 0, 50));
+    rt.draw(shadow);
+
+    sf::RectangleShape body({w, h});
+    body.setPosition(snap({x, y}));
+    body.setFillColor(th.toastBg.a ? th.toastBg : darken(th.panel, 12));
+    body.setOutlineThickness(1.f);
+    body.setOutlineColor(th.panelBorder);
+    rt.draw(body);
+
+    sf::ConvexShape arrow(3);
+    arrow.setPoint(0, {center.x - 6.f, y + h});
+    arrow.setPoint(1, {center.x + 6.f, y + h});
+    arrow.setPoint(2, {center.x, y + h + arrowH});
+    arrow.setFillColor(body.getFillColor());
+    rt.draw(arrow);
+
+    t.setPosition(snap({x + padX - b.left, y + padY - b.top}));
+    rt.draw(t);
   }
 
 } // namespace lilia::view::ui

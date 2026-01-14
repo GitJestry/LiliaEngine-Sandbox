@@ -40,6 +40,7 @@ namespace lilia::view
   private:
     void setPosition(const Entity::Position &pos);
     void layoutCaptured();
+    void layoutText();
 
     static Entity makeCapturedEntity(core::PieceType type, core::Color color);
 
@@ -53,6 +54,10 @@ namespace lilia::view
     sf::Text m_name;
     sf::Text m_elo;
     sf::Text m_noCaptures;
+
+    // NEW: keep originals so we can re-ellipsize on layout changes
+    std::string m_fullName;
+    std::string m_fullElo;
 
     core::Color m_playerColor{core::Color::White};
     Entity::Position m_position{};

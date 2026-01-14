@@ -581,7 +581,32 @@ namespace lilia::view
 
   void GameView::endAnimation(core::Square sq) { m_chess_animator.end(sq); }
 
-  /* ---------- Layout ---------- */
+  void GameView::setPlayers(const PlayerInfo &white, const PlayerInfo &black)
+  {
+    // m_white_player/m_black_player already reflect board orientation mapping.
+    if (m_white_player)
+      m_white_player->setInfo(white);
+    if (m_black_player)
+      m_black_player->setInfo(black);
+  }
+
+  void GameView::setReplayHeader(std::optional<model::analysis::ReplayInfo> header)
+  {
+    m_replay_header = std::move(header);
+    if (m_replay_header)
+    {
+      // Immediate visible improvement: badges show PGN players + Elo.
+      setPlayers(m_replay_header->white, m_replay_header->black);
+      m_move_list.setReplayHeader(m_replay_header);
+    }
+  }
+
+  void GameView::clearReplayHeader()
+  {
+    m_replay_header.reset();
+    m_move_list.setReplayHeader(std::nullopt);
+  }
+
   void GameView::layout(unsigned int width, unsigned int height)
   {
     float vMargin = std::max(0.f, (static_cast<float>(height) -

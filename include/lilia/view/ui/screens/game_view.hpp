@@ -24,6 +24,7 @@
 #include "lilia/view/ui/views/player_info_view.hpp"
 #include "lilia/view/ui/render/scene/promotion_manager.hpp"
 #include "lilia/view/ui/style/theme_cache.hpp"
+#include "lilia/model/analysis/replay_info.hpp"
 
 namespace lilia::view
 {
@@ -163,6 +164,13 @@ namespace lilia::view
     void setClockActive(std::optional<core::Color> active);
     void setClocksVisible(bool visible);
 
+    // Replay metadata (used by controller when starting replay mode)
+    void setReplayHeader(std::optional<model::analysis::ReplayInfo> header);
+    void clearReplayHeader();
+
+    // Generic: update player badges (useful for replay and future config refactor)
+    void setPlayers(const PlayerInfo &white, const PlayerInfo &black);
+
   private:
     void layout(unsigned int width, unsigned int height);
 
@@ -193,6 +201,7 @@ namespace lilia::view
     bool m_show_clocks{true};
     ModalView m_modal;
     ui::ThemeCache m_theme;
+    std::optional<model::analysis::ReplayInfo> m_replay_header;
 
     // FX
     ParticleSystem m_particles;

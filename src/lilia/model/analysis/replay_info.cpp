@@ -24,9 +24,9 @@ namespace lilia::model::analysis
     info.white.elo = tagOr(rec, "WhiteElo", "");
     info.black.elo = tagOr(rec, "BlackElo", "");
 
-    // Icons: keep placeholder for now (you likely want a constant icon path).
-    info.white.iconPath = std::string{"<your default icon path>"};
-    info.black.iconPath = std::string{"<your default icon path>"};
+    // Icons: leave empty here; controller/view applies a safe default.
+    info.white.iconPath.clear();
+    info.black.iconPath.clear();
 
     info.result = rec.result.empty() ? tagOr(rec, "Result", "*") : rec.result;
 

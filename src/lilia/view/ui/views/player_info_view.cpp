@@ -17,12 +17,56 @@ namespace lilia::view
     // Layout
     constexpr float kIconFrameSize = 32.f;
     constexpr float kTextGap = 12.f;
-    constexpr float kEloGap = 6.f;
+
+    constexpr float kNameEloLineGap = 2.f;
+    constexpr float kTextToCaptureGap = 10.f;
 
     constexpr float kCapPad = 4.f;
     constexpr float kCapMinH = 18.f;
     constexpr float kCapMaxH = 28.f;
     constexpr float kPieceAdvance = 0.86f;
+
+    // Ellipsize right (keep prefix)
+    std::string ellipsizeRight(const sf::Font &font,
+                               unsigned size,
+                               const std::string &s,
+                               float maxWidthPx,
+                               sf::Uint32 style = sf::Text::Regular)
+    {
+      if (s.empty() || maxWidthPx <= 0.f)
+        return "...";
+
+      sf::Text t("", font, size);
+      t.setStyle(style);
+
+      t.setString(s);
+      if (t.getLocalBounds().width <= maxWidthPx)
+        return s;
+
+      const std::string ell = "...";
+      t.setString(ell);
+      if (t.getLocalBounds().width > maxWidthPx)
+        return "...";
+
+      int lo = 0;
+      int hi = static_cast<int>(s.size());
+
+      while (lo < hi)
+      {
+        int mid = (lo + hi + 1) / 2;
+        std::string probe = s.substr(0, static_cast<std::size_t>(mid)) + ell;
+        t.setString(probe);
+        if (t.getLocalBounds().width <= maxWidthPx)
+          lo = mid;
+        else
+          hi = mid - 1;
+      }
+
+      if (lo <= 0)
+        return ell;
+
+      return s.substr(0, static_cast<std::size_t>(lo)) + ell;
+    }
 
   } // namespace
 
@@ -42,7 +86,7 @@ namespace lilia::view
       m_name.setStyle(sf::Text::Bold);
 
       m_elo.setFont(m_font);
-      m_elo.setCharacterSize(15);
+      m_elo.setCharacterSize(14); // slightly smaller under name
 
       m_noCaptures.setFont(m_font);
       m_noCaptures.setCharacterSize(14);
@@ -87,15 +131,11 @@ namespace lilia::view
     }
     m_icon.setOriginToCenter();
 
-    m_name.setString(info.name);
-    if (info.elo.empty())
-    {
-      m_elo.setString("");
-    }
-    else
-    {
-      m_elo.setString(" (" + info.elo + ")");
-    }
+    // Store originals; layoutText() will format and ellipsize as needed.
+    m_fullName = info.name;
+    m_fullElo = info.elo;
+
+    layoutText();
   }
 
   void PlayerInfoView::setPosition(const Entity::Position &pos)
@@ -105,15 +145,9 @@ namespace lilia::view
     m_frame.setPosition(ui::snap({pos.x, pos.y}));
     m_icon.setPosition(ui::snap({pos.x + kIconFrameSize * 0.5f, pos.y + kIconFrameSize * 0.5f}));
 
-    auto nb = m_name.getLocalBounds();
-    const float nameBaseY = pos.y + (kIconFrameSize - nb.height) * 0.5f - nb.top;
-    const float textLeft = pos.x + kIconFrameSize + kTextGap;
-    m_name.setPosition(ui::snap({textLeft, nameBaseY}));
-
-    auto nB = m_name.getLocalBounds();
-    m_elo.setPosition(ui::snap({textLeft + nB.width + kEloGap, nameBaseY}));
-
+    // capture box position depends on board center + captured set
     layoutCaptured();
+    // layoutCaptured() calls layoutText() at end
   }
 
   void PlayerInfoView::setPositionClamped(const Entity::Position &pos, const sf::Vector2u &viewport)
@@ -132,7 +166,58 @@ namespace lilia::view
   void PlayerInfoView::setBoardCenter(float centerX)
   {
     m_boardCenter = centerX;
-    layoutCaptured();
+    layoutCaptured(); // will also layoutText()
+  }
+
+  void PlayerInfoView::layoutText()
+  {
+    if (m_font.getInfo().family.empty())
+      return;
+
+    const float textLeft = m_position.x + kIconFrameSize + kTextGap;
+
+    // Default: unconstrained (very wide)
+    float maxTextW = 10000.f;
+
+    // Prevent overlap with capture box when text is to the left of it.
+    // (If the player info sits to the right, we don't want to truncate incorrectly.)
+    const float capLeft = m_captureBox.getPosition().x;
+    if (m_boardCenter > 0.f && capLeft > 0.f && textLeft < capLeft)
+    {
+      maxTextW = std::max(0.f, capLeft - textLeft - kTextToCaptureGap);
+    }
+
+    const std::string nameDisp =
+        ellipsizeRight(m_font, m_name.getCharacterSize(), m_fullName, maxTextW, sf::Text::Bold);
+    m_name.setString(nameDisp);
+
+    const std::string eloRaw = m_fullElo.empty() ? "" : ("(" + m_fullElo + ")");
+    const std::string eloDisp =
+        eloRaw.empty() ? "" : ellipsizeRight(m_font, m_elo.getCharacterSize(), eloRaw, maxTextW);
+
+    m_elo.setString(eloDisp);
+
+    // Vertical stacking centered within the icon frame height.
+    const auto nb = m_name.getLocalBounds();
+    const auto eb = m_elo.getLocalBounds();
+
+    const float gap = eloDisp.empty() ? 0.f : kNameEloLineGap;
+    const float blockH = nb.height + (eloDisp.empty() ? 0.f : (gap + eb.height));
+
+    const float top = m_position.y + (kIconFrameSize - blockH) * 0.5f;
+
+    const float nameY = top - nb.top;
+    m_name.setPosition(ui::snap({textLeft, nameY}));
+
+    if (!eloDisp.empty())
+    {
+      const float eloY = top + nb.height + gap - eb.top;
+      m_elo.setPosition(ui::snap({textLeft, eloY}));
+    }
+    else
+    {
+      m_elo.setPosition(ui::snap({textLeft, nameY}));
+    }
   }
 
   void PlayerInfoView::render(sf::RenderWindow &rt)
@@ -222,6 +307,8 @@ namespace lilia::view
       const float tx = baseX + kCapPad;
       const float ty = baseY + (capH - tb.height) * 0.5f - tb.top;
       m_noCaptures.setPosition(ui::snap({tx, ty}));
+
+      layoutText(); // keep text safe vs. updated capture box
       return;
     }
 
@@ -268,6 +355,8 @@ namespace lilia::view
 
       posX += size.x * kPieceAdvance;
     }
+
+    layoutText(); // keep text safe vs. updated capture box
   }
 
 } // namespace lilia::view

@@ -417,7 +417,7 @@ namespace lilia::controller
   {
     const std::string startFen = rec.startFen.empty() ? core::START_FEN : rec.startFen;
 
-    // IMPORTANT: expect GameView::init(startFen) was called by GameController before this.
+    // IMPORTANT: expect GameView::init(startFen) was called by GameController before thisg.
     reset(startFen, rec.startTime);
 
     model::ChessGame scratch;

@@ -16,6 +16,9 @@
 #include "lilia/controller/subsystems/ui_event_system.hpp"
 #include "lilia/model/analysis/game_record.hpp"
 #include "lilia/model/chess_game.hpp"
+#include "lilia/model/analysis/replay_info.hpp"
+#include "lilia/model/analysis/replay_info.hpp"
+#include "lilia/constants.hpp"
 
 namespace lilia::controller
 {
@@ -83,6 +86,7 @@ namespace lilia::controller
                                  int blackDepth, bool useTimer, int baseSeconds,
                                  int incrementSeconds)
   {
+    m_view.clearReplayHeader();
     m_replay_mode = false;
     m_legal->invalidate();
 
@@ -212,6 +216,34 @@ namespace lilia::controller
 
     // Disable clock updates in replay.
     m_clock->reset(false, 0, 0);
+
+    // Build replay metadata from record tags/result.
+    const model::analysis::ReplayInfo ri = model::analysis::makeReplayInfo(rec);
+
+    model::analysis::ReplayInfo hdr;
+    hdr.event = ri.event;
+    hdr.site = ri.site;
+    hdr.date = ri.date;
+    hdr.round = ri.round;
+
+    hdr.white = ri.white;
+    hdr.black = ri.black;
+
+    hdr.result = ri.result;
+    hdr.whiteOutcome = ri.whiteOutcome;
+    hdr.blackOutcome = ri.blackOutcome;
+
+    hdr.eco = ri.eco;
+    hdr.openingName = ri.openingName;
+
+    // Ensure icon paths are valid to avoid TextureTable lookups on empty strings.
+    // Adjust the namespace if your ICON_CHALLENGER constant lives elsewhere.
+    if (hdr.white.iconPath.empty())
+      hdr.white.iconPath = std::string{lilia::view::constant::path::ICON_CHALLENGER};
+    if (hdr.black.iconPath.empty())
+      hdr.black.iconPath = std::string{lilia::view::constant::path::ICON_CHALLENGER};
+
+    m_view.setReplayHeader(std::move(hdr));
 
     // Reset and load history (this should fill move list using SAN if you implemented it there).
     m_history->loadFromRecord(rec, /*populateMoveListWithSan=*/true);
