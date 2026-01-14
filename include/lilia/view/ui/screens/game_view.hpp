@@ -167,6 +167,9 @@ namespace lilia::view
     // Replay metadata (used by controller when starting replay mode)
     void setReplayHeader(std::optional<model::analysis::ReplayInfo> header);
     void clearReplayHeader();
+    void setOutcomeBadges(std::optional<model::analysis::Outcome> white,
+                          std::optional<model::analysis::Outcome> black);
+    void clearOutcomeBadges();
 
     // Generic: update player badges (useful for replay and future config refactor)
     void setPlayers(const PlayerInfo &white, const PlayerInfo &black);

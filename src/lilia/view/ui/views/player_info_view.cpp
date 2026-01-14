@@ -26,6 +26,11 @@ namespace lilia::view
     constexpr float kCapMaxH = 28.f;
     constexpr float kPieceAdvance = 0.86f;
 
+    constexpr float kOutcomeGap = 8.f;
+    constexpr float kOutcomePadX = 7.f;
+    constexpr float kOutcomePadY = 2.f;
+    constexpr float kOutcomeMinH = 16.f;
+
     // Ellipsize right (keep prefix)
     std::string ellipsizeRight(const sf::Font &font,
                                unsigned size,
@@ -91,6 +96,11 @@ namespace lilia::view
       m_noCaptures.setFont(m_font);
       m_noCaptures.setCharacterSize(14);
       m_noCaptures.setString("no captures");
+
+      m_outcomeText.setFont(m_font);
+      m_outcomeText.setCharacterSize(12);
+      m_outcomeText.setStyle(sf::Text::Bold);
+      m_outcomePill.setOutlineThickness(1.f);
     }
   }
 
@@ -106,6 +116,41 @@ namespace lilia::view
     Entity e(tex);
     e.setScale(1.f, 1.f);
     return e;
+  }
+
+  void PlayerInfoView::setOutcome(std::optional<model::analysis::Outcome> outcome)
+  {
+    // Normalize Unknown -> hide (keeps call sites simple)
+    if (outcome && *outcome == model::analysis::Outcome::Unknown)
+      outcome.reset();
+
+    m_outcome = outcome;
+
+    if (!m_outcome)
+    {
+      m_outcomeText.setString("");
+      m_outcomePill.setSize({0.f, 0.f});
+      layoutText();
+      return;
+    }
+
+    switch (*m_outcome)
+    {
+    case model::analysis::Outcome::Win:
+      m_outcomeText.setString("WIN");
+      break;
+    case model::analysis::Outcome::Loss:
+      m_outcomeText.setString("LOSS");
+      break;
+    case model::analysis::Outcome::Draw:
+      m_outcomeText.setString("DRAW");
+      break;
+    default:
+      m_outcomeText.setString("");
+      break;
+    }
+
+    layoutText();
   }
 
   void PlayerInfoView::setPlayerColor(core::Color color)
@@ -176,15 +221,25 @@ namespace lilia::view
 
     const float textLeft = m_position.x + kIconFrameSize + kTextGap;
 
-    // Default: unconstrained (very wide)
+    // --- Outcome pill width reservation ---
+    float pillW = 0.f;
+    float pillH = 0.f;
+    const bool hasOutcome = m_outcome.has_value() && !m_outcomeText.getString().isEmpty();
+    if (hasOutcome)
+    {
+      const auto ob = m_outcomeText.getLocalBounds();
+      pillW = ob.width + 2.f * kOutcomePadX;
+      pillH = std::max(kOutcomeMinH, ob.height + 2.f * kOutcomePadY);
+    }
+
     float maxTextW = 10000.f;
 
-    // Prevent overlap with capture box when text is to the left of it.
-    // (If the player info sits to the right, we don't want to truncate incorrectly.)
     const float capLeft = m_captureBox.getPosition().x;
     if (m_boardCenter > 0.f && capLeft > 0.f && textLeft < capLeft)
     {
-      maxTextW = std::max(0.f, capLeft - textLeft - kTextToCaptureGap);
+      // Reserve pill + gap so name never collides with it or the capture box.
+      const float reserve = hasOutcome ? (kOutcomeGap + pillW) : 0.f;
+      maxTextW = std::max(0.f, capLeft - textLeft - kTextToCaptureGap - reserve);
     }
 
     const std::string nameDisp =
@@ -194,16 +249,13 @@ namespace lilia::view
     const std::string eloRaw = m_fullElo.empty() ? "" : ("(" + m_fullElo + ")");
     const std::string eloDisp =
         eloRaw.empty() ? "" : ellipsizeRight(m_font, m_elo.getCharacterSize(), eloRaw, maxTextW);
-
     m_elo.setString(eloDisp);
 
-    // Vertical stacking centered within the icon frame height.
     const auto nb = m_name.getLocalBounds();
     const auto eb = m_elo.getLocalBounds();
 
     const float gap = eloDisp.empty() ? 0.f : kNameEloLineGap;
     const float blockH = nb.height + (eloDisp.empty() ? 0.f : (gap + eb.height));
-
     const float top = m_position.y + (kIconFrameSize - blockH) * 0.5f;
 
     const float nameY = top - nb.top;
@@ -217,6 +269,26 @@ namespace lilia::view
     else
     {
       m_elo.setPosition(ui::snap({textLeft, nameY}));
+    }
+
+    // --- Position outcome pill on the name line ---
+    if (hasOutcome)
+    {
+      const float nameRight = textLeft + (nb.left + nb.width);
+      const float pillX = ui::snapf(nameRight + kOutcomeGap);
+      const float pillY = ui::snapf(nameY + (nb.height - pillH) * 0.5f);
+
+      m_outcomePill.setSize({pillW, pillH});
+      m_outcomePill.setPosition({pillX, pillY});
+
+      const auto ob = m_outcomeText.getLocalBounds();
+      const float tx = pillX + kOutcomePadX - ob.left;
+      const float ty = pillY + (pillH - ob.height) * 0.5f - ob.top;
+      m_outcomeText.setPosition(ui::snap({tx, ty}));
+    }
+    else
+    {
+      m_outcomePill.setSize({0.f, 0.f});
     }
   }
 
@@ -247,6 +319,55 @@ namespace lilia::view
     ui::drawBevelButton(rt, fb, frameBase, false, false);
 
     m_icon.draw(rt);
+    if (m_outcome && m_outcomePill.getSize().x > 0.f)
+    {
+      const ui::Theme *th = m_theme;
+
+      sf::Color fill, outline, text;
+      if (th)
+      {
+        // Conservative palette: only uses your existing theme colors.
+        outline = th->panelBorder;
+        fill = ui::lighten(th->panel, 6);
+        text = th->text;
+
+        switch (*m_outcome)
+        {
+        case model::analysis::Outcome::Win:
+          fill = th->accent;
+          text = th->onAccent;
+          outline = ui::darken(th->accent, 18);
+          break;
+        case model::analysis::Outcome::Loss:
+          fill = ui::darken(th->panel, 8);
+          text = th->subtle;
+          outline = th->panelBorder;
+          break;
+        case model::analysis::Outcome::Draw:
+          fill = th->button;
+          text = th->text;
+          outline = th->panelBorder;
+          break;
+        default:
+          break;
+        }
+      }
+      else
+      {
+        // Fallback: keep it visible with neutral colors if theme not set.
+        fill = sf::Color(60, 60, 60);
+        outline = sf::Color(20, 20, 20);
+        text = sf::Color(230, 230, 230);
+      }
+
+      m_outcomePill.setFillColor(fill);
+      m_outcomePill.setOutlineColor(outline);
+      m_outcomeText.setFillColor(text);
+
+      rt.draw(m_outcomePill);
+      rt.draw(m_outcomeText);
+    }
+
     rt.draw(m_name);
     rt.draw(m_elo);
 

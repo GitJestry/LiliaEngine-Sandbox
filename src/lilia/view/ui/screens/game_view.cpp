@@ -590,14 +590,37 @@ namespace lilia::view
       m_black_player->setInfo(black);
   }
 
+  void GameView::setOutcomeBadges(std::optional<model::analysis::Outcome> white,
+                                  std::optional<model::analysis::Outcome> black)
+  {
+    auto norm = [](std::optional<model::analysis::Outcome> o)
+        -> std::optional<model::analysis::Outcome>
+    {
+      if (!o)
+        return std::nullopt;
+      return (*o == model::analysis::Outcome::Unknown) ? std::nullopt : o;
+    };
+
+    if (m_white_player)
+      m_white_player->setOutcome(norm(white));
+    if (m_black_player)
+      m_black_player->setOutcome(norm(black));
+  }
+
+  void GameView::clearOutcomeBadges()
+  {
+    setOutcomeBadges(std::nullopt, std::nullopt);
+  }
+
   void GameView::setReplayHeader(std::optional<model::analysis::ReplayInfo> header)
   {
     m_replay_header = std::move(header);
     if (m_replay_header)
     {
-      // Immediate visible improvement: badges show PGN players + Elo.
       setPlayers(m_replay_header->white, m_replay_header->black);
       m_move_list.setReplayHeader(m_replay_header);
+
+      setOutcomeBadges(m_replay_header->whiteOutcome, m_replay_header->blackOutcome);
     }
   }
 
@@ -605,6 +628,7 @@ namespace lilia::view
   {
     m_replay_header.reset();
     m_move_list.setReplayHeader(std::nullopt);
+    clearOutcomeBadges();
   }
 
   void GameView::layout(unsigned int width, unsigned int height)

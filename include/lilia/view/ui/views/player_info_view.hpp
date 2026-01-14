@@ -5,6 +5,7 @@
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Text.hpp>
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,10 +14,10 @@
 #include "lilia/chess_types.hpp"
 #include "lilia/player_info.hpp"
 #include "lilia/view/ui/style/theme.hpp"
+#include "lilia/model/analysis/outcome.hpp"
 
 namespace lilia::view
 {
-
   class PlayerInfoView
   {
   public:
@@ -27,6 +28,8 @@ namespace lilia::view
 
     void setInfo(const PlayerInfo &info);
     void setPlayerColor(core::Color color);
+
+    void setOutcome(std::optional<model::analysis::Outcome> outcome);
 
     void setPositionClamped(const Entity::Position &pos, const sf::Vector2u &viewportSize);
     void setBoardCenter(float centerX);
@@ -55,7 +58,11 @@ namespace lilia::view
     sf::Text m_elo;
     sf::Text m_noCaptures;
 
-    // NEW: keep originals so we can re-ellipsize on layout changes
+    std::optional<model::analysis::Outcome> m_outcome;
+    sf::RectangleShape m_outcomePill;
+    sf::Text m_outcomeText;
+
+    // keep originals so we can re-ellipsize on layout changes
     std::string m_fullName;
     std::string m_fullElo;
 
@@ -68,5 +75,4 @@ namespace lilia::view
 
     std::string m_iconPath;
   };
-
 } // namespace lilia::view
