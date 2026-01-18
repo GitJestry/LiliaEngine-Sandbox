@@ -6,38 +6,14 @@
 #include "lilia/constants.hpp"
 #include "lilia/view/ui/style/modals/bot_catalog_modal.hpp"
 #include "lilia/view/ui/style/theme_cache.hpp"
-
-#include <fstream>
-#include <sstream>
-#include <filesystem>
+#include "lilia/model/analysis/config/start_config.hpp"
 
 namespace lilia::view
 {
-
   enum class StartMode
   {
     NewGame,
     ReplayPgn
-  };
-
-  struct StartConfig
-  {
-    bool whiteIsBot{false};
-    bool blackIsBot{true};
-
-    EngineChoice whiteEngine{};
-    EngineChoice blackEngine{};
-
-    std::string fen;
-    StartMode startMode{StartMode::NewGame};
-
-    int timeBaseSeconds{300};
-    int timeIncrementSeconds{0};
-    bool timeEnabled{false};
-
-    std::string pgnText;
-    std::string pgnFilename;
-    std::string pgnPath;
   };
 
   class StartScreen
@@ -46,7 +22,7 @@ namespace lilia::view
     explicit StartScreen(sf::RenderWindow &window);
     ~StartScreen() = default;
 
-    StartConfig run();
+    lilia::config::StartConfig run();
 
   private:
     sf::RenderWindow &m_window;
@@ -57,5 +33,4 @@ namespace lilia::view
 
     ui::ThemeCache m_theme; // stable cache; updates automatically on palette changes
   };
-
 } // namespace lilia::view

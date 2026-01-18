@@ -3,12 +3,11 @@
 #include <SFML/Window/Mouse.hpp>
 #include <algorithm>
 
-#include "lilia/bot/bot_info.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/style/modals/modal.hpp"
 #include "lilia/view/ui/render/texture_table.hpp"
 #include "lilia/view/ui/style/modals/modal.hpp"
 #include "lilia/view/ui/style/style.hpp"
+
 namespace lilia::view
 {
 
@@ -29,53 +28,50 @@ namespace lilia::view
         return win.mapPixelToCoords(sf::Mouse::getPosition(win));
       }
     }
-  }
+  } // namespace
 
   GameView::GameView(sf::RenderWindow &window, bool topIsBot, bool bottomIsBot)
-      : m_window(window), m_board_view(), m_piece_manager(m_board_view),
+      : m_window(window),
+        m_board_view(),
+        m_piece_manager(m_board_view),
         m_highlight_manager(m_board_view),
-        m_chess_animator(m_board_view, m_piece_manager), m_promotion_manager(),
-        m_cursor_manager(window), m_eval_bar(), m_move_list(), m_top_player(),
-        m_bottom_player(), m_top_clock(), m_bottom_clock(), m_modal(),
+        m_chess_animator(m_board_view, m_piece_manager),
+        m_promotion_manager(),
+        m_cursor_manager(window),
+        m_eval_bar(),
+        m_move_list(),
+        // EXACTLY TWO players: one per color
+        m_white_player(),
+        m_black_player(),
+        // (Recommended) EXACTLY TWO clocks: one per color
+        m_white_clock(),
+        m_black_clock(),
+        m_modal(),
         m_particles()
   {
-    // players
-    PlayerInfo topInfo =
-        topIsBot ? getBotConfig(BotType::Lilia).info
-                 : PlayerInfo{"Challenger", "",
-                              std::string{constant::path::ICON_CHALLENGER}};
-    PlayerInfo bottomInfo =
-        bottomIsBot ? getBotConfig(BotType::Lilia).info
-                    : PlayerInfo{"Challenger", "",
-                                 std::string{constant::path::ICON_CHALLENGER}};
+    const bool flipped = bottomIsBot && !topIsBot;
 
-    bool flipped = bottomIsBot && !topIsBot;
-    if (flipped)
-    {
-      m_top_player.setInfo(bottomInfo);
-      m_bottom_player.setInfo(topInfo);
-      m_top_player.setPlayerColor(core::Color::White);
-      m_bottom_player.setPlayerColor(core::Color::Black);
-      m_white_player = &m_top_player;
-      m_black_player = &m_bottom_player;
-      m_top_clock.setPlayerColor(core::Color::White);
-      m_bottom_clock.setPlayerColor(core::Color::Black);
-      m_white_clock = &m_top_clock;
-      m_black_clock = &m_bottom_clock;
-    }
-    else
-    {
-      m_top_player.setInfo(topInfo);
-      m_bottom_player.setInfo(bottomInfo);
-      m_top_player.setPlayerColor(core::Color::Black);
-      m_bottom_player.setPlayerColor(core::Color::White);
-      m_black_player = &m_top_player;
-      m_white_player = &m_bottom_player;
-      m_top_clock.setPlayerColor(core::Color::Black);
-      m_bottom_clock.setPlayerColor(core::Color::White);
-      m_black_clock = &m_top_clock;
-      m_white_clock = &m_bottom_clock;
-    }
+    // Fixed color identity (never swapped)
+    m_white_player.setPlayerColor(core::Color::White);
+    m_black_player.setPlayerColor(core::Color::Black);
+
+    // Safe defaults (avoid empty icon path lookups before controller sets real info)
+    PlayerInfo w{};
+    w.name = "White";
+    w.elo = "";
+    w.iconPath = std::string{constant::path::ICON_CHALLENGER};
+
+    PlayerInfo b{};
+    b.name = "Black";
+    b.elo = "";
+    b.iconPath = std::string{constant::path::ICON_CHALLENGER};
+
+    m_white_player.setInfo(w);
+    m_black_player.setInfo(b);
+
+    // Fixed clock identity (never swapped)
+    m_white_clock.setPlayerColor(core::Color::White);
+    m_black_clock.setPlayerColor(core::Color::Black);
 
     // board orientation
     m_board_view.setFlipped(flipped);
@@ -120,8 +116,11 @@ namespace lilia::view
 
     // board + pieces + overlays
     m_board_view.renderBoard(m_window);
-    m_top_player.render(m_window);
-    m_bottom_player.render(m_window);
+
+    // Only these two player panels are ever rendered
+    m_white_player.render(m_window);
+    m_black_player.render(m_window);
+
     m_highlight_manager.renderSelect(m_window);
     m_highlight_manager.renderPremove(m_window);
     m_chess_animator.renderHighlightLevel(m_window);
@@ -150,11 +149,13 @@ namespace lilia::view
       if (draggingPiece)
         m_piece_manager.renderPiece(m_dragging_piece, m_window);
     }
+
     if (m_show_clocks)
     {
-      m_top_clock.render(m_window);
-      m_bottom_clock.render(m_window);
+      m_white_clock.render(m_window);
+      m_black_clock.render(m_window);
     }
+
     m_move_list.render(m_window);
 
     if (isAnyModalOpen())
@@ -349,10 +350,6 @@ namespace lilia::view
   {
     m_board_view.toggleFlipped();
     m_eval_bar.setFlipped(m_board_view.isFlipped());
-    std::swap(m_top_player, m_bottom_player);
-    std::swap(m_white_player, m_black_player);
-    std::swap(m_top_clock, m_bottom_clock);
-    std::swap(m_white_clock, m_black_clock);
     layout(m_window.getSize().x, m_window.getSize().y);
   }
 
@@ -377,16 +374,14 @@ namespace lilia::view
 
   void GameView::updateClock(core::Color color, float seconds)
   {
-    Clock &clk = (color == core::Color::White) ? *m_white_clock : *m_black_clock;
+    Clock &clk = (color == core::Color::White) ? m_white_clock : m_black_clock;
     clk.setTime(seconds);
   }
 
   void GameView::setClockActive(std::optional<core::Color> active)
   {
-    if (m_white_clock)
-      m_white_clock->setActive(active && *active == core::Color::White);
-    if (m_black_clock)
-      m_black_clock->setActive(active && *active == core::Color::Black);
+    m_white_clock.setActive(active && *active == core::Color::White);
+    m_black_clock.setActive(active && *active == core::Color::Black);
   }
 
   void GameView::setClocksVisible(bool visible) { m_show_clocks = visible; }
@@ -425,22 +420,20 @@ namespace lilia::view
 
   void GameView::addCapturedPiece(core::Color capturer, core::PieceType type)
   {
-    PlayerInfoView &view =
-        (capturer == core::Color::White) ? *m_white_player : *m_black_player;
+    PlayerInfoView &view = (capturer == core::Color::White) ? m_white_player : m_black_player;
     view.addCapturedPiece(type, ~capturer);
   }
 
   void GameView::removeCapturedPiece(core::Color capturer)
   {
-    PlayerInfoView &view =
-        (capturer == core::Color::White) ? *m_white_player : *m_black_player;
+    PlayerInfoView &view = (capturer == core::Color::White) ? m_white_player : m_black_player;
     view.removeCapturedPiece();
   }
 
   void GameView::clearCapturedPieces()
   {
-    m_top_player.clearCapturedPieces();
-    m_bottom_player.clearCapturedPieces();
+    m_white_player.clearCapturedPieces();
+    m_black_player.clearCapturedPieces();
   }
 
   void GameView::highlightSquare(core::Square pos)
@@ -583,11 +576,8 @@ namespace lilia::view
 
   void GameView::setPlayers(const PlayerInfo &white, const PlayerInfo &black)
   {
-    // m_white_player/m_black_player already reflect board orientation mapping.
-    if (m_white_player)
-      m_white_player->setInfo(white);
-    if (m_black_player)
-      m_black_player->setInfo(black);
+    m_white_player.setInfo(white);
+    m_black_player.setInfo(black);
   }
 
   void GameView::setOutcomeBadges(std::optional<model::analysis::Outcome> white,
@@ -601,10 +591,8 @@ namespace lilia::view
       return (*o == model::analysis::Outcome::Unknown) ? std::nullopt : o;
     };
 
-    if (m_white_player)
-      m_white_player->setOutcome(norm(white));
-    if (m_black_player)
-      m_black_player->setOutcome(norm(black));
+    m_white_player.setOutcome(norm(white));
+    m_black_player.setOutcome(norm(black));
   }
 
   void GameView::clearOutcomeBadges()
@@ -667,21 +655,44 @@ namespace lilia::view
     float boardTop =
         boardCenterY - static_cast<float>(constant::WINDOW_PX_SIZE) / 2.f;
 
-    // player badges
-    m_top_player.setPositionClamped({boardLeft + 5.f, boardTop - 45.f},
-                                    m_window.getSize());
-    m_bottom_player.setPositionClamped(
-        {boardLeft + 5.f,
-         boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f},
-        m_window.getSize());
-    m_top_player.setBoardCenter(boardCenterX);
-    m_bottom_player.setBoardCenter(boardCenterX);
+    // Player badge target positions
+    const Entity::Position topPos{boardLeft + 5.f, boardTop - 45.f};
+    const Entity::Position bottomPos{
+        boardLeft + 5.f,
+        boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 15.f};
+
+    // When flipped: white is top. Otherwise: black is top.
+    if (m_board_view.isFlipped())
+    {
+      m_white_player.setPositionClamped(topPos, m_window.getSize());
+      m_black_player.setPositionClamped(bottomPos, m_window.getSize());
+    }
+    else
+    {
+      m_black_player.setPositionClamped(topPos, m_window.getSize());
+      m_white_player.setPositionClamped(bottomPos, m_window.getSize());
+    }
+
+    m_white_player.setBoardCenter(boardCenterX);
+    m_black_player.setBoardCenter(boardCenterX);
 
     float clockX = boardLeft + static_cast<float>(constant::WINDOW_PX_SIZE) -
                    Clock::WIDTH * 0.85f;
-    m_top_clock.setPosition({clockX, boardTop - Clock::HEIGHT});
-    m_bottom_clock.setPosition(
-        {clockX, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 5.f});
+
+    const Entity::Position topClockPos{clockX, boardTop - Clock::HEIGHT};
+    const Entity::Position bottomClockPos{
+        clockX, boardTop + static_cast<float>(constant::WINDOW_PX_SIZE) + 5.f};
+
+    if (m_board_view.isFlipped())
+    {
+      m_white_clock.setPosition(topClockPos);
+      m_black_clock.setPosition(bottomClockPos);
+    }
+    else
+    {
+      m_black_clock.setPosition(topClockPos);
+      m_white_clock.setPosition(bottomClockPos);
+    }
 
     // keep modal centered on window/board changes
     m_modal.onResize(m_window.getSize(), m_board_view.getPosition());

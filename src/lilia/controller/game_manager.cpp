@@ -1,10 +1,11 @@
 #include "lilia/controller/game_manager.hpp"
 
 #include <chrono>
-
-#include "lilia/controller/bot_player.hpp"
 #include "lilia/controller/player.hpp"
 #include "lilia/model/chess_game.hpp"
+#include "lilia/model/analysis/config/start_config.hpp"
+#include "lilia/controller/uci_engine_player.hpp"
+#include "lilia/engine/uci/engine_registry.hpp"
 
 namespace lilia::controller
 {
@@ -16,26 +17,32 @@ namespace lilia::controller
     stopGame();
   }
 
-  void GameManager::startGame(const std::string &fen, bool whiteIsBot, bool blackIsBot,
-                              int whiteThinkTimeMs, int whiteDepth, int blackThinkTimeMs,
-                              int blackDepth)
+  void GameManager::startGame(const lilia::config::StartConfig &cfg)
   {
     std::lock_guard lock(m_mutex);
-    m_game.setPosition(fen);
+
+    m_game.setPosition(cfg.game.startFen);
     m_cancel_bot.store(false);
     m_waiting_promotion = false;
 
-    if (whiteIsBot)
-      m_white_player = std::make_unique<BotPlayer>(whiteThinkTimeMs, whiteDepth);
-    else
-      m_white_player.reset();
+    auto makeSide = [&](const lilia::config::SideConfig &sc) -> std::unique_ptr<IPlayer>
+    {
+      if (sc.kind == lilia::config::SideKind::Human || !sc.bot.has_value())
+        return {};
 
-    if (blackIsBot)
-      m_black_player = std::make_unique<BotPlayer>(blackThinkTimeMs, blackDepth);
-    else
-      m_black_player.reset();
+      // If UI did not populate uciValues yet, fill defaults from registry cache
+      auto bc = *sc.bot;
+      if (bc.uciValues.empty() && !bc.engine.engineId.empty())
+      {
+        bc = lilia::engine::uci::EngineRegistry::instance().makeDefaultBotConfig(bc.engine.engineId);
+        bc.limits = sc.bot->limits; // keep chosen limits if set
+      }
+      return std::make_unique<UciEnginePlayer>(std::move(bc));
+    };
 
-    // check game result in case of starting position being terminal
+    m_white_player = makeSide(cfg.white);
+    m_black_player = makeSide(cfg.black);
+
     m_game.checkGameResult();
     if (m_game.getResult() != core::GameResult::ONGOING)
     {

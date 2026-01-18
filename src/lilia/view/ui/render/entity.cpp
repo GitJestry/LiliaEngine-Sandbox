@@ -31,6 +31,8 @@ namespace lilia::view
     m_sprite.setScale(widthFraction, heightFraction);
   }
 
+  void Entity::setTextureRect(const sf::IntRect &r) { m_sprite.setTextureRect(r); }
+
   void Entity::setOriginToCenter()
   {
     Position bounds = getOriginalSize();

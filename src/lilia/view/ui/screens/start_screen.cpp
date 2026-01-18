@@ -12,14 +12,16 @@
 #include <string>
 #include <vector>
 
-#include "lilia/view/ui/style/color_palette_manager.hpp"
+#include "lilia/constants.hpp"
+#include "lilia/engine/uci/engine_registry.hpp"
 #include "lilia/view/ui/interaction/focus.hpp"
 #include "lilia/view/ui/render/layout.hpp"
+#include "lilia/view/ui/render/render_constants.hpp"
+#include "lilia/view/ui/style/color_palette_manager.hpp"
 #include "lilia/view/ui/style/modals/modal_stack.hpp"
 #include "lilia/view/ui/style/style.hpp"
 #include "lilia/view/ui/widgets/button.hpp"
 #include "lilia/view/ui/widgets/time_control_picker.hpp"
-#include "lilia/view/ui/render/render_constants.hpp"
 
 #include "lilia/view/ui/style/modals/game_setup/game_setup_modal.hpp"
 #include "lilia/view/ui/style/modals/game_setup/game_setup_validation.hpp"
@@ -84,12 +86,10 @@ namespace lilia::view
     static std::optional<std::string> openPgnFileDialog()
     {
 #if defined(__APPLE__)
-      // Standard macOS tool; avoids adding dependencies.
       auto path = popenReadAll("osascript -e 'POSIX path of (choose file with prompt \"Select PGN file\")' 2>/dev/null");
       if (path)
         return path;
 #else
-      // Linux: prefer zenity, then kdialog.
       auto path = popenReadAll("zenity --file-selection --title=\"Select PGN file\" 2>/dev/null");
       if (path)
         return path;
@@ -103,6 +103,13 @@ namespace lilia::view
 
 #endif
 
+    static std::string engineLabel(const lilia::config::EngineRef &r)
+    {
+      const std::string name =
+          !r.displayName.empty() ? r.displayName
+                                 : (!r.engineId.empty() ? r.engineId : std::string("Select Bot..."));
+      return name;
+    }
   } // namespace
 
   StartScreen::StartScreen(sf::RenderWindow &window) : m_window(window)
@@ -112,7 +119,7 @@ namespace lilia::view
     m_logo.setTexture(m_logoTex);
   }
 
-  StartConfig StartScreen::run()
+  lilia::config::StartConfig StartScreen::run()
   {
     ui::ModalStack modals;
     ui::FocusManager focus;
@@ -120,20 +127,115 @@ namespace lilia::view
     // Ensure crisp 1:1 rendering (important for text).
     m_window.setView(m_window.getDefaultView());
 
-    StartConfig cfg;
-    cfg.fen = core::START_FEN;
+    // Make sure registry is hydrated (disk + builtins should already be ensured by Engine::init()).
+    auto &reg = lilia::engine::uci::EngineRegistry::instance();
+    reg.load();
 
-    cfg.whiteEngine.external = false;
-    cfg.whiteEngine.builtin = BotType::Lilia;
-    cfg.whiteEngine.displayName = "Lilia";
-    cfg.whiteEngine.version = "1.0";
-    cfg.blackEngine = cfg.whiteEngine;
+    // Canonical StartConfig (single source of truth).
+    lilia::config::StartConfig cfg{};
+    cfg.game.startFen = core::START_FEN;
+    cfg.game.tc.enabled = false;
+    cfg.game.tc.baseSeconds = 300;
+    cfg.game.tc.incrementSeconds = 0;
+
+    cfg.replay.enabled = false;
+    cfg.replay.pgnText.clear();
+    cfg.replay.pgnFilename.clear();
+    cfg.replay.pgnPath.clear();
+
+    // Match your previous UX defaults: White human, Black bot (Lilia).
+    cfg.white.kind = lilia::config::SideKind::Human;
+    cfg.white.bot.reset();
+
+    auto makeLockedInBot = [&]() -> lilia::config::BotConfig
+    {
+      // 1) Prefer builtin lilia
+      auto bc = reg.makeDefaultBotConfig("lilia");
+      if (!bc.engine.engineId.empty())
+        return bc;
+
+      // 2) Fallback: builtin stockfish
+      bc = reg.makeDefaultBotConfig("stockfish");
+      if (!bc.engine.engineId.empty())
+        return bc;
+
+      // 3) Fallback: first registered engine
+      auto list = reg.list();
+      if (!list.empty())
+      {
+        bc = reg.makeDefaultBotConfig(list.front().ref.engineId);
+        if (!bc.engine.engineId.empty())
+          return bc;
+      }
+
+      // 4) No engines at all (return empty)
+      return {};
+    };
+
+    cfg.black.bot = makeLockedInBot();
+    if (cfg.black.bot.has_value() && !cfg.black.bot->engine.engineId.empty())
+    {
+      cfg.black.kind = lilia::config::SideKind::Engine;
+    }
+    else
+    {
+      // Safe degrade: never claim "bot" if we don't have an engine.
+      cfg.black.kind = lilia::config::SideKind::Human;
+      cfg.black.bot.reset();
+    }
+
+    // Invariant helpers (prevents "engine side but nobody plays" + fixes icon fallback issues).
+    auto setHumanSide = [&](lilia::config::SideConfig &side)
+    {
+      side.kind = lilia::config::SideKind::Human;
+      side.bot.reset();
+    };
+
+    auto ensureBotSide = [&](lilia::config::SideConfig &side)
+    {
+      side.kind = lilia::config::SideKind::Engine;
+
+      if (!side.bot.has_value() || side.bot->engine.engineId.empty())
+        side.bot = makeLockedInBot();
+
+      if (!side.bot.has_value() || side.bot->engine.engineId.empty())
+      {
+        // Degrade safely: never leave an Engine side without a valid engine.
+        side.kind = lilia::config::SideKind::Human;
+        side.bot.reset();
+        return;
+      }
+
+      if (side.bot->uciValues.empty())
+      {
+        auto hydrated = reg.makeDefaultBotConfig(side.bot->engine.engineId);
+        if (!hydrated.engine.engineId.empty())
+        {
+          hydrated.limits = side.bot->limits;
+          side.bot = std::move(hydrated);
+        }
+      }
+    };
+
+    auto applyPickedEngine = [&](lilia::config::SideConfig &side, const lilia::config::EngineRef &picked)
+    {
+      // Preserve existing limits, but reset UCI values to the new engine's defaults.
+      lilia::config::SearchLimits limits{};
+      if (side.bot)
+        limits = side.bot->limits;
+
+      auto bc = reg.makeDefaultBotConfig(picked.engineId);
+      bc.limits = limits;
+
+      side.kind = lilia::config::SideKind::Engine;
+      side.bot = std::move(bc);
+    };
 
     const ui::Theme &theme = m_theme.uiTheme();
 
     // --- Time Control Picker (top-center; config only visible when ON) ---
     ui::TimeControlPicker timePicker(m_font, theme);
-    timePicker.setValue({cfg.timeEnabled, cfg.timeBaseSeconds, cfg.timeIncrementSeconds});
+    timePicker.setValue({cfg.game.tc.enabled, cfg.game.tc.baseSeconds, cfg.game.tc.incrementSeconds});
 
     // Buttons
     ui::Button paletteBtn;
@@ -190,7 +292,8 @@ namespace lilia::view
 
     auto openWhiteCatalog = [&]
     {
-      auto m = std::make_unique<BotCatalogModal>(m_font, theme, cfg.whiteEngine);
+      const std::string cur = (cfg.white.bot ? cfg.white.bot->engine.engineId : std::string{});
+      auto m = std::make_unique<BotCatalogModal>(m_font, theme, cur);
       whiteCatalog = m.get();
       modals.push(std::move(m));
       modals.layout(m_window.getSize());
@@ -198,7 +301,8 @@ namespace lilia::view
 
     auto openBlackCatalog = [&]
     {
-      auto m = std::make_unique<BotCatalogModal>(m_font, theme, cfg.blackEngine);
+      const std::string cur = (cfg.black.bot ? cfg.black.bot->engine.engineId : std::string{});
+      auto m = std::make_unique<BotCatalogModal>(m_font, theme, cur);
       blackCatalog = m.get();
       modals.push(std::move(m));
       modals.layout(m_window.getSize());
@@ -206,54 +310,54 @@ namespace lilia::view
 
     paletteBtn.setOnClick([&]
                           {
-    auto m = std::make_unique<ui::PalettePickerModal>();
-    paletteModal = m.get();
+      auto m = std::make_unique<ui::PalettePickerModal>();
+      paletteModal = m.get();
 
-    ui::PalettePickerModal::Params p;
-    p.theme = &theme;
-    p.font = &m_font;
-    p.anchorButton = paletteBtn.bounds();
-    p.onPick = [&](const std::string &name)
-    { palettePicked = name; };
-    p.onClose = [&]() {};
+      ui::PalettePickerModal::Params p;
+      p.theme = &theme;
+      p.font = &m_font;
+      p.anchorButton = paletteBtn.bounds();
+      p.onPick = [&](const std::string &name) { palettePicked = name; };
+      p.onClose = [&]() {};
 
-    m->open(m_window.getSize(), std::move(p));
-    modals.push(std::move(m));
-    modals.layout(m_window.getSize()); });
+      m->open(m_window.getSize(), std::move(p));
+      modals.push(std::move(m));
+      modals.layout(m_window.getSize()); });
 
     // Side selection: Human top, Bot bottom.
-    // Requirement: Bot-click opens selection popup.
     whiteHuman.setOnClick([&]
-                          { cfg.whiteIsBot = false; });
+                          { setHumanSide(cfg.white); });
 
     whiteBot.setOnClick([&]
                         {
-    cfg.whiteIsBot = true;
-    openWhiteCatalog(); });
+      ensureBotSide(cfg.white);     // auto-select default engine immediately
+      openWhiteCatalog(); });
 
     blackHuman.setOnClick([&]
-                          { cfg.blackIsBot = false; });
+                          { setHumanSide(cfg.black); });
 
     blackBot.setOnClick([&]
                         {
-    cfg.blackIsBot = true;
-    openBlackCatalog(); });
+      ensureBotSide(cfg.black);     // auto-select default engine immediately
+      openBlackCatalog(); });
 
     // Engine buttons remain as "change engine" affordance when Bot is active.
     whiteEngineBtn.setOnClick([&]
-                              { openWhiteCatalog(); });
+                              {
+      ensureBotSide(cfg.white);
+      openWhiteCatalog(); });
     blackEngineBtn.setOnClick([&]
-                              { openBlackCatalog(); });
+                              {
+      ensureBotSide(cfg.black);
+      openBlackCatalog(); });
 
     loadBtn.setOnClick([&]
                        {
       auto m = std::make_unique<ui::GameSetupModal>(m_font, theme, focus);
       setupModal = m.get();
 
-      // Provide the upload callback while the modal is open.
       setupModal->setOnRequestPgnUpload([&, modalPtr = setupModal]
       {
-        // Open dialog (platform-specific). Fallback: clipboard contains a path.
         std::optional<std::string> path = openPgnFileDialog();
         if (!path || path->empty())
         {
@@ -291,17 +395,14 @@ namespace lilia::view
     {
       auto ws = m_window.getSize();
 
-      // Keep UI within window (prevents cramped layouts on smaller windows)
       const float panelW = std::min(980.f, std::max(760.f, float(ws.x) - 90.f));
       const float panelH = std::min(620.f, std::max(520.f, float(ws.y) - 140.f));
 
       panel = ui::anchoredCenter(ws, {panelW, panelH});
       sf::FloatRect inner = ui::inset(panel, 24.f);
 
-      // Bottom-left palette button (outside main panel, like before)
       paletteBtn.setBounds({20.f, float(ws.y) - 54.f, 140.f, 34.f});
 
-      // Bottom actions: Start centered, Load directly below (requirement)
       const float bottomPad = 26.f;
       const float startW = 300.f;
       const float startH = 56.f;
@@ -318,16 +419,13 @@ namespace lilia::view
       startBtn.setBounds({startX, startY, startW, startH});
       loadBtn.setBounds({loadX, loadY, loadW, loadH});
 
-      // Header positions
       titlePos = ui::snap({panel.left + 24.f, panel.top + 18.f});
       subtitlePos = ui::snap({panel.left + 24.f, panel.top + 52.f});
 
-      // Content area between header and actions
       const float contentTop = panel.top + 92.f;
       const float contentBottom = startY - 18.f;
       const float contentH = std::max(0.f, contentBottom - contentTop);
 
-      // Column sizing: favor a wide center for time configuration.
       const float colGap = 22.f;
       const float desiredTimeW = 520.f;
       const float minSideW = 190.f;
@@ -336,13 +434,11 @@ namespace lilia::view
       float sideW = (availableW - desiredTimeW - 2.f * colGap) * 0.5f;
 
       if (sideW < minSideW)
-      {
         sideW = minSideW;
-      }
+
       float timeW = availableW - 2.f * sideW - 2.f * colGap;
-      if (timeW < 360.f) // keep time panel usable
+      if (timeW < 360.f)
       {
-        // If too tight: take some from sides but keep minimum
         float deficit = 360.f - timeW;
         float take = deficit * 0.5f;
         sideW = std::max(minSideW, sideW - take);
@@ -353,17 +449,14 @@ namespace lilia::view
       timeCol = {whiteCol.left + whiteCol.width + colGap, contentTop, timeW, contentH};
       blackCol = {timeCol.left + timeCol.width + colGap, contentTop, sideW, contentH};
 
-      // Labels
       whiteLabelPos = ui::snap({whiteCol.left, whiteCol.top});
       blackLabelPos = ui::snap({blackCol.left, blackCol.top});
 
-      // Cards (sub-panels for cleaner modern grouping)
       const float cardTopPad = 34.f;
       whiteCard = {whiteCol.left, whiteCol.top + cardTopPad, whiteCol.width, whiteCol.height - cardTopPad};
       blackCard = {blackCol.left, blackCol.top + cardTopPad, blackCol.width, blackCol.height - cardTopPad};
       timeCard = {timeCol.left, timeCol.top, timeCol.width, timeCol.height};
 
-      // Side buttons layout (Human above Bot, engine appears only if Bot active)
       const float btnH = 44.f;
       const float btnGapY = 10.f;
 
@@ -376,7 +469,6 @@ namespace lilia::view
       yW += btnH + btnGapY;
       whiteBot.setBounds({x, yW, w, btnH});
       yW += btnH + btnGapY;
-
       whiteEngineBtn.setBounds({x, yW, w, 40.f});
 
       float yB = blackCard.top + 14.f;
@@ -387,11 +479,8 @@ namespace lilia::view
       yB += btnH + btnGapY;
       blackBot.setBounds({xb, yB, wb, btnH});
       yB += btnH + btnGapY;
-
       blackEngineBtn.setBounds({xb, yB, wb, 40.f});
 
-      // Time picker bounds: upper-middle column; configuration expands under toggle when ON.
-      // Keep it anchored to the top of the column (modern, predictable).
       sf::FloatRect timeBounds = {timeCard.left, timeCard.top, timeCard.width, 160.f};
       timePicker.setBounds(timeBounds);
     };
@@ -422,11 +511,19 @@ namespace lilia::view
           mouse = {float(e.mouseMove.x), float(e.mouseMove.y)};
 
         modals.handleEvent(e, mouse);
-
         if (modals.hasOpenModal())
           continue;
 
-        // hover
+        const bool whiteIsBot =
+            (cfg.white.kind == lilia::config::SideKind::Engine) &&
+            cfg.white.bot.has_value() &&
+            !cfg.white.bot->engine.engineId.empty();
+
+        const bool blackIsBot =
+            (cfg.black.kind == lilia::config::SideKind::Engine) &&
+            cfg.black.bot.has_value() &&
+            !cfg.black.bot->engine.engineId.empty();
+
         paletteBtn.updateHover(mouse);
 
         whiteHuman.updateHover(mouse);
@@ -434,9 +531,9 @@ namespace lilia::view
         blackHuman.updateHover(mouse);
         blackBot.updateHover(mouse);
 
-        if (cfg.whiteIsBot)
+        if (whiteIsBot)
           whiteEngineBtn.updateHover(mouse);
-        if (cfg.blackIsBot)
+        if (blackIsBot)
           blackEngineBtn.updateHover(mouse);
 
         startBtn.updateHover(mouse);
@@ -444,7 +541,6 @@ namespace lilia::view
 
         timePicker.updateHover(mouse);
 
-        // events
         if (paletteBtn.handleEvent(e, mouse))
           continue;
 
@@ -453,7 +549,7 @@ namespace lilia::view
         if (whiteBot.handleEvent(e, mouse))
           continue;
 
-        if (cfg.whiteIsBot && whiteEngineBtn.handleEvent(e, mouse))
+        if (whiteIsBot && whiteEngineBtn.handleEvent(e, mouse))
           continue;
 
         if (blackHuman.handleEvent(e, mouse))
@@ -461,7 +557,7 @@ namespace lilia::view
         if (blackBot.handleEvent(e, mouse))
           continue;
 
-        if (cfg.blackIsBot && blackEngineBtn.handleEvent(e, mouse))
+        if (blackIsBot && blackEngineBtn.handleEvent(e, mouse))
           continue;
 
         if (loadBtn.handleEvent(e, mouse))
@@ -476,70 +572,77 @@ namespace lilia::view
 
       modals.update(dt, mouse, [&](ui::Modal &modal)
                     {
-      if (paletteModal && &modal == paletteModal)
-      {
-        if (palettePicked)
+        if (paletteModal && &modal == paletteModal)
         {
-          ColorPaletteManager::get().setPalette(*palettePicked);
-          palettePicked.reset();
-        }
-        paletteModal = nullptr;
-      }
-
-      if (whiteCatalog && &modal == whiteCatalog)
-      {
-        if (auto picked = whiteCatalog->picked())
-          cfg.whiteEngine = *picked;
-        whiteCatalog = nullptr;
-      }
-
-      if (blackCatalog && &modal == blackCatalog)
-      {
-        if (auto picked = blackCatalog->picked())
-          cfg.blackEngine = *picked;
-        blackCatalog = nullptr;
-      }
-
-      if (setupModal && &modal == setupModal)
-      {
-        if (auto fen = setupModal->resultFen())
-          cfg.fen = *fen;
-
-        // If PGN exists, treat this as "Replay PGN" load.
-        if (auto pgn = setupModal->resultPgn())
-        {
-          cfg.pgnText = *pgn;
-          cfg.startMode = StartMode::ReplayPgn;
-
-          if (auto fn = setupModal->resultPgnFilename())
-            cfg.pgnFilename = *fn;
-        }
-        else
-        {
-          cfg.pgnText.clear();
-          cfg.pgnFilename.clear();
-          cfg.startMode = StartMode::NewGame;
+          if (palettePicked)
+          {
+            ColorPaletteManager::get().setPalette(*palettePicked);
+            palettePicked.reset();
+          }
+          paletteModal = nullptr;
         }
 
-        setupModal = nullptr;
-      } });
+        if (whiteCatalog && &modal == whiteCatalog)
+        {
+          if (auto picked = whiteCatalog->picked())
+            applyPickedEngine(cfg.white, *picked);
 
-      // Pull current time settings from picker
+          // Ensure invariants even if modal closed without a selection.
+          if (cfg.white.kind == lilia::config::SideKind::Engine)
+            ensureBotSide(cfg.white);
+
+          whiteCatalog = nullptr;
+        }
+
+        if (blackCatalog && &modal == blackCatalog)
+        {
+          if (auto picked = blackCatalog->picked())
+            applyPickedEngine(cfg.black, *picked);
+
+          // Ensure invariants even if modal closed without a selection.
+          if (cfg.black.kind == lilia::config::SideKind::Engine)
+            ensureBotSide(cfg.black);
+
+          blackCatalog = nullptr;
+        }
+
+        if (setupModal && &modal == setupModal)
+        {
+          if (auto fen = setupModal->resultFen())
+            cfg.game.startFen = *fen;
+
+          if (auto pgn = setupModal->resultPgn())
+          {
+            cfg.replay.enabled = true;
+            cfg.replay.pgnText = *pgn;
+
+            if (auto fn = setupModal->resultPgnFilename())
+              cfg.replay.pgnFilename = *fn;
+          }
+          else
+          {
+            cfg.replay.enabled = false;
+            cfg.replay.pgnText.clear();
+            cfg.replay.pgnFilename.clear();
+          }
+
+          setupModal = nullptr;
+        } });
+
+      // Pull current time settings from picker into canonical config
       {
         auto tv = timePicker.value();
-        cfg.timeEnabled = tv.enabled;
-        cfg.timeBaseSeconds = tv.baseSeconds;
-        cfg.timeIncrementSeconds = tv.incrementSeconds;
+        cfg.game.tc.enabled = tv.enabled;
+        cfg.game.tc.baseSeconds = tv.baseSeconds;
+        cfg.game.tc.incrementSeconds = tv.incrementSeconds;
       }
 
-      // Make sure our UI draws 1:1 (prevents blurry text if any other screen changed the view).
       m_window.setView(m_window.getDefaultView());
 
       // Draw
       m_window.clear();
       ui::drawVerticalGradient(m_window, m_window.getSize(), theme.bgTop, theme.bgBottom);
 
-      // Logo background
       if (m_logoTex.getSize().x > 0)
       {
         sf::Sprite logoBG(m_logoTex);
@@ -573,7 +676,6 @@ namespace lilia::view
       subtitle.setPosition(subtitlePos);
       m_window.draw(subtitle);
 
-      // Section labels
       sf::Text wl("White", m_font, 20);
       wl.setFillColor(theme.text);
       wl.setPosition(whiteLabelPos);
@@ -584,10 +686,8 @@ namespace lilia::view
       bl.setPosition(blackLabelPos);
       m_window.draw(bl);
 
-      // Sub-cards for cleaner grouping
       auto drawCard = [&](const sf::FloatRect &r)
       {
-        // soft shadow + card fill
         ui::drawSoftShadowRect(m_window, r, sf::Color(0, 0, 0, 70), 2, 2.f);
 
         sf::RectangleShape card({r.width, r.height});
@@ -601,43 +701,47 @@ namespace lilia::view
       drawCard(whiteCard);
       drawCard(blackCard);
 
-      // Button states
-      whiteHuman.setActive(!cfg.whiteIsBot);
-      whiteBot.setActive(cfg.whiteIsBot);
+      const bool whiteIsBot = (cfg.white.kind == lilia::config::SideKind::Engine) && cfg.white.bot.has_value();
+      const bool blackIsBot = (cfg.black.kind == lilia::config::SideKind::Engine) && cfg.black.bot.has_value();
 
-      blackHuman.setActive(!cfg.blackIsBot);
-      blackBot.setActive(cfg.blackIsBot);
+      whiteHuman.setActive(!whiteIsBot);
+      whiteBot.setActive(whiteIsBot);
 
-      // Engine buttons: only visible when Bot selected
-      whiteEngineBtn.setEnabled(cfg.whiteIsBot);
-      blackEngineBtn.setEnabled(cfg.blackIsBot);
+      blackHuman.setActive(!blackIsBot);
+      blackBot.setActive(blackIsBot);
 
-      whiteEngineBtn.setText(cfg.whiteEngine.displayName + " v" + cfg.whiteEngine.version, 16);
-      blackEngineBtn.setText(cfg.blackEngine.displayName + " v" + cfg.blackEngine.version, 16);
+      whiteEngineBtn.setEnabled(whiteIsBot);
+      blackEngineBtn.setEnabled(blackIsBot);
 
-      // Draw widgets
+      if (whiteIsBot)
+        whiteEngineBtn.setText(engineLabel(cfg.white.bot->engine), 16);
+      else
+        whiteEngineBtn.setText("Select Bot...", 16);
+
+      if (blackIsBot)
+        blackEngineBtn.setText(engineLabel(cfg.black.bot->engine), 16);
+      else
+        blackEngineBtn.setText("Select Bot...", 16);
+
       paletteBtn.draw(m_window);
 
       whiteHuman.draw(m_window);
       whiteBot.draw(m_window);
-      if (cfg.whiteIsBot)
+      if (whiteIsBot)
         whiteEngineBtn.draw(m_window);
 
       blackHuman.draw(m_window);
       blackBot.draw(m_window);
-      if (cfg.blackIsBot)
+      if (blackIsBot)
         blackEngineBtn.draw(m_window);
 
-      // Time picker (top-center; config only when ON)
       timePicker.draw(m_window);
 
-      // Actions (bottom-center)
       startBtn.draw(m_window);
       loadBtn.draw(m_window);
 
-      // Footer texts
       {
-        sf::Text ver(std::string(constant::SANDBOX_VERSION), m_font, 14);
+        sf::Text ver(std::string(core::SANDBOX_VERSION), m_font, 14);
         ver.setFillColor(theme.subtle);
         auto vb = ver.getLocalBounds();
         auto ws = m_window.getSize();
@@ -663,10 +767,16 @@ namespace lilia::view
     // Ensure cfg contains final picker values
     {
       auto tv = timePicker.value();
-      cfg.timeEnabled = tv.enabled;
-      cfg.timeBaseSeconds = tv.baseSeconds;
-      cfg.timeIncrementSeconds = tv.incrementSeconds;
+      cfg.game.tc.enabled = tv.enabled;
+      cfg.game.tc.baseSeconds = tv.baseSeconds;
+      cfg.game.tc.incrementSeconds = tv.incrementSeconds;
     }
+
+    // Hard guarantee: Engine side always has a bot config (prevents "nobody plays").
+    if (cfg.white.kind == lilia::config::SideKind::Engine)
+      ensureBotSide(cfg.white);
+    if (cfg.black.kind == lilia::config::SideKind::Engine)
+      ensureBotSide(cfg.black);
 
     return cfg;
   }

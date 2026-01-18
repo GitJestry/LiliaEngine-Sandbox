@@ -2,11 +2,13 @@
 
 #ifdef LILIA_UI
 #include "lilia/app/app.hpp"
+#include "lilia/engine/uci/builtin_bootstrap.hpp"
 #endif
 
-int main() {
+int main()
+{
 #ifdef LILIA_UI
-
+  lilia::engine::uci::bootstrapBuiltinEngines();
   lilia::app::App app;
   return app.run();
 #elif defined(LILIA_ENGINE)

@@ -8,6 +8,9 @@
 #include "lilia/view/ui/render/texture_table.hpp"
 #include "lilia/view/ui/style/style.hpp"
 
+#include <unordered_map>
+#include <limits>
+
 namespace lilia::view
 {
 
@@ -71,6 +74,60 @@ namespace lilia::view
         return ell;
 
       return s.substr(0, static_cast<std::size_t>(lo)) + ell;
+    }
+
+    sf::IntRect tightAlphaBoundsCached(const std::string &key, const sf::Texture &tex, sf::Uint8 aThresh = 1)
+    {
+      static std::unordered_map<std::string, sf::IntRect> cache;
+      if (auto it = cache.find(key); it != cache.end())
+        return it->second;
+
+      const auto ts = tex.getSize();
+      if (ts.x == 0 || ts.y == 0)
+        return cache.emplace(key, sf::IntRect(0, 0, 0, 0)).first->second;
+
+      // Try alpha scan
+      const sf::Image img = tex.copyToImage();
+      const auto is = img.getSize();
+
+      // If copyToImage() failed / returned empty, fall back to full texture rect
+      if (is.x == 0 || is.y == 0)
+        return cache.emplace(key, sf::IntRect(0, 0, int(ts.x), int(ts.y))).first->second;
+
+      unsigned minX = std::numeric_limits<unsigned>::max();
+      unsigned minY = std::numeric_limits<unsigned>::max();
+      unsigned maxX = 0, maxY = 0;
+      bool any = false;
+
+      for (unsigned y = 0; y < is.y; ++y)
+      {
+        for (unsigned x = 0; x < is.x; ++x)
+        {
+          if (img.getPixel(x, y).a > aThresh)
+          {
+            any = true;
+            minX = std::min(minX, x);
+            minY = std::min(minY, y);
+            maxX = std::max(maxX, x);
+            maxY = std::max(maxY, y);
+          }
+        }
+      }
+
+      sf::IntRect r;
+      if (!any)
+        r = sf::IntRect(0, 0, int(ts.x), int(ts.y));
+      else
+        r = sf::IntRect(int(minX), int(minY), int(maxX - minX + 1), int(maxY - minY + 1));
+
+      return cache.emplace(key, r).first->second;
+    }
+
+    static float snapScale(float s, float step)
+    {
+      if (step <= 0.f)
+        return s;
+      return std::round(s / step) * step;
     }
 
   } // namespace
@@ -161,22 +218,38 @@ namespace lilia::view
   void PlayerInfoView::setInfo(const PlayerInfo &info)
   {
     m_iconPath = info.iconPath;
-    m_icon.setTexture(TextureTable::getInstance().get(m_iconPath));
 
-    const auto size = m_icon.getOriginalSize();
-    if (size.x > 0.f && size.y > 0.f)
-    {
-      constexpr float innerPad = 2.f;
-      const float targetW = kIconFrameSize - 2.f * innerPad;
-      const float targetH = kIconFrameSize - 2.f * innerPad;
-      const float sx = targetW / size.x;
-      const float sy = targetH / size.y;
-      const float s = std::min(sx, sy);
-      m_icon.setScale(s, s);
-    }
+    const sf::Texture &tex = TextureTable::getInstance().get(m_iconPath);
+    m_icon.setTexture(tex);
+
+    // Crop away transparent padding (safe fallback inside helper)
+    const sf::IntRect tight = tightAlphaBoundsCached(m_iconPath, tex, 1);
+    if (tight.width > 0 && tight.height > 0)
+      m_icon.setTextureRect(tight);
+
+    // Fit cropped rect into frame
+    constexpr float innerPad = 2.f;
+    const float targetW = kIconFrameSize - 2.f * innerPad;
+    const float targetH = kIconFrameSize - 2.f * innerPad;
+
+    const float w = float(std::max(1, tight.width > 0 ? tight.width : int(tex.getSize().x)));
+    const float h = float(std::max(1, tight.height > 0 ? tight.height : int(tex.getSize().y)));
+
+    const float sx = targetW / w;
+    const float sy = targetH / h;
+    float s = std::min(sx, sy);
+
+    // Optional crispness rule: only snap when scaling UP (never to zero)
+    if (s >= 1.f)
+      s = std::floor(s);
+
+    m_icon.setScale(s, s);
     m_icon.setOriginToCenter();
 
-    // Store originals; layoutText() will format and ellipsize as needed.
+    // Keep current positioning behavior
+    m_icon.setPosition(ui::snap({m_position.x + kIconFrameSize * 0.5f,
+                                 m_position.y + kIconFrameSize * 0.5f}));
+
     m_fullName = info.name;
     m_fullElo = info.elo;
 

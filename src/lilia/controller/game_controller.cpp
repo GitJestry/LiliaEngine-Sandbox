@@ -3,7 +3,6 @@
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/Mouse.hpp>
 
-#include "lilia/controller/bot_player.hpp"
 #include "lilia/controller/game_manager.hpp"
 #include "lilia/controller/subsystems/attack_system.hpp"
 #include "lilia/controller/subsystems/board_input_system.hpp"
@@ -19,6 +18,7 @@
 #include "lilia/model/analysis/replay_info.hpp"
 #include "lilia/model/analysis/replay_info.hpp"
 #include "lilia/constants.hpp"
+#include "lilia/view/ui/render/player_info_resolver.hpp"
 
 namespace lilia::controller
 {
@@ -37,8 +37,6 @@ namespace lilia::controller
     m_sfx.loadSounds();
 
     m_game_manager = std::make_unique<GameManager>(game);
-    BotPlayer::setEvalCallback([this](int eval)
-                               { m_eval_cp.store(eval); });
 
     m_legal = std::make_unique<LegalMoveCache>(m_game);
     m_attacks = std::make_unique<AttackSystem>(m_view, m_game, *m_legal);
@@ -81,11 +79,13 @@ namespace lilia::controller
 
   GameController::~GameController() = default;
 
-  void GameController::startGame(const std::string &fen, bool whiteIsBot, bool blackIsBot,
-                                 int whiteThinkTimeMs, int whiteDepth, int blackThinkTimeMs,
-                                 int blackDepth, bool useTimer, int baseSeconds,
-                                 int incrementSeconds)
+  void GameController::startGame(const lilia::config::StartConfig &cfg)
   {
+    const std::string &fen = cfg.game.startFen;
+    const bool useTimer = cfg.game.tc.enabled;
+    const int baseSeconds = cfg.game.tc.baseSeconds;
+    const int incrementSeconds = cfg.game.tc.incrementSeconds;
+
     m_view.clearReplayHeader();
     m_replay_mode = false;
     m_legal->invalidate();
@@ -97,13 +97,18 @@ namespace lilia::controller
     m_view.setGameOver(false);
 
     m_view.init(fen);
-    m_view.setBotMode(whiteIsBot || blackIsBot);
 
+    const bool whiteIsBot = (cfg.white.kind == lilia::config::SideKind::Engine);
+    const bool blackIsBot = (cfg.black.kind == lilia::config::SideKind::Engine);
+
+    m_view.setBotMode(whiteIsBot || blackIsBot);
     m_white_is_bot = whiteIsBot;
     m_black_is_bot = blackIsBot;
+    m_view.setPlayers(lilia::view::makePlayerInfo(cfg.white, core::Color::White),
+                      lilia::view::makePlayerInfo(cfg.black, core::Color::Black));
 
-    m_game_manager->startGame(fen, whiteIsBot, blackIsBot, whiteThinkTimeMs, whiteDepth,
-                              blackThinkTimeMs, blackDepth);
+    // New: hand full StartConfig to GameManager (which creates UCI players)
+    m_game_manager->startGame(cfg);
 
     m_premove->clearAll();
 
@@ -120,7 +125,6 @@ namespace lilia::controller
 
     m_selection.reset();
     m_view.setDefaultCursor();
-
     m_next_action = NextAction::None;
   }
 
@@ -168,8 +172,6 @@ namespace lilia::controller
     m_board_input->refreshActiveHighlights();
   }
 
-#include "lilia/model/analysis/game_record.hpp"
-
   model::analysis::GameRecord GameController::buildGameRecord() const
   {
     model::analysis::GameRecord rec = m_history->toRecord();
@@ -188,8 +190,6 @@ namespace lilia::controller
 
     return rec;
   }
-
-#include "lilia/model/analysis/game_record.hpp"
 
   void GameController::startReplay(const model::analysis::GameRecord &rec)
   {
@@ -237,7 +237,6 @@ namespace lilia::controller
     hdr.openingName = ri.openingName;
 
     // Ensure icon paths are valid to avoid TextureTable lookups on empty strings.
-    // Adjust the namespace if your ICON_CHALLENGER constant lives elsewhere.
     if (hdr.white.iconPath.empty())
       hdr.white.iconPath = std::string{lilia::view::constant::path::ICON_CHALLENGER};
     if (hdr.black.iconPath.empty())

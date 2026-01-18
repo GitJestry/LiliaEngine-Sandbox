@@ -18,6 +18,9 @@ namespace sf
 #include "selection_manager.hpp"
 #include "lilia/model/analysis/game_record.hpp"
 
+#include "lilia/model/analysis/config/start_config.hpp"
+#include "lilia/engine/uci/engine_registry.hpp"
+
 namespace lilia::model
 {
   class ChessGame;
@@ -45,10 +48,7 @@ namespace lilia::controller
     explicit GameController(view::GameView &gView, model::ChessGame &game);
     ~GameController();
 
-    void startGame(const std::string &fen = core::START_FEN, bool whiteIsBot = false,
-                   bool blackIsBot = true, int whiteThinkTimeMs = 1000, int whiteDepth = 5,
-                   int blackThinkTimeMs = 1000, int blackDepth = 5, bool useTimer = true,
-                   int baseSeconds = 0, int incrementSeconds = 0);
+    void startGame(const lilia::config::StartConfig &cfg);
 
     model::analysis::GameRecord buildGameRecord() const;
     void startReplay(const model::analysis::GameRecord &rec);

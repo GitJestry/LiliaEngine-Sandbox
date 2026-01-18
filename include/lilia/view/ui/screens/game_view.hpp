@@ -193,14 +193,10 @@ namespace lilia::view
     // UI components
     EvalBar m_eval_bar;
     MoveListView m_move_list;
-    PlayerInfoView m_top_player;
-    PlayerInfoView m_bottom_player;
-    PlayerInfoView *m_white_player{};
-    PlayerInfoView *m_black_player{};
-    Clock m_top_clock;
-    Clock m_bottom_clock;
-    Clock *m_white_clock{};
-    Clock *m_black_clock{};
+    PlayerInfoView m_white_player;
+    PlayerInfoView m_black_player;
+    Clock m_white_clock;
+    Clock m_black_clock;
     bool m_show_clocks{true};
     ModalView m_modal;
     ui::ThemeCache m_theme;

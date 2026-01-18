@@ -76,9 +76,6 @@ file(GLOB_RECURSE UI_FILES CONFIGURE_DEPENDS
 file(GLOB_RECURSE APP_FILES CONFIGURE_DEPENDS
   "${PROJECT_SOURCE_DIR}/src/lilia/app/*.cpp"
 )
-file(GLOB_RECURSE BOT_FILES CONFIGURE_DEPENDS
-  "${PROJECT_SOURCE_DIR}/src/lilia/bot/*.cpp"
-)
 
 set(CORE_FILES
   ${MODEL_FILES}
@@ -207,7 +204,6 @@ if(LILIA_BUILD_UI)
     ${UI_FILES}
     ${APP_FILES}
     ${CONTROLLER_FILES}
-    ${BOT_FILES}
   )
   target_compile_definitions(lilia_app PRIVATE
     LILIA_UI
