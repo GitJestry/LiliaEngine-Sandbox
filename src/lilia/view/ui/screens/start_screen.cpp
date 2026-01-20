@@ -236,6 +236,7 @@ namespace lilia::view
     // --- Time Control Picker (top-center; config only visible when ON) ---
     ui::TimeControlPicker timePicker(m_font, theme);
     timePicker.setValue({cfg.game.tc.enabled, cfg.game.tc.baseSeconds, cfg.game.tc.incrementSeconds});
+    timePicker.setFocusManager(&focus);
 
     // Buttons
     ui::Button paletteBtn;

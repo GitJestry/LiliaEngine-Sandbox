@@ -1,13 +1,19 @@
 #pragma once
 
 #include <SFML/Graphics.hpp>
+
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <optional>
 #include <string>
 
+#include "lilia/view/ui/interaction/focus.hpp"
 #include "lilia/view/ui/style/style.hpp"
 #include "lilia/view/ui/style/theme.hpp"
 #include "lilia/view/ui/widgets/button.hpp"
+#include "lilia/view/ui/widgets/text_field.hpp"
+#include "lilia/view/ui/widgets/toggle_pill.hpp"
 
 namespace lilia::view::ui
 {
@@ -17,8 +23,8 @@ namespace lilia::view::ui
     struct Value
     {
       bool enabled{false};
-      int baseSeconds{300};    // e.g. 5:00
-      int incrementSeconds{0}; // e.g. +2
+      int baseSeconds{300};
+      int incrementSeconds{0};
     };
 
     TimeControlPicker() = default;
@@ -28,13 +34,13 @@ namespace lilia::view::ui
       setFont(font);
       setTheme(&theme);
       initOnce();
-      syncFromValue();
+      syncFromValue_(/*forceFields=*/true);
     }
 
     void setTheme(const Theme *theme)
     {
       m_theme = theme;
-      applyTheme();
+      applyTheme_();
     }
 
     void setFont(const sf::Font &font)
@@ -42,23 +48,33 @@ namespace lilia::view::ui
       m_font = &font;
 
       m_title.setFont(font);
-      m_title.setCharacterSize(14);
+      m_title.setCharacterSize(15);
 
-      m_timeMain.setFont(font);
-      m_timeMain.setCharacterSize(20);
+      m_baseLabel.setFont(font);
+      m_baseLabel.setCharacterSize(12);
 
       m_incLabel.setFont(font);
       m_incLabel.setCharacterSize(12);
 
-      m_incValue.setFont(font);
-      m_incValue.setCharacterSize(16);
+      // TextField fonts
+      m_baseField.setFont(font);
+      m_incField.setFont(font);
+
+      m_toggle.setFont(font);
+    }
+
+    void setFocusManager(FocusManager *fm)
+    {
+      m_focus = fm;
+      m_baseField.setFocusManager(fm);
+      m_incField.setFocusManager(fm);
     }
 
     void setValue(Value v)
     {
-      m_value = clamp(v);
-      syncFromValue();
-      layout();
+      m_value = clamp_(v);
+      syncFromValue_(/*forceFields=*/true);
+      layout_();
     }
 
     Value value() const { return m_value; }
@@ -66,56 +82,137 @@ namespace lilia::view::ui
     void setBounds(const sf::FloatRect &r)
     {
       m_bounds = r;
-      layout();
+      layout_();
     }
 
     void updateHover(sf::Vector2f mouse)
     {
       m_toggle.updateHover(mouse);
+
       if (!m_value.enabled)
         return;
+
+      m_baseField.updateHover(mouse);
+      m_incField.updateHover(mouse);
 
       m_baseMinus.updateHover(mouse);
       m_basePlus.updateHover(mouse);
       m_incMinus.updateHover(mouse);
       m_incPlus.updateHover(mouse);
+
       for (auto &b : m_presets)
         b.updateHover(mouse);
     }
 
     bool handleEvent(const sf::Event &e, sf::Vector2f mouse)
     {
-      // keyboard shortcuts (only when enabled)
-      if (e.type == sf::Event::KeyPressed && m_value.enabled)
+      // Toggle always active
+      if (m_toggle.handleEvent(e, mouse))
+        return true;
+
+      // If disabled, also ensure any editor focus is cleared.
+      if (!m_value.enabled)
+      {
+        blurEditors_();
+        return false;
+      }
+
+      // Track focus transitions to commit on blur
+      const bool wasBaseFocused = m_baseField.focused();
+      const bool wasIncFocused = m_incField.focused();
+
+      // Filter TextEntered so inputs stay sane (optional but recommended)
+      if (e.type == sf::Event::TextEntered)
+      {
+        const sf::Uint32 u = e.text.unicode;
+        if (u < 32 || u == 127)
+        {
+          // ignore control chars
+        }
+        else if (u < 128)
+        {
+          const char ch = static_cast<char>(u);
+
+          if (m_baseField.focused())
+          {
+            // digits, ':', space, +, -, h/m/s
+            if (!(std::isdigit((unsigned char)ch) || ch == ':' || ch == ' ' || ch == '+' || ch == '-' ||
+                  ch == 'h' || ch == 'H' || ch == 'm' || ch == 'M' || ch == 's' || ch == 'S'))
+              return true; // consume invalid
+          }
+          if (m_incField.focused())
+          {
+            // digits, space, +, -, s
+            if (!(std::isdigit((unsigned char)ch) || ch == ' ' || ch == '+' || ch == '-' ||
+                  ch == 's' || ch == 'S'))
+              return true; // consume invalid
+          }
+        }
+      }
+
+      // Keyboard commit/revert (only when a field is focused)
+      if (e.type == sf::Event::KeyPressed)
+      {
+        if (m_baseField.focused() || m_incField.focused())
+        {
+          if (e.key.code == sf::Keyboard::Enter || e.key.code == sf::Keyboard::Return)
+          {
+            commitEditors_();
+            return true;
+          }
+          if (e.key.code == sf::Keyboard::Escape)
+          {
+            // revert fields to current value + blur
+            syncFieldsFromValue_(/*force=*/true);
+            blurEditors_();
+            return true;
+          }
+        }
+      }
+
+      // Always forward mouse presses to fields so clicking outside will blur them.
+      // (Your TextField only clears focus on outside clicks if it receives the event.)
+      bool consumed = false;
+
+      // Give text fields first shot (so clicks in them don't hit +/- behind them)
+      consumed = m_baseField.handleEvent(e, mouse) || consumed;
+      consumed = m_incField.handleEvent(e, mouse) || consumed;
+
+      // If a field lost focus due to this event, commit its current text
+      if (wasBaseFocused && !m_baseField.focused())
+        commitBaseFromField_();
+      if (wasIncFocused && !m_incField.focused())
+        commitIncFromField_();
+
+      if (consumed)
+        return true;
+
+      // Keyboard shortcuts (only when NOT editing a field)
+      if (e.type == sf::Event::KeyPressed && !(m_baseField.focused() || m_incField.focused()))
       {
         if (e.key.code == sf::Keyboard::Left)
         {
-          stepBase(-(e.key.shift ? 300 : 60));
+          stepBase_(-(e.key.shift ? 300 : 60));
           return true;
         }
         if (e.key.code == sf::Keyboard::Right)
         {
-          stepBase(+(e.key.shift ? 300 : 60));
+          stepBase_(+(e.key.shift ? 300 : 60));
           return true;
         }
         if (e.key.code == sf::Keyboard::Down)
         {
-          stepIncrement(-1);
+          stepIncrement_(-1);
           return true;
         }
         if (e.key.code == sf::Keyboard::Up)
         {
-          stepIncrement(+1);
+          stepIncrement_(+1);
           return true;
         }
       }
 
-      if (m_toggle.handleEvent(e, mouse))
-        return true;
-
-      if (!m_value.enabled)
-        return false;
-
+      // Buttons
       if (m_baseMinus.handleEvent(e, mouse))
         return true;
       if (m_basePlus.handleEvent(e, mouse))
@@ -140,31 +237,33 @@ namespace lilia::view::ui
       if (!m_theme)
         return;
 
-      // Toggle always visible (requirement).
+      // Toggle always visible
       m_toggle.draw(rt);
 
-      // Only draw configuration when enabled (requirement).
       if (!m_value.enabled)
         return;
 
-      // Panel
-      sf::RectangleShape panel({m_panelRect.width, m_panelRect.height});
-      panel.setPosition(snap({m_panelRect.left, m_panelRect.top}));
-      panel.setFillColor(m_theme->panel);
-      panel.setOutlineThickness(1.f);
-      panel.setOutlineColor(m_theme->panelBorder);
-      rt.draw(panel);
+      // Card background
+      drawSoftShadowRect(rt, m_panelRect, sf::Color(0, 0, 0, 70), 2, 2.f);
 
-      // Text
+      sf::RectangleShape card({m_panelRect.width, m_panelRect.height});
+      card.setPosition(snap({m_panelRect.left, m_panelRect.top}));
+      card.setFillColor(m_theme->panel);
+      card.setOutlineThickness(1.f);
+      sf::Color ob = m_theme->panelBorder;
+      ob.a = 120;
+      card.setOutlineColor(ob);
+      rt.draw(card);
+
       rt.draw(m_title);
-      rt.draw(m_timeMain);
+      rt.draw(m_baseLabel);
       rt.draw(m_incLabel);
-      rt.draw(m_incValue);
 
-      // Controls
+      m_baseField.draw(rt);
+      m_incField.draw(rt);
+
       m_baseMinus.draw(rt);
       m_basePlus.draw(rt);
-
       m_incMinus.draw(rt);
       m_incPlus.draw(rt);
 
@@ -173,22 +272,38 @@ namespace lilia::view::ui
     }
 
   private:
-    static int clampBaseSeconds(int s) { return std::clamp(s, 60, 2 * 60 * 60); }
-    static int clampIncSeconds(int s) { return std::clamp(s, 0, 30); }
-
-    static Value clamp(Value v)
+    // ---------------- parsing / formatting ----------------
+    static Value clamp_(Value v)
     {
-      v.baseSeconds = clampBaseSeconds(v.baseSeconds);
-      v.incrementSeconds = clampIncSeconds(v.incrementSeconds);
+      v.baseSeconds = std::clamp(v.baseSeconds, 60, 2 * 60 * 60);
+      v.incrementSeconds = std::clamp(v.incrementSeconds, 0, 30);
       return v;
     }
 
-    static std::string formatHMS(int totalSeconds)
+    static std::string trim_(std::string s)
+    {
+      auto issp = [](unsigned char c)
+      { return std::isspace(c) != 0; };
+      while (!s.empty() && issp((unsigned char)s.front()))
+        s.erase(s.begin());
+      while (!s.empty() && issp((unsigned char)s.back()))
+        s.pop_back();
+      return s;
+    }
+
+    static std::string lower_(std::string s)
+    {
+      for (char &c : s)
+        c = char(std::tolower((unsigned char)c));
+      return s;
+    }
+
+    static std::string formatClock_(int totalSeconds)
     {
       totalSeconds = std::max(0, totalSeconds);
-      int h = totalSeconds / 3600;
-      int m = (totalSeconds % 3600) / 60;
-      int s = totalSeconds % 60;
+      const int h = totalSeconds / 3600;
+      const int m = (totalSeconds % 3600) / 60;
+      const int s = totalSeconds % 60;
 
       auto two = [](int x)
       {
@@ -196,51 +311,226 @@ namespace lilia::view::ui
         return (x < 10) ? ("0" + t) : t;
       };
 
-      return two(h) + ":" + two(m) + ":" + two(s);
+      if (h > 0)
+        return std::to_string(h) + ":" + two(m) + ":" + two(s);
+
+      return std::to_string(m) + ":" + two(s);
     }
 
+    // Base input accepted:
+    // - "5:00", "10:00", "1:05:00"
+    // - "5"  (minutes)
+    // - "300" (seconds because >= 60)
+    // - "5m", "300s"
+    static bool parseBase_(const std::string &in, int &outSeconds)
+    {
+      std::string s = lower_(trim_(in));
+      if (s.empty())
+        return false;
+
+      // suffix handling
+      if (s.size() >= 2 && (s.back() == 'm' || s.back() == 's' || s.back() == 'h'))
+      {
+        char suf = s.back();
+        s.pop_back();
+        s = trim_(s);
+        if (s.empty())
+          return false;
+
+        // integer
+        long n = 0;
+        try
+        {
+          n = std::stol(s);
+        }
+        catch (...)
+        {
+          return false;
+        }
+
+        if (suf == 'h')
+          outSeconds = int(n * 3600);
+        else if (suf == 'm')
+          outSeconds = int(n * 60);
+        else
+          outSeconds = int(n);
+
+        return true;
+      }
+
+      // clock format
+      if (s.find(':') != std::string::npos)
+      {
+        // split by ':'
+        int parts[3] = {0, 0, 0};
+        int count = 0;
+
+        std::string cur;
+        for (char c : s)
+        {
+          if (c == ':')
+          {
+            if (cur.empty() || count >= 3)
+              return false;
+            parts[count++] = std::stoi(cur);
+            cur.clear();
+          }
+          else
+          {
+            if (!std::isdigit((unsigned char)c))
+              return false;
+            cur.push_back(c);
+          }
+        }
+
+        if (!cur.empty())
+        {
+          if (count >= 3)
+            return false;
+          parts[count++] = std::stoi(cur);
+        }
+
+        if (count == 2)
+        {
+          // m:ss
+          int mm = parts[0];
+          int ss = parts[1];
+          outSeconds = mm * 60 + ss;
+          return true;
+        }
+        if (count == 3)
+        {
+          // h:mm:ss
+          int hh = parts[0];
+          int mm = parts[1];
+          int ss = parts[2];
+          outSeconds = hh * 3600 + mm * 60 + ss;
+          return true;
+        }
+
+        return false;
+      }
+
+      // plain number: minutes if < 60 else seconds
+      long n = 0;
+      try
+      {
+        n = std::stol(s);
+      }
+      catch (...)
+      {
+        return false;
+      }
+
+      if (n < 60)
+        outSeconds = int(n * 60);
+      else
+        outSeconds = int(n);
+
+      return true;
+    }
+
+    // Increment input accepted:
+    // - "2", "+2", "2s", "+2s"
+    static bool parseInc_(const std::string &in, int &outSeconds)
+    {
+      std::string s = lower_(trim_(in));
+      if (s.empty())
+        return false;
+
+      if (!s.empty() && s.front() == '+')
+        s.erase(s.begin());
+
+      s = trim_(s);
+
+      if (!s.empty() && s.back() == 's')
+      {
+        s.pop_back();
+        s = trim_(s);
+      }
+
+      if (s.empty())
+        return false;
+
+      long n = 0;
+      try
+      {
+        n = std::stol(s);
+      }
+      catch (...)
+      {
+        return false;
+      }
+
+      outSeconds = int(n);
+      return true;
+    }
+
+    // ---------------- init / theme / sync ----------------
     void initOnce()
     {
       if (m_inited || !m_theme || !m_font)
         return;
 
-      // ---- Toggle ----
+      // Toggle
       m_toggle.setTheme(m_theme);
-      m_toggle.setFont(*m_font);
-      m_toggle.setText("TIME OFF", 14);
-      m_toggle.setOnClick([this]
-                          {
-      m_value.enabled = !m_value.enabled;
-      syncFromValue();
-      layout(); });
+      m_toggle.setLabel("Time Control", 14);
+      m_toggle.setValue(m_value.enabled);
+      m_toggle.setOnToggle([this](bool on)
+                           {
+                             m_value.enabled = on;
+                             if (!m_value.enabled)
+                               blurEditors_();
+                             syncFromValue_(/*forceFields=*/true);
+                             layout_(); });
 
-      // ---- Base +/- ----
-      m_baseMinus.setTheme(m_theme);
-      m_baseMinus.setFont(*m_font);
-      m_baseMinus.setText("-", 18);
+      // Buttons
+      auto initAdj = [&](Button &b, const char *txt, unsigned sz)
+      {
+        b.setTheme(m_theme);
+        b.setFont(*m_font);
+        b.setText(txt, sz);
+        b.setHoverOutline(true);
+      };
+
+      initAdj(m_baseMinus, "-", 16);
+      initAdj(m_basePlus, "+", 16);
+      initAdj(m_incMinus, "-", 16);
+      initAdj(m_incPlus, "+", 16);
+
       m_baseMinus.setOnClick([this]
-                             { stepBase(-60); });
-
-      m_basePlus.setTheme(m_theme);
-      m_basePlus.setFont(*m_font);
-      m_basePlus.setText("+", 18);
+                             {
+                               commitEditors_();
+                               stepBase_(-60); });
       m_basePlus.setOnClick([this]
-                            { stepBase(+60); });
-
-      // ---- Increment +/- ----
-      m_incMinus.setTheme(m_theme);
-      m_incMinus.setFont(*m_font);
-      m_incMinus.setText("-", 16);
+                            {
+                              commitEditors_();
+                              stepBase_(+60); });
       m_incMinus.setOnClick([this]
-                            { stepIncrement(-1); });
-
-      m_incPlus.setTheme(m_theme);
-      m_incPlus.setFont(*m_font);
-      m_incPlus.setText("+", 16);
+                            {
+                              commitEditors_();
+                              stepIncrement_(-1); });
       m_incPlus.setOnClick([this]
-                           { stepIncrement(+1); });
+                           {
+                             commitEditors_();
+                             stepIncrement_(+1); });
 
-      // ---- Presets ----
+      // Text fields
+      m_baseField.setTheme(m_theme);
+      m_baseField.setCharacterSize(22);
+      m_baseField.setPlaceholder("5:00");
+      m_baseField.setReadOnly(false);
+      if (m_focus)
+        m_baseField.setFocusManager(m_focus);
+
+      m_incField.setTheme(m_theme);
+      m_incField.setCharacterSize(20);
+      m_incField.setPlaceholder("0s");
+      m_incField.setReadOnly(false);
+      if (m_focus)
+        m_incField.setFocusManager(m_focus);
+
+      // Presets
       m_presetDefs = {{
           {"Bullet", 60, 0},
           {"Blitz", 180, 2},
@@ -252,40 +542,54 @@ namespace lilia::view::ui
         m_presets[i].setTheme(m_theme);
         m_presets[i].setFont(*m_font);
         m_presets[i].setText(m_presetDefs[i].label, 13);
+        m_presets[i].setHoverOutline(true);
         m_presets[i].setOnClick([this, i]
                                 {
-        m_value.baseSeconds = clampBaseSeconds(m_presetDefs[i].base);
-        m_value.incrementSeconds = clampIncSeconds(m_presetDefs[i].inc);
-        syncFromValue();
-        layout(); });
+                                  commitEditors_();
+                                  m_value.baseSeconds = std::clamp(m_presetDefs[i].base, 60, 2 * 60 * 60);
+                                  m_value.incrementSeconds = std::clamp(m_presetDefs[i].inc, 0, 30);
+                                  syncFromValue_(/*forceFields=*/true);
+                                  layout_(); });
       }
 
-      m_title.setString("Time Control");
+      m_title.setString("Time Settings");
+      m_baseLabel.setString("Base");
       m_incLabel.setString("Increment");
 
       m_inited = true;
+      applyTheme_();
     }
 
-    void applyTheme()
+    void applyTheme_()
     {
       if (!m_theme || !m_font)
         return;
 
       initOnce();
 
-      m_title.setFillColor(m_theme->subtle);
-      m_timeMain.setFillColor(m_theme->text);
+      m_title.setFillColor(m_theme->text);
+      m_baseLabel.setFillColor(m_theme->subtle);
       m_incLabel.setFillColor(m_theme->subtle);
-      m_incValue.setFillColor(m_theme->text);
+
+      m_baseField.setTheme(m_theme);
+      m_incField.setTheme(m_theme);
+
+      m_toggle.setTheme(m_theme);
     }
 
-    void syncFromValue()
+    void syncFieldsFromValue_(bool force)
     {
-      if (!m_theme)
-        return;
+      // Avoid overwriting while user is actively editing
+      if (force || !m_baseField.focused())
+        m_baseField.setText(formatClock_(m_value.baseSeconds));
 
-      m_toggle.setAccent(m_value.enabled);
-      m_toggle.setText(m_value.enabled ? "TIME ON" : "TIME OFF", 14);
+      if (force || !m_incField.focused())
+        m_incField.setText(std::to_string(m_value.incrementSeconds) + "s");
+    }
+
+    void syncFromValue_(bool forceFields)
+    {
+      m_toggle.setValue(m_value.enabled);
 
       const bool en = m_value.enabled;
       m_baseMinus.setEnabled(en);
@@ -295,17 +599,15 @@ namespace lilia::view::ui
       for (auto &b : m_presets)
         b.setEnabled(en);
 
-      m_timeMain.setString(formatHMS(m_value.baseSeconds));
-      m_incValue.setString("+" + std::to_string(m_value.incrementSeconds) + "s");
-
-      const int sel = detectPresetIndex();
+      const int sel = detectPresetIndex_();
       for (std::size_t i = 0; i < m_presets.size(); ++i)
         m_presets[i].setActive((int)i == sel);
 
-      applyTheme();
+      syncFieldsFromValue_(forceFields);
+      applyTheme_();
     }
 
-    int detectPresetIndex() const
+    int detectPresetIndex_() const
     {
       for (std::size_t i = 0; i < m_presetDefs.size(); ++i)
       {
@@ -316,120 +618,179 @@ namespace lilia::view::ui
       return -1;
     }
 
-    void stepBase(int delta)
+    // ---------------- commit / stepping ----------------
+    void commitBaseFromField_()
     {
-      m_value.baseSeconds = clampBaseSeconds(m_value.baseSeconds + delta);
-      syncFromValue();
-      layout();
-    }
-
-    void stepIncrement(int delta)
-    {
-      m_value.incrementSeconds = clampIncSeconds(m_value.incrementSeconds + delta);
-      syncFromValue();
-      layout();
-    }
-
-    void layout()
-    {
-      if (!m_theme || !m_inited)
+      int sec = 0;
+      if (!parseBase_(m_baseField.text(), sec))
+      {
+        // revert on invalid
+        syncFieldsFromValue_(/*force=*/true);
         return;
+      }
+
+      m_value.baseSeconds = std::clamp(sec, 60, 2 * 60 * 60);
+      syncFromValue_(/*forceFields=*/true);
+      layout_();
+    }
+
+    void commitIncFromField_()
+    {
+      int sec = 0;
+      if (!parseInc_(m_incField.text(), sec))
+      {
+        syncFieldsFromValue_(/*force=*/true);
+        return;
+      }
+
+      m_value.incrementSeconds = std::clamp(sec, 0, 30);
+      syncFromValue_(/*forceFields=*/true);
+      layout_();
+    }
+
+    void commitEditors_()
+    {
+      if (m_baseField.focused())
+        commitBaseFromField_();
+      if (m_incField.focused())
+        commitIncFromField_();
+    }
+
+    void stepBase_(int delta)
+    {
+      m_value.baseSeconds = std::clamp(m_value.baseSeconds + delta, 60, 2 * 60 * 60);
+      syncFromValue_(/*forceFields=*/true);
+      layout_();
+    }
+
+    void stepIncrement_(int delta)
+    {
+      m_value.incrementSeconds = std::clamp(m_value.incrementSeconds + delta, 0, 30);
+      syncFromValue_(/*forceFields=*/true);
+      layout_();
+    }
+
+    void blurEditors_()
+    {
+      if (m_focus)
+      {
+        if (m_baseField.focused() || m_incField.focused())
+          m_focus->clear();
+      }
+    }
+
+    void layout_()
+    {
+      if (!m_theme)
+        return;
+
+      initOnce();
 
       if (m_bounds.width <= 0.f || m_bounds.height <= 0.f)
         return;
 
-      const float pad = 12.f;
+      // Shared width for toggle + card (keeps the component visually aligned)
+      const float maxW = 560.f;
+      const float panelW = std::min(maxW, m_bounds.width);
+      const float panelX = m_bounds.left + (m_bounds.width - panelW) * 0.5f;
 
-      // Toggle (always)
-      const float toggleW = 170.f;
-      const float toggleH = 34.f;
+      // Toggle
+      const float toggleH = 40.f;
+      const float toggleY = m_bounds.top;
+      m_toggle.setBounds({panelX, toggleY, panelW, toggleH});
 
-      sf::FloatRect toggleRect{
-          m_bounds.left + (m_bounds.width - toggleW) * 0.5f,
-          m_bounds.top,
-          toggleW,
-          toggleH};
-      m_toggle.setBounds(toggleRect);
-
-      // If disabled: nothing else is laid out.
       if (!m_value.enabled)
       {
         m_panelRect = {};
         return;
       }
 
-      // Panel under toggle
-      const float gap = 10.f;
-      const float panelY = toggleRect.top + toggleRect.height + gap;
+      // Card sizing: fill remaining height under toggle (with a minimum to fit content)
+      const float gap = 12.f;
+      const float availH = std::max(0.f, m_bounds.height - (toggleH + gap));
 
-      const float panelW = std::min(520.f, m_bounds.width);
-      const float panelH = 96.f;
+      const float padT = 14.f;
+      const float padB = 20.f; // a bit deeper so the outline goes lower
+      const float titleH = 18.f;
+      const float sectionGap = 10.f;
+      const float rowH = 34.f;
+      const float rowGap = 10.f;
+      const float chipH = 30.f;
 
-      m_panelRect = {
-          m_bounds.left + (m_bounds.width - panelW) * 0.5f,
-          panelY,
-          panelW,
-          panelH};
+      const float needH = padT + titleH + sectionGap + rowH + rowGap + rowH + rowGap + chipH + padB;
 
-      // Title top-left
-      m_title.setPosition(snap({m_panelRect.left + pad, m_panelRect.top + 6.f}));
+      float cardH = std::max(needH, availH);
 
-      // Base row (centered group)
-      const float baseRowY = m_panelRect.top + 30.f;
-      const float baseBtnS = 28.f;
-      const float baseGap = 10.f;
-      const float timeBoxW = 130.f;
-      const float groupW = baseBtnS + baseGap + timeBoxW + baseGap + baseBtnS;
+      const float cardY = toggleY + toggleH + gap;
+      m_panelRect = {panelX, cardY, panelW, cardH};
 
-      const float groupX = m_panelRect.left + (m_panelRect.width - groupW) * 0.5f;
+      const float innerL = m_panelRect.left + padT;
+      const float innerR = m_panelRect.left + m_panelRect.width - padT;
 
-      m_baseMinus.setBounds({groupX, baseRowY, baseBtnS, baseBtnS});
-      m_basePlus.setBounds({groupX + baseBtnS + baseGap + timeBoxW + baseGap, baseRowY, baseBtnS, baseBtnS});
+      // Title
+      m_title.setPosition(snap({innerL, m_panelRect.top + padT}));
 
-      sf::FloatRect timeBox{
-          groupX + baseBtnS + baseGap,
-          baseRowY,
-          timeBoxW,
-          baseBtnS};
-      centerText(m_timeMain, timeBox, -1.f);
+      // Grid
+      const float labelW = 96.f;
+      const float btnS = 32.f;
+      const float xGap = 10.f;
 
-      // Bottom row: increment left, presets right (panelW is designed to be wide enough in StartScreen)
-      const float bottomY = m_panelRect.top + m_panelRect.height - 30.f;
+      const float row1Y = m_panelRect.top + padT + titleH + sectionGap;
+      const float row2Y = row1Y + rowH + rowGap;
+      const float row3Y = row2Y + rowH + rowGap;
 
-      m_incLabel.setPosition(snap({m_panelRect.left + pad, bottomY - 8.f}));
+      sf::FloatRect baseLabelBox{innerL, row1Y, labelW, rowH};
+      sf::FloatRect incLabelBox{innerL, row2Y, labelW, rowH};
+      leftCenterText(m_baseLabel, baseLabelBox, 0.f);
+      leftCenterText(m_incLabel, incLabelBox, 0.f);
 
-      const float incBtnS = 24.f;
-      const float incGap = 6.f;
-      const float incValueW = 58.f;
+      const float contentL = innerL + labelW + 12.f;
+      const float contentR = innerR;
 
-      // Increment group right edge
-      const float incRight = m_panelRect.left + pad + 220.f;
-      m_incPlus.setBounds({incRight - incBtnS, bottomY, incBtnS, incBtnS});
-      m_incMinus.setBounds({incRight - incBtnS - incGap - incBtnS, bottomY, incBtnS, incBtnS});
-
-      sf::FloatRect incValBox{
-          m_incMinus.bounds().left - incGap - incValueW,
-          bottomY,
-          incValueW,
-          incBtnS};
-      centerText(m_incValue, incValBox, -1.f);
-
-      // Presets right-aligned
-      const float chipH = 24.f;
-      const float chipW = 74.f;
-      const float chipGap = 10.f;
-      const float chipsW = 3.f * chipW + 2.f * chipGap;
-
-      float chipsX = m_panelRect.left + m_panelRect.width - pad - chipsW;
-      float chipsY = bottomY;
-
-      for (std::size_t i = 0; i < m_presets.size(); ++i)
+      // Base row: [-] [field........] [+]
       {
-        sf::FloatRect r{chipsX + i * (chipW + chipGap), chipsY, chipW, chipH};
-        m_presets[i].setBounds(r);
+        const float fieldX = contentL + btnS + xGap;
+        const float fieldW = std::max(120.f, (contentR - btnS - xGap) - fieldX);
+
+        m_baseMinus.setBounds({contentL, row1Y, btnS, rowH});
+        m_baseField.setBounds({fieldX, row1Y, fieldW, rowH});
+        m_basePlus.setBounds({contentR - btnS, row1Y, btnS, rowH});
+      }
+
+      // Increment row: [-] [field] [+]
+      {
+        const float fieldX = contentL + btnS + xGap;
+        const float fieldW = std::max(88.f, (contentR - btnS - xGap) - fieldX);
+
+        m_incMinus.setBounds({contentL, row2Y, btnS, rowH});
+        m_incField.setBounds({fieldX, row2Y, fieldW, rowH});
+        m_incPlus.setBounds({contentR - btnS, row2Y, btnS, rowH});
+      }
+
+      // Presets row (dedicated row, centered, consistent spacing)
+      {
+        const float chipGap = 10.f;
+        const float areaW = std::max(0.f, contentR - contentL);
+
+        const float preferredChipW = 92.f;
+        const float minChipW = 74.f;
+
+        float chipW = preferredChipW;
+        float chipsW = 3.f * chipW + 2.f * chipGap;
+        if (chipsW > areaW)
+        {
+          chipW = std::max(minChipW, (areaW - 2.f * chipGap) / 3.f);
+          chipsW = 3.f * chipW + 2.f * chipGap;
+        }
+
+        const float chipsX = contentL + (areaW - chipsW) * 0.5f;
+
+        for (std::size_t i = 0; i < m_presets.size(); ++i)
+          m_presets[i].setBounds({chipsX + float(i) * (chipW + chipGap), row3Y, chipW, chipH});
       }
     }
 
+  private:
     struct PresetDef
     {
       const char *label;
@@ -439,6 +800,7 @@ namespace lilia::view::ui
 
     const sf::Font *m_font{nullptr};
     const Theme *m_theme{nullptr};
+    FocusManager *m_focus{nullptr};
 
     bool m_inited{false};
 
@@ -447,19 +809,21 @@ namespace lilia::view::ui
 
     Value m_value{};
 
-    Button m_toggle{};
+    TogglePill m_toggle{};
+
+    TextField m_baseField{};
+    TextField m_incField{};
+
     Button m_baseMinus{};
     Button m_basePlus{};
     Button m_incMinus{};
     Button m_incPlus{};
-    std::array<Button, 3> m_presets{};
 
+    std::array<Button, 3> m_presets{};
     std::array<PresetDef, 3> m_presetDefs{};
 
     sf::Text m_title{};
-    sf::Text m_timeMain{};
+    sf::Text m_baseLabel{};
     sf::Text m_incLabel{};
-    sf::Text m_incValue{};
   };
-
 } // namespace lilia::view::ui
