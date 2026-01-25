@@ -4,11 +4,11 @@
 #include <chrono>
 #include <optional>
 
-#include "../../chess_types.hpp"
-#include "../../view/audio/sound_manager.hpp"
+#include "lilia/view/audio/sound_manager.hpp"
 #include "lilia/view/ui/screens/game_view.hpp"
-#include "../input_manager.hpp"
-#include "../selection_manager.hpp"
+#include "lilia/controller/input_manager.hpp"
+#include "lilia/controller/selection_manager.hpp"
+#include "lilia/controller/subsystems/attack_system.hpp"
 
 namespace lilia::model
 {
@@ -20,20 +20,24 @@ namespace lilia::controller
 
   class GameManager;
   class LegalMoveCache;
-  class AttackSystem;
   class PremoveSystem;
 
   class BoardInputSystem
   {
   public:
     BoardInputSystem(view::GameView &view, model::ChessGame &game, InputManager &input,
-                     SelectionManager &sel, view::sound::SoundManager &sfx, AttackSystem &attacks,
-                     PremoveSystem &premove, LegalMoveCache &legal);
+                     SelectionManager &sel, view::sound::SoundManager &sfx,
+                     PremoveSystem &premove, AttackSystem &att);
 
+    /// @brief Sets the gamemanager pointer internally
+    /// @param gm
     void setGameManager(GameManager *gm) { m_game_manager = gm; }
 
+    /// @brief sets up the input callbacks from the current onClick, onDrag and onDrop
     void bindInputCallbacks();
 
+    /// @brief
+    /// @param pos
     void onMouseMove(core::MousePos pos);
     void onMousePressed(core::MousePos pos);
     void onMouseReleased(core::MousePos pos);
@@ -62,7 +66,6 @@ namespace lilia::controller
     view::sound::SoundManager &m_sfx;
     AttackSystem &m_attacks;
     PremoveSystem &m_premove;
-    LegalMoveCache &m_legal;
 
     GameManager *m_game_manager{nullptr};
 

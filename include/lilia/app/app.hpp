@@ -1,10 +1,5 @@
 #pragma once
 
-#include <string>
-
-#include "lilia/chess_types.hpp"
-#include "lilia/constants.hpp"
-
 namespace lilia::app
 {
 
@@ -12,6 +7,9 @@ namespace lilia::app
   {
   public:
     App() = default;
+
+    /// @brief Main run point for the sandbox app
+    /// @return
     int run();
   };
 

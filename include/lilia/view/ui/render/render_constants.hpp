@@ -79,22 +79,19 @@ namespace lilia::view::constant
   // ------------------ Asset Paths ------------------
   namespace path
   {
-    inline constexpr std::string_view HAND_OPEN{"assets/icons/cursor_hand_open.png"};
-    inline constexpr std::string_view HAND_CLOSED{"assets/icons/cursor_hand_closed.png"};
-    inline constexpr std::string_view FONT{"assets/font/OpenSans-Regular.ttf"};
-    inline constexpr std::string_view ICON_LILIA{"assets/icons/lilia.png"};
-    inline constexpr std::string_view ICON_LILIA_START{"assets/icons/lilia_transparent.png"};
-    inline constexpr std::string_view ICON_CHALLENGER{"assets/icons/challenger.png"};
-    inline constexpr std::string_view ICON_RESIGN{"assets/icons/resign.png"};
-    inline constexpr std::string_view ICON_PREV{"assets/icons/prev.png"};
-    inline constexpr std::string_view ICON_NEXT{"assets/icons/next.png"};
-    inline constexpr std::string_view ICON_SETTINGS{"assets/icons/settings.png"};
-    inline constexpr std::string_view ICON_NEW_BOT{"assets/icons/new_bot.png"};
-    inline constexpr std::string_view ICON_REMATCH{"assets/icons/rematch.png"};
-
+    inline constexpr std::string_view FONT_DIR{"assets/font/OpenSans-Regular.ttf"};
     inline constexpr std::string_view PIECES_DIR{"assets/textures"};
+    inline constexpr std::string_view ICONS_DIR{"assets/icons"};
     inline constexpr std::string_view SFX_DIR{"assets/audio/sfx"};
   } // namespace path
+
+  namespace asset_name
+  {
+    inline constexpr std::string_view ICON_LILIA_START = "lilia_transparent.png";
+    inline constexpr std::string_view HAND_OPEN = "cursor_hand_open.png";
+    inline constexpr std::string_view HAND_CLOSED = "cursor_hand_closed.png";
+    inline constexpr std::string_view ICON_CHALLENGER = "challenger.png";
+  }
 
   // ------------------ SFX Keys ------------------
   namespace sfx

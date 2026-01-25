@@ -2,10 +2,8 @@
 
 #include <atomic>
 
-#include "../../chess_types.hpp"
-#include "../../view/audio/sound_manager.hpp"
+#include "lilia/view/audio/sound_manager.hpp"
 #include "lilia/view/ui/screens/game_view.hpp"
-#include "../game_controller_types.hpp"
 
 namespace lilia::model
 {
@@ -24,8 +22,7 @@ namespace lilia::controller
   class MoveExecutionSystem
   {
   public:
-    MoveExecutionSystem(view::GameView &view, model::ChessGame &game, view::sound::SoundManager &sfx,
-                        std::atomic<int> &evalCp, LegalMoveCache &legal, HistorySystem &history,
+    MoveExecutionSystem(view::GameView &view, model::ChessGame &game, view::sound::SoundManager &sfx, LegalMoveCache &legal, HistorySystem &history,
                         ClockSystem &clock, PremoveSystem &premove);
 
     void applyMove(const model::Move &move, bool isPlayerMove, bool onClick);
@@ -34,7 +31,6 @@ namespace lilia::controller
     view::GameView &m_view;
     model::ChessGame &m_game;
     view::sound::SoundManager &m_sfx;
-    std::atomic<int> &m_eval_cp;
 
     LegalMoveCache &m_legal;
     HistorySystem &m_history;

@@ -16,12 +16,14 @@ namespace sf
 namespace lilia::view
 {
 
-  class TextureTable
+  class ResourceTable
   {
   public:
-    static TextureTable &getInstance();
+    static ResourceTable &getInstance();
 
-    [[nodiscard]] const sf::Texture &get(const std::string &name);
+    [[nodiscard]] const sf::Texture &getTexture(const std::string &name);
+    [[nodiscard]] const sf::Texture &getAssetTexture(const std::string &name);
+    [[nodiscard]] const sf::Image &getImage(const std::string &name);
 
     // Optionaler Bootstrap; wird auch automatisch im ctor gemacht (siehe cpp).
     void preLoad();
@@ -30,14 +32,15 @@ namespace lilia::view
     void reloadForPalette();
     void load(std::string_view name, const sf::Color &color, sf::Vector2u size = {1, 1});
 
-    TextureTable();
-    ~TextureTable();
+    ResourceTable();
+    ~ResourceTable();
 
-    TextureTable(const TextureTable &) = delete;
-    TextureTable &operator=(const TextureTable &) = delete;
+    ResourceTable(const ResourceTable &) = delete;
+    ResourceTable &operator=(const ResourceTable &) = delete;
 
     std::uint64_t m_paletteListenerId{0};
     std::unordered_map<std::string, sf::Texture> m_textures;
+    std::unordered_map<std::string, sf::Image> m_images;
   };
 
 } // namespace lilia::view

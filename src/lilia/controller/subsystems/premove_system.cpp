@@ -3,19 +3,12 @@
 #include <cmath>
 
 #include "lilia/controller/game_manager.hpp"
+#include "lilia/model/chess_game.hpp"
 #include "lilia/controller/subsystems/legal_move_cache.hpp"
 #include "lilia/view/ui/screens/game_view.hpp"
 
 namespace lilia::controller
 {
-
-  namespace
-  {
-    inline bool valid(core::Square sq)
-    {
-      return sq != core::NO_SQUARE;
-    }
-  } // namespace
 
   PremoveSystem::PremoveSystem(view::GameView &view, model::ChessGame &game,
                                view::sound::SoundManager &sfx, LegalMoveCache &legal)
@@ -26,14 +19,14 @@ namespace lilia::controller
 
   bool PremoveSystem::hasVirtualPiece(core::Square sq) const
   {
-    if (!valid(sq))
+    if (!core::validSquare(sq))
       return false;
     return pieceConsideringPremoves(sq).type != core::PieceType::None;
   }
 
   model::bb::Piece PremoveSystem::pieceConsideringPremoves(core::Square sq) const
   {
-    if (!valid(sq))
+    if (!core::validSquare(sq))
       return {};
     if (!m_queue.empty())
     {
@@ -100,7 +93,7 @@ namespace lilia::controller
 
   bool PremoveSystem::isPseudoLegal(core::Square from, core::Square to) const
   {
-    if (!valid(from) || !valid(to))
+    if (!core::validSquare(from) || !core::validSquare(to))
       return false;
 
     model::Position pos = positionAfterPremoves();
@@ -367,7 +360,7 @@ namespace lilia::controller
 
   bool PremoveSystem::currentLegal(core::Square from, core::Square to) const
   {
-    if (!valid(from) || !valid(to))
+    if (!core::validSquare(from) || !core::validSquare(to))
       return false;
     const auto st = m_game.getGameState();
     const auto pc = m_game.getPiece(from);

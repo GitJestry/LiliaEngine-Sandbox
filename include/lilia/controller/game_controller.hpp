@@ -9,9 +9,8 @@ namespace sf
   class Event;
 }
 
-#include "../chess_types.hpp"
-#include "../constants.hpp"
-#include "../view/audio/sound_manager.hpp"
+#include "lilia/constants.hpp"
+#include "lilia/view/audio/sound_manager.hpp"
 #include "lilia/view/ui/screens/game_view.hpp"
 #include "game_controller_types.hpp"
 #include "input_manager.hpp"
@@ -19,7 +18,6 @@ namespace sf
 #include "lilia/model/analysis/game_record.hpp"
 
 #include "lilia/model/analysis/config/start_config.hpp"
-#include "lilia/engine/uci/engine_registry.hpp"
 
 namespace lilia::model
 {
@@ -75,7 +73,6 @@ namespace lilia::controller
     bool m_black_is_bot{false};
     bool m_replay_mode{false};
 
-    std::atomic<int> m_eval_cp{0};
     NextAction m_next_action{NextAction::None};
 
     std::unique_ptr<LegalMoveCache> m_legal;

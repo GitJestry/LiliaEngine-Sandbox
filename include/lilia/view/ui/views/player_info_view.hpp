@@ -12,9 +12,9 @@
 
 #include "lilia/view/ui/render/entity.hpp"
 #include "lilia/chess_types.hpp"
-#include "lilia/player_info.hpp"
 #include "lilia/view/ui/style/theme.hpp"
 #include "lilia/model/analysis/outcome.hpp"
+#include "lilia/model/analysis/replay_info.hpp"
 
 namespace lilia::view
 {
@@ -26,7 +26,7 @@ namespace lilia::view
 
     void setTheme(const ui::Theme *t) noexcept { m_theme = t; }
 
-    void setInfo(const PlayerInfo &info);
+    void setInfo(const model::analysis::PlayerInfo &info);
     void setPlayerColor(core::Color color);
 
     void setOutcome(std::optional<model::analysis::Outcome> outcome);
@@ -73,6 +73,6 @@ namespace lilia::view
     std::vector<Entity> m_capturedPieces;
     std::vector<std::pair<core::PieceType, core::Color>> m_capturedInfo;
 
-    std::string m_iconPath;
+    std::string m_icon_name;
   };
 } // namespace lilia::view

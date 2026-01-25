@@ -4,7 +4,6 @@
 #include <algorithm>
 
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/render/texture_table.hpp"
 #include "lilia/view/ui/style/modals/modal.hpp"
 #include "lilia/view/ui/style/style.hpp"
 
@@ -40,10 +39,8 @@ namespace lilia::view
         m_cursor_manager(window),
         m_eval_bar(),
         m_move_list(),
-        // EXACTLY TWO players: one per color
         m_white_player(),
         m_black_player(),
-        // (Recommended) EXACTLY TWO clocks: one per color
         m_white_clock(),
         m_black_clock(),
         m_modal(),
@@ -54,20 +51,6 @@ namespace lilia::view
     // Fixed color identity (never swapped)
     m_white_player.setPlayerColor(core::Color::White);
     m_black_player.setPlayerColor(core::Color::Black);
-
-    // Safe defaults (avoid empty icon path lookups before controller sets real info)
-    PlayerInfo w{};
-    w.name = "White";
-    w.elo = "";
-    w.iconPath = std::string{constant::path::ICON_CHALLENGER};
-
-    PlayerInfo b{};
-    b.name = "Black";
-    b.elo = "";
-    b.iconPath = std::string{constant::path::ICON_CHALLENGER};
-
-    m_white_player.setInfo(w);
-    m_black_player.setInfo(b);
 
     // Fixed clock identity (never swapped)
     m_white_clock.setPlayerColor(core::Color::White);
@@ -81,7 +64,7 @@ namespace lilia::view
     layout(m_window.getSize().x, m_window.getSize().y);
 
     // theme font for modals (same face as the rest of UI)
-    m_modal.loadFont(std::string{constant::path::FONT});
+    m_modal.loadFont(std::string{constant::path::FONT_DIR});
   }
 
   void GameView::init(const std::string &fen)
@@ -574,7 +557,7 @@ namespace lilia::view
 
   void GameView::endAnimation(core::Square sq) { m_chess_animator.end(sq); }
 
-  void GameView::setPlayers(const PlayerInfo &white, const PlayerInfo &black)
+  void GameView::setPlayersInfo(const model::analysis::PlayerInfo &white, const model::analysis::PlayerInfo &black)
   {
     m_white_player.setInfo(white);
     m_black_player.setInfo(black);
@@ -605,7 +588,7 @@ namespace lilia::view
     m_replay_header = std::move(header);
     if (m_replay_header)
     {
-      setPlayers(m_replay_header->white, m_replay_header->black);
+      setPlayersInfo(m_replay_header->white_info, m_replay_header->black_info);
       m_move_list.setReplayHeader(m_replay_header);
 
       setOutcomeBadges(m_replay_header->whiteOutcome, m_replay_header->blackOutcome);

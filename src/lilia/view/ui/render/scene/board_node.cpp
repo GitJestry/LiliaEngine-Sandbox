@@ -66,7 +66,7 @@ namespace lilia::view
     static bool s_loaded = false;
     if (!s_loaded)
     {
-      s_loaded = s_font.loadFromFile(std::string{constant::path::FONT});
+      s_loaded = s_font.loadFromFile(std::string{constant::path::FONT_DIR});
       if (s_loaded)
       {
         // UPDATED: was setSmooth(false) -> caused pixelated glyph edges/outlines.

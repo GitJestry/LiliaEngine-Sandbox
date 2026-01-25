@@ -279,7 +279,7 @@ namespace lilia::view
 
   MoveListView::MoveListView()
   {
-    m_font.loadFromFile(std::string{constant::path::FONT});
+    m_font.loadFromFile(std::string{constant::path::FONT_DIR});
     m_font.setSmooth(false);
   }
 

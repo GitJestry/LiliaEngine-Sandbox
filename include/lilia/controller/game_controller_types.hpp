@@ -6,7 +6,7 @@
 
 #include "lilia/model/analysis/analysis_types.hpp"
 #include "lilia/model/move.hpp"
-#include "../view/audio/sound_manager.hpp"
+#include "lilia/view/audio/sound_effect.hpp"
 
 namespace lilia::controller
 {
@@ -17,7 +17,6 @@ namespace lilia::controller
     core::Color moverColor;
     core::PieceType capturedType;
     view::sound::Effect sound;
-    int evalCp{};
   };
 
   struct Premove

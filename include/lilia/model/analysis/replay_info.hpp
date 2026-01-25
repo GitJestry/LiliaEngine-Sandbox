@@ -4,10 +4,16 @@
 
 #include "lilia/model/analysis/game_record.hpp"
 #include "lilia/model/analysis/outcome.hpp"
-#include "lilia/player_info.hpp"
 
 namespace lilia::model::analysis
 {
+
+  struct PlayerInfo
+  {
+    std::string name;
+    std::string elo;
+    std::string icon_name;
+  };
 
   struct ReplayInfo
   {
@@ -16,8 +22,8 @@ namespace lilia::model::analysis
     std::string date;
     std::string round;
 
-    PlayerInfo white;
-    PlayerInfo black;
+    PlayerInfo white_info;
+    PlayerInfo black_info;
 
     std::string result; // "1-0", "0-1", "1/2-1/2", "*"
     Outcome whiteOutcome = Outcome::Unknown;

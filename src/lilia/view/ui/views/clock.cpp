@@ -85,7 +85,7 @@ namespace lilia::view
     m_icon_hand.setOrigin(0.f, 0.5f);
     m_icon_hand.setRotation(-90.f); // up
 
-    m_font.loadFromFile(std::string{constant::path::FONT});
+    m_font.loadFromFile(std::string{constant::path::FONT_DIR});
     m_font.setSmooth(false);
 
     m_text.setFont(m_font);

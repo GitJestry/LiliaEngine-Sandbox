@@ -14,7 +14,7 @@
 #include "lilia/engine/config.hpp"
 #include "lilia/view/ui/style/palette_cache.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/view/ui/render/resource_table.hpp"
 #include "lilia/view/ui/style/style.hpp"
 
 namespace lilia::view
@@ -35,19 +35,19 @@ namespace lilia::view
 
   EvalBar::EvalBar() : EvalBar::Entity()
   {
-    setTexture(TextureTable::getInstance().get(std::string{constant::tex::TRANSPARENT}));
+    setTexture(ResourceTable::getInstance().getTexture(std::string{constant::tex::TRANSPARENT}));
     setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
     setOriginToCenter();
 
-    m_black_background.setTexture(TextureTable::getInstance().get(std::string{constant::tex::EVAL_BLACK}));
-    m_white_fill_eval.setTexture(TextureTable::getInstance().get(std::string{constant::tex::EVAL_WHITE}));
+    m_black_background.setTexture(ResourceTable::getInstance().getTexture(std::string{constant::tex::EVAL_BLACK}));
+    m_white_fill_eval.setTexture(ResourceTable::getInstance().getTexture(std::string{constant::tex::EVAL_WHITE}));
 
     m_black_background.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
     m_white_fill_eval.setScale(constant::EVAL_BAR_WIDTH, constant::EVAL_BAR_HEIGHT);
     m_black_background.setOriginToCenter();
     m_white_fill_eval.setOriginToCenter();
 
-    m_font.loadFromFile(std::string{constant::path::FONT});
+    m_font.loadFromFile(std::string{constant::path::FONT_DIR});
     m_font.setSmooth(false);
 
     m_score_text.setFont(m_font);

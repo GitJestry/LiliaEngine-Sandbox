@@ -5,7 +5,7 @@
 
 #include "lilia/view/ui/style/palette_cache.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/view/ui/render/resource_table.hpp"
 #include "lilia/view/ui/style/style.hpp"
 
 #include <unordered_map>
@@ -139,7 +139,7 @@ namespace lilia::view
 
     m_captureBox.setOutlineThickness(0.f);
 
-    if (m_font.loadFromFile(std::string(constant::path::FONT)))
+    if (m_font.loadFromFile(std::string(constant::path::FONT_DIR)))
     {
       m_font.setSmooth(false);
 
@@ -164,12 +164,12 @@ namespace lilia::view
   Entity PlayerInfoView::makeCapturedEntity(core::PieceType type, core::Color color)
   {
     constexpr std::uint8_t kNumTypes = 6;
-    const std::string filename = std::string{constant::path::PIECES_DIR} + "/piece_" +
+    const std::string filename = "piece_" +
                                  std::to_string(static_cast<std::uint8_t>(type) +
                                                 kNumTypes * static_cast<std::uint8_t>(color)) +
                                  ".png";
 
-    const sf::Texture &tex = TextureTable::getInstance().get(filename);
+    const sf::Texture &tex = ResourceTable::getInstance().getAssetTexture(filename);
     Entity e(tex);
     e.setScale(1.f, 1.f);
     return e;
@@ -215,15 +215,14 @@ namespace lilia::view
     m_playerColor = color;
   }
 
-  void PlayerInfoView::setInfo(const PlayerInfo &info)
+  void PlayerInfoView::setInfo(const model::analysis::PlayerInfo &info)
   {
-    m_iconPath = info.iconPath;
-
-    const sf::Texture &tex = TextureTable::getInstance().get(m_iconPath);
+    m_icon_name = info.icon_name;
+    const sf::Texture &tex = ResourceTable::getInstance().getAssetTexture(m_icon_name);
     m_icon.setTexture(tex);
 
     // Crop away transparent padding (safe fallback inside helper)
-    const sf::IntRect tight = tightAlphaBoundsCached(m_iconPath, tex, 1);
+    const sf::IntRect tight = tightAlphaBoundsCached(m_icon_name, tex, 1);
     if (tight.width > 0 && tight.height > 0)
       m_icon.setTextureRect(tight);
 

@@ -1,6 +1,5 @@
 #include "lilia/controller/subsystems/game_end_system.hpp"
 
-#include "lilia/model/chess_game.hpp"
 #include "lilia/controller/subsystems/clock_system.hpp"
 #include "lilia/controller/subsystems/premove_system.hpp"
 #include "lilia/model/analysis/result_utils.hpp"
@@ -8,9 +7,9 @@
 namespace lilia::controller
 {
 
-  GameEndSystem::GameEndSystem(view::GameView &view, model::ChessGame &game,
+  GameEndSystem::GameEndSystem(view::GameView &view,
                                view::sound::SoundManager &sfx)
-      : m_view(view), m_game(game), m_sfx(sfx) {}
+      : m_view(view), m_sfx(sfx) {}
 
   void GameEndSystem::show(core::GameResult res, core::Color sideToMove, bool whiteIsBot,
                            bool blackIsBot, ClockSystem &clock, PremoveSystem &premove)

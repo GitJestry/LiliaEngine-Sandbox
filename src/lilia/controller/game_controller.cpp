@@ -4,7 +4,6 @@
 #include <SFML/Window/Mouse.hpp>
 
 #include "lilia/controller/game_manager.hpp"
-#include "lilia/controller/subsystems/attack_system.hpp"
 #include "lilia/controller/subsystems/board_input_system.hpp"
 #include "lilia/controller/subsystems/clock_system.hpp"
 #include "lilia/controller/subsystems/game_end_system.hpp"
@@ -16,9 +15,8 @@
 #include "lilia/model/analysis/game_record.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/analysis/replay_info.hpp"
-#include "lilia/model/analysis/replay_info.hpp"
-#include "lilia/constants.hpp"
 #include "lilia/view/ui/render/player_info_resolver.hpp"
+#include "lilia/controller/subsystems/attack_system.hpp"
 
 namespace lilia::controller
 {
@@ -39,15 +37,14 @@ namespace lilia::controller
     m_game_manager = std::make_unique<GameManager>(game);
 
     m_legal = std::make_unique<LegalMoveCache>(m_game);
-    m_attacks = std::make_unique<AttackSystem>(m_view, m_game, *m_legal);
     m_premove = std::make_unique<PremoveSystem>(m_view, m_game, m_sfx, *m_legal);
-    m_history = std::make_unique<HistorySystem>(m_view, m_game, m_selection, m_sfx, m_eval_cp);
-    m_clock = std::make_unique<ClockSystem>(m_view, m_game);
-    m_move_exec = std::make_unique<MoveExecutionSystem>(m_view, m_game, m_sfx, m_eval_cp, *m_legal,
+    m_history = std::make_unique<HistorySystem>(m_view, m_game, m_selection, m_sfx);
+    m_clock = std::make_unique<ClockSystem>(m_view);
+    m_move_exec = std::make_unique<MoveExecutionSystem>(m_view, m_game, m_sfx, *m_legal,
                                                         *m_history, *m_clock, *m_premove);
-    m_game_end = std::make_unique<GameEndSystem>(m_view, m_game, m_sfx);
-    m_board_input = std::make_unique<BoardInputSystem>(m_view, m_game, m_input, m_selection, m_sfx,
-                                                       *m_attacks, *m_premove, *m_legal);
+    m_attacks = std::make_unique<AttackSystem>(m_view, m_game, *m_legal);
+    m_game_end = std::make_unique<GameEndSystem>(m_view, m_sfx);
+    m_board_input = std::make_unique<BoardInputSystem>(m_view, m_game, m_input, m_selection, m_sfx, *m_premove, *m_attacks);
     m_ui = std::make_unique<UiEventSystem>(m_view, m_game, *m_history, *m_premove, m_next_action);
 
     m_premove->setGameManager(m_game_manager.get());
@@ -104,8 +101,8 @@ namespace lilia::controller
     m_view.setBotMode(whiteIsBot || blackIsBot);
     m_white_is_bot = whiteIsBot;
     m_black_is_bot = blackIsBot;
-    m_view.setPlayers(lilia::view::makePlayerInfo(cfg.white, core::Color::White),
-                      lilia::view::makePlayerInfo(cfg.black, core::Color::Black));
+    m_view.setPlayersInfo(lilia::view::makePlayerInfo(cfg.white, core::Color::White),
+                          lilia::view::makePlayerInfo(cfg.black, core::Color::Black));
 
     // New: hand full StartConfig to GameManager (which creates UCI players)
     m_game_manager->startGame(cfg);
@@ -136,7 +133,6 @@ namespace lilia::controller
   void GameController::update(float dt)
   {
     m_view.update(dt);
-    m_history->updateEvalAtHead();
 
     if (m_replay_mode)
       return;
@@ -226,8 +222,8 @@ namespace lilia::controller
     hdr.date = ri.date;
     hdr.round = ri.round;
 
-    hdr.white = ri.white;
-    hdr.black = ri.black;
+    hdr.white_info = ri.white_info;
+    hdr.black_info = ri.black_info;
 
     hdr.result = ri.result;
     hdr.whiteOutcome = ri.whiteOutcome;
@@ -237,10 +233,10 @@ namespace lilia::controller
     hdr.openingName = ri.openingName;
 
     // Ensure icon paths are valid to avoid TextureTable lookups on empty strings.
-    if (hdr.white.iconPath.empty())
-      hdr.white.iconPath = std::string{lilia::view::constant::path::ICON_CHALLENGER};
-    if (hdr.black.iconPath.empty())
-      hdr.black.iconPath = std::string{lilia::view::constant::path::ICON_CHALLENGER};
+    if (hdr.white_info.icon_name.empty())
+      hdr.white_info.icon_name = std::string{lilia::view::constant::asset_name::ICON_CHALLENGER};
+    if (hdr.black_info.icon_name.empty())
+      hdr.black_info.icon_name = std::string{lilia::view::constant::asset_name::ICON_CHALLENGER};
 
     m_view.setReplayHeader(std::move(hdr));
 

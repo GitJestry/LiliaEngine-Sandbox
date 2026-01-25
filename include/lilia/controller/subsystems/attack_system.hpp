@@ -2,37 +2,44 @@
 
 #include <vector>
 
-#include "../../chess_types.hpp"
-#include "../../model/move.hpp"
-#include "../../model/move_generator.hpp"
+#include "lilia/model/move.hpp"
+#include "lilia/model/move_generator.hpp"
 
-namespace lilia::model {
-class ChessGame;
-class Position;
-}  // namespace lilia::model
+namespace lilia::model
+{
+  class ChessGame;
+} // namespace lilia::model
 
-namespace lilia::view {
-class GameView;
+namespace lilia::view
+{
+  class GameView;
 }
 
-namespace lilia::controller {
+namespace lilia::controller
+{
 
-class LegalMoveCache;
+  class LegalMoveCache;
 
-class AttackSystem {
- public:
-  AttackSystem(view::GameView& view, model::ChessGame& game, LegalMoveCache& legal);
+  /// An attack system only for the board input system, to find possible pseudo attack squares of a piece
+  class AttackSystem
+  {
+  public:
+    AttackSystem(view::GameView &view, model::ChessGame &game, LegalMoveCache &legal);
 
-  const std::vector<core::Square>& attacks(core::Square pieceSq) const;
+    /// @brief it looks up wether pieceSq is a piece and finds its relative pseudo attacks.
+    /// because premoving is possible, the current visual state of the board is
+    /// @param pieceSq
+    /// @return the possible pseudo attack squares of the Piece
+    const std::vector<core::Square> &attacks(core::Square pieceSq) const;
 
- private:
-  view::GameView& m_view;
-  model::ChessGame& m_game;
-  LegalMoveCache& m_legal;
+  private:
+    view::GameView &m_view;
+    model::ChessGame &m_game;
+    LegalMoveCache &m_legal;
 
-  mutable model::MoveGenerator m_movegen;
-  mutable std::vector<model::Move> m_pseudo;
-  mutable std::vector<core::Square> m_out;
-};
+    mutable model::MoveGenerator m_movegen;
+    mutable std::vector<model::Move> m_pseudo;
+    mutable std::vector<core::Square> m_out;
+  };
 
-}  // namespace lilia::controller
+} // namespace lilia::controller

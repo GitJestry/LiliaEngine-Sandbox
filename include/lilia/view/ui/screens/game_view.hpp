@@ -24,7 +24,6 @@
 #include "lilia/view/ui/views/player_info_view.hpp"
 #include "lilia/view/ui/render/scene/promotion_manager.hpp"
 #include "lilia/view/ui/style/theme_cache.hpp"
-#include "lilia/model/analysis/replay_info.hpp"
 
 namespace lilia::view
 {
@@ -172,7 +171,7 @@ namespace lilia::view
     void clearOutcomeBadges();
 
     // Generic: update player badges (useful for replay and future config refactor)
-    void setPlayers(const PlayerInfo &white, const PlayerInfo &black);
+    void setPlayersInfo(const model::analysis::PlayerInfo &white, const model::analysis::PlayerInfo &black);
 
   private:
     void layout(unsigned int width, unsigned int height);

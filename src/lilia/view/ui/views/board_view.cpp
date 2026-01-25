@@ -7,7 +7,7 @@
 
 #include "lilia/view/ui/style/palette_cache.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/view/ui/render/resource_table.hpp"
 #include "lilia/view/ui/style/style.hpp"
 
 namespace lilia::view
@@ -45,7 +45,7 @@ namespace lilia::view
       static bool s_loaded = false;
       if (!s_loaded)
       {
-        s_loaded = s_font.loadFromFile(std::string{constant::path::FONT});
+        s_loaded = s_font.loadFromFile(std::string{constant::path::FONT_DIR});
         if (s_loaded)
           s_font.setSmooth(false);
       }
@@ -179,9 +179,9 @@ namespace lilia::view
   {
     const auto pal = PaletteCache::get().palette();
 
-    m_board.init(TextureTable::getInstance().get(std::string{constant::tex::WHITE}),
-                 TextureTable::getInstance().get(std::string{constant::tex::BLACK}),
-                 TextureTable::getInstance().get(std::string{constant::tex::TRANSPARENT}),
+    m_board.init(ResourceTable::getInstance().getTexture(std::string{constant::tex::WHITE}),
+                 ResourceTable::getInstance().getTexture(std::string{constant::tex::BLACK}),
+                 ResourceTable::getInstance().getTexture(std::string{constant::tex::TRANSPARENT}),
                  pal[ColorId::COL_BOARD_OUTLINE]);
 
     setPosition(getPosition());

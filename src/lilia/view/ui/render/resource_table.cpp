@@ -1,4 +1,4 @@
-#include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/view/ui/render/resource_table.hpp"
 
 #include <SFML/Graphics.hpp>
 #include <stdexcept>
@@ -9,13 +9,13 @@
 namespace lilia::view
 {
 
-  TextureTable &TextureTable::getInstance()
+  ResourceTable &ResourceTable::getInstance()
   {
-    static TextureTable instance;
+    static ResourceTable instance;
     return instance;
   }
 
-  TextureTable::TextureTable()
+  ResourceTable::ResourceTable()
   {
     // Initial build
     preLoad();
@@ -24,7 +24,7 @@ namespace lilia::view
     m_paletteListenerId = PaletteCache::get().addListener([this]
                                                           { reloadForPalette(); });
   }
-  TextureTable::~TextureTable()
+  ResourceTable::~ResourceTable()
   {
     if (m_paletteListenerId != 0)
     {
@@ -32,12 +32,12 @@ namespace lilia::view
     }
   }
 
-  void TextureTable::reloadForPalette()
+  void ResourceTable::reloadForPalette()
   {
     preLoad();
   }
 
-  void TextureTable::load(std::string_view name, const sf::Color &color, sf::Vector2u size)
+  void ResourceTable::load(std::string_view name, const sf::Color &color, sf::Vector2u size)
   {
     sf::Texture &texture = m_textures[std::string{name}];
     sf::Image image;
@@ -45,7 +45,7 @@ namespace lilia::view
     texture.loadFromImage(image);
   }
 
-  [[nodiscard]] const sf::Texture &TextureTable::get(const std::string &filename)
+  [[nodiscard]] const sf::Texture &ResourceTable::getTexture(const std::string &filename)
   {
     auto it = m_textures.find(filename);
     if (it != m_textures.end())
@@ -58,6 +58,48 @@ namespace lilia::view
     }
     m_textures[filename] = std::move(texture);
     return m_textures[filename];
+  }
+
+  [[nodiscard]] const sf::Texture &ResourceTable::getAssetTexture(const std::string &filename)
+  {
+    auto it = m_textures.find(filename);
+    if (it != m_textures.end())
+      return it->second;
+
+    std::string_view file_dirs[] = {constant::path::ICONS_DIR, constant::path::PIECES_DIR};
+    sf::Texture texture;
+
+    for (auto dir : file_dirs)
+    {
+      if (texture.loadFromFile(std::string{dir} + "/" + filename))
+      {
+        m_textures[filename] = std::move(texture);
+        return m_textures[filename];
+      }
+    }
+    throw std::runtime_error("Error when loading asset: " + filename);
+    return {};
+  }
+
+  [[nodiscard]] const sf::Image &ResourceTable::getImage(const std::string &filename)
+  {
+    auto it = m_images.find(filename);
+    if (it != m_images.end())
+      return it->second;
+
+    std::string_view file_dirs[] = {constant::path::ICONS_DIR, constant::path::PIECES_DIR};
+    sf::Image img;
+
+    for (auto dir : file_dirs)
+    {
+      if (img.loadFromFile(std::string{dir} + "/" + filename))
+      {
+        m_images[filename] = std::move(img);
+        return m_images[filename];
+      }
+    }
+    throw std::runtime_error("Error when loading image: " + filename);
+    return {};
   }
 
   namespace
@@ -430,7 +472,7 @@ void main()
 
   } // namespace
 
-  void TextureTable::preLoad()
+  void ResourceTable::preLoad()
   {
     const auto &p = PaletteCache::get().palette();
 

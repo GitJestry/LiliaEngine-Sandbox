@@ -6,7 +6,10 @@
 
 namespace lilia::app
 {
-  // Runs exactly one session (a game or replay) and returns the next action.
+  /// @brief Runs exactly one session (a game or replay)
+  /// @param window
+  /// @param cfg
+  /// @return returns the next controller Action
   lilia::controller::NextAction runSession(sf::RenderWindow &window,
                                            const lilia::config::StartConfig &cfg);
 } // namespace lilia::app

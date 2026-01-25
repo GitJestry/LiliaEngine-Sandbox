@@ -18,15 +18,14 @@ namespace lilia::model::analysis
     info.date = tagOr(rec, "Date", "");
     info.round = tagOr(rec, "Round", "");
 
-    info.white.name = tagOr(rec, "White", "White");
-    info.black.name = tagOr(rec, "Black", "Black");
+    info.white_info.name = tagOr(rec, "White", "White");
+    info.black_info.name = tagOr(rec, "Black", "Black");
 
-    info.white.elo = tagOr(rec, "WhiteElo", "");
-    info.black.elo = tagOr(rec, "BlackElo", "");
+    info.white_info.elo = tagOr(rec, "WhiteElo", "");
+    info.black_info.elo = tagOr(rec, "BlackElo", "");
 
-    // Icons: leave empty here; controller/view applies a safe default.
-    info.white.iconPath.clear();
-    info.black.iconPath.clear();
+    info.white_info.icon_name.clear();
+    info.black_info.icon_name.clear();
 
     info.result = rec.result.empty() ? tagOr(rec, "Result", "*") : rec.result;
 

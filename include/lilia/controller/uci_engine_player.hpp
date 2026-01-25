@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "lilia/controller/player.hpp" // IPlayer
+#include "lilia/controller/player.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/analysis/config/start_config.hpp"
 #include "lilia/engine/uci/uci_engine_process.hpp"

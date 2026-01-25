@@ -6,9 +6,9 @@
 #include <memory>
 #include <mutex>
 
-#include "../chess_types.hpp"
-#include "../constants.hpp"
-#include "../model/move.hpp"
+#include "lilia/chess_types.hpp"
+#include "lilia/constants.hpp"
+#include "lilia/model/move.hpp"
 #include "lilia/model/analysis/config/start_config.hpp"
 
 namespace lilia::model

@@ -79,22 +79,22 @@ namespace lilia::view
     return std::string(ui::icons::EXTERNAL);
   }
 
-  PlayerInfo makePlayerInfo(const lilia::config::SideConfig &side, core::Color /*color*/)
+  model::analysis::PlayerInfo makePlayerInfo(const lilia::config::SideConfig &side, core::Color /*color*/)
   {
-    PlayerInfo info{};
+    model::analysis::PlayerInfo info{};
     info.elo = "";
 
     if (side.kind == lilia::config::SideKind::Human || !side.bot.has_value() ||
         side.bot->engine.engineId.empty())
     {
-      info.name = "Human";
-      info.iconPath = std::string(ui::icons::DEFAULT_FALLBACK);
+      info.name = "Challenger";
+      info.icon_name = std::string(ui::icons::DEFAULT_FALLBACK);
       return info;
     }
 
     const auto &ref = side.bot->engine;
     info.name = ref.displayName.empty() ? ref.engineId : ref.displayName;
-    info.iconPath = iconForEngine(ref);
+    info.icon_name = iconForEngine(ref);
     return info;
   }
 } // namespace lilia::view

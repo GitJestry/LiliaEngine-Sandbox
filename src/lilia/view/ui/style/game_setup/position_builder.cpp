@@ -10,7 +10,7 @@
 
 #include "lilia/constants.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/view/ui/render/resource_table.hpp"
 
 #include "lilia/view/ui/style/style.hpp"
 #include "lilia/view/ui/style/theme.hpp"
@@ -974,7 +974,7 @@ namespace lilia::view
 
       const int colorIdx = white ? 0 : 1;
       const int idx = t + 6 * colorIdx;
-      return std::string{constant::path::PIECES_DIR} + "/piece_" + std::to_string(idx) + ".png";
+      return "piece_" + std::to_string(idx) + ".png";
     }
 
     static int pieceSlotFromChar(char p)
@@ -992,8 +992,8 @@ namespace lilia::view
       if (texReady)
         return;
 
-      texWhite = &TextureTable::getInstance().get(std::string{constant::tex::WHITE});
-      texBlack = &TextureTable::getInstance().get(std::string{constant::tex::BLACK});
+      texWhite = &ResourceTable::getInstance().getTexture(std::string{constant::tex::WHITE});
+      texBlack = &ResourceTable::getInstance().getTexture(std::string{constant::tex::BLACK});
 
       if (texWhite && texWhite->getSize().x > 0)
       {
@@ -1022,7 +1022,7 @@ namespace lilia::view
         if (fn.empty())
           return;
 
-        const sf::Texture &t = TextureTable::getInstance().get(fn);
+        const sf::Texture &t = ResourceTable::getInstance().getAssetTexture(fn);
         pieceTex[slot] = &t;
 
         sf::Sprite spr;

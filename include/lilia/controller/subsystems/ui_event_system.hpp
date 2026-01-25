@@ -3,7 +3,7 @@
 #include <SFML/Window/Event.hpp>
 
 #include "lilia/view/ui/screens/game_view.hpp"
-#include "../game_controller_types.hpp"
+#include "lilia/controller/game_controller_types.hpp"
 
 namespace lilia::model
 {

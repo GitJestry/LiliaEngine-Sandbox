@@ -1,20 +1,11 @@
 #include "lilia/controller/subsystems/attack_system.hpp"
 
 #include "lilia/model/chess_game.hpp"
-#include "lilia/model/position.hpp"
 #include "lilia/view/ui/screens/game_view.hpp"
 #include "lilia/controller/subsystems/legal_move_cache.hpp"
 
 namespace lilia::controller
 {
-
-  namespace
-  {
-    inline bool valid(core::Square sq)
-    {
-      return sq != core::NO_SQUARE;
-    }
-  } // namespace
 
   AttackSystem::AttackSystem(view::GameView &view, model::ChessGame &game, LegalMoveCache &legal)
       : m_view(view), m_game(game), m_legal(legal)
@@ -26,7 +17,7 @@ namespace lilia::controller
   const std::vector<core::Square> &AttackSystem::attacks(core::Square pieceSq) const
   {
     m_out.clear();
-    if (!valid(pieceSq))
+    if (!core::validSquare(pieceSq))
       return m_out;
 
     const core::PieceType vType = m_view.getPieceType(pieceSq);
@@ -57,6 +48,7 @@ namespace lilia::controller
       }
 
       m_pseudo.clear();
+      m_pseudo = m_game.generatePseudoLegalMoves();
       m_movegen.generatePseudoLegalMoves(board, st, m_pseudo);
       for (const auto &m : m_pseudo)
         if (m.from() == pieceSq)

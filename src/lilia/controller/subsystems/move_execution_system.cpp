@@ -21,13 +21,12 @@ namespace lilia::controller
   } // namespace
 
   MoveExecutionSystem::MoveExecutionSystem(view::GameView &view, model::ChessGame &game,
-                                           view::sound::SoundManager &sfx, std::atomic<int> &evalCp,
+                                           view::sound::SoundManager &sfx,
                                            LegalMoveCache &legal, HistorySystem &history,
                                            ClockSystem &clock, PremoveSystem &premove)
       : m_view(view),
         m_game(game),
         m_sfx(sfx),
-        m_eval_cp(evalCp),
         m_legal(legal),
         m_history(history),
         m_clock(clock),
@@ -119,7 +118,7 @@ namespace lilia::controller
     const model::analysis::TimeView tv =
         m_clock.enabled() ? m_clock.snapshot(sideToMoveNow) : model::analysis::TimeView{0.f, 0.f, sideToMoveNow};
 
-    MoveView mvInfo{move, moverColorBefore, capturedType, effect, m_eval_cp.load()};
+    MoveView mvInfo{move, moverColorBefore, capturedType, effect};
     m_history.onMoveCommitted(mvInfo, m_game.getFen(), tv);
 
     m_premove.scheduleFromQueueIfTurnMatches();

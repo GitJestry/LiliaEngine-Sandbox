@@ -3,7 +3,7 @@
 #include <cmath>
 
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/view/ui/render/resource_table.hpp"
 
 namespace lilia::view::animation
 {
@@ -11,7 +11,7 @@ namespace lilia::view::animation
   WarningAnim::WarningAnim(Entity::Position ksqPos) : m_warning_highlight(ksqPos)
   {
     m_warning_highlight.setTexture(
-        TextureTable::getInstance().get(std::string{constant::tex::WARNING_HL}));
+        ResourceTable::getInstance().getTexture(std::string{constant::tex::WARNING_HL}));
     m_warning_highlight.setOriginToCenter();
     m_warning_highlight.setScale(constant::SQUARE_PX_SIZE, constant::SQUARE_PX_SIZE);
   }
@@ -33,12 +33,12 @@ namespace lilia::view::animation
     if (phase < m_blink_period)
     {
       m_warning_highlight.setTexture(
-          TextureTable::getInstance().get(std::string{constant::tex::WARNING_HL}));
+          ResourceTable::getInstance().getTexture(std::string{constant::tex::WARNING_HL}));
     }
     else
     {
       m_warning_highlight.setTexture(
-          TextureTable::getInstance().get(std::string{constant::tex::TRANSPARENT}));
+          ResourceTable::getInstance().getTexture(std::string{constant::tex::TRANSPARENT}));
     }
   }
 

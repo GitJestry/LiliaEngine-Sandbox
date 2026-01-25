@@ -9,7 +9,7 @@ namespace sf
 #include <functional>
 #include <optional>
 
-#include "../controller/mousepos.hpp"
+#include "lilia/controller/mousepos.hpp"
 
 namespace lilia::controller
 {

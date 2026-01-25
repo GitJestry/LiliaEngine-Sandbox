@@ -5,8 +5,8 @@
 namespace lilia::controller
 {
 
-  ClockSystem::ClockSystem(view::GameView &view, model::ChessGame &game)
-      : m_view(view), m_game(game) {}
+  ClockSystem::ClockSystem(view::GameView &view)
+      : m_view(view) {}
 
   void ClockSystem::reset(bool enabled, int baseSeconds, int incrementSeconds)
   {

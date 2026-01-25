@@ -5,11 +5,10 @@
 #include <string>
 #include <vector>
 
-#include "../../chess_types.hpp"
-#include "../../view/audio/sound_manager.hpp"
+#include "lilia/view/audio/sound_manager.hpp"
 #include "lilia/view/ui/screens/game_view.hpp"
-#include "../game_controller_types.hpp"
-#include "../selection_manager.hpp"
+#include "lilia/controller/game_controller_types.hpp"
+#include "lilia/controller/selection_manager.hpp"
 #include "lilia/model/analysis/analysis_types.hpp"
 #include "lilia/model/analysis/game_record.hpp"
 
@@ -27,7 +26,7 @@ namespace lilia::controller
   {
   public:
     HistorySystem(view::GameView &view, model::ChessGame &game, SelectionManager &sel,
-                  view::sound::SoundManager &sfx, std::atomic<int> &evalCp);
+                  view::sound::SoundManager &sfx);
 
     // removed startEval
     void reset(const std::string &startFen, const model::analysis::TimeView &startTime);
@@ -47,7 +46,6 @@ namespace lilia::controller
     void stepBackward(PremoveSystem &premove);
     void stepForward(PremoveSystem &premove);
 
-    void updateEvalAtHead();
     void syncCapturedPieces();
 
     void stashSelectedPiece();
@@ -65,9 +63,6 @@ namespace lilia::controller
     model::ChessGame &m_game;
     SelectionManager &m_sel;
     view::sound::SoundManager &m_sfx;
-
-    // keep live eval
-    std::atomic<int> &m_eval_cp;
 
     std::vector<std::string> m_fen_history;
     std::vector<MoveView> m_move_history;

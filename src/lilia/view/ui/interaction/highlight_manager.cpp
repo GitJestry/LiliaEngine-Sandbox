@@ -7,7 +7,7 @@
 
 #include "lilia/view/ui/style/palette_cache.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/view/ui/render/resource_table.hpp"
 
 namespace lilia::view
 {
@@ -17,7 +17,7 @@ namespace lilia::view
 
     static Entity makeHL(std::string_view texName, bool scaleToSquare)
     {
-      Entity e(TextureTable::getInstance().get(std::string{texName}));
+      Entity e(ResourceTable::getInstance().getTexture(std::string{texName}));
 
       if (scaleToSquare)
       {

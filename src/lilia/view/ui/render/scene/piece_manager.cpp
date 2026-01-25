@@ -6,7 +6,7 @@
 
 #include "lilia/view/animation/chess_animator.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
-#include "lilia/view/ui/render/texture_table.hpp"
+#include "lilia/view/ui/render/scene/piece_texture_util.hpp"
 
 namespace lilia::view
 {
@@ -117,15 +117,7 @@ namespace lilia::view
 
   void PieceManager::addPiece(core::PieceType type, core::Color color, core::Square pos)
   {
-    std::uint8_t numTypes = 6;
-    std::string filename = std::string{constant::path::PIECES_DIR} + std::string("/piece_") +
-                           std::to_string(static_cast<std::uint8_t>(type) +
-                                          numTypes * static_cast<std::uint8_t>(color)) +
-                           ".png";
-
-    const sf::Texture &texture = TextureTable::getInstance().get(filename);
-
-    Piece newpiece(color, type, texture);
+    Piece newpiece(color, type, ui::render::utils::getPieceTexture(type, color));
     newpiece.setScale(constant::PIECE_SCALE, constant::PIECE_SCALE);
     m_pieces[pos] = std::move(newpiece);
     m_pieces[pos].setPosition(createPiecePositon(pos));
@@ -370,13 +362,7 @@ namespace lilia::view
 
   static Piece makeGhost(core::PieceType type, core::Color color)
   {
-    constexpr std::uint8_t numTypes = 6;
-    std::string filename = std::string{constant::path::PIECES_DIR} + std::string("/piece_") +
-                           std::to_string(static_cast<std::uint8_t>(type) +
-                                          numTypes * static_cast<std::uint8_t>(color)) +
-                           ".png";
-    const sf::Texture &texture = TextureTable::getInstance().get(filename);
-    Piece p(color, type, texture);
+    Piece p(color, type, ui::render::utils::getPieceTexture(type, color));
     p.setScale(constant::PIECE_SCALE, constant::PIECE_SCALE);
     return p;
   }
@@ -495,12 +481,7 @@ namespace lilia::view
     // behavior (reload textures) but trigger via PaletteCache now.
     auto reload = [](Piece &p)
     {
-      std::uint8_t numTypes = 6;
-      std::string filename = std::string{constant::path::PIECES_DIR} + std::string("/piece_") +
-                             std::to_string(static_cast<std::uint8_t>(p.getType()) +
-                                            numTypes * static_cast<std::uint8_t>(p.getColor())) +
-                             ".png";
-      p.setTexture(TextureTable::getInstance().get(filename));
+      p.setTexture(ui::render::utils::getPieceTexture(p.getType(), p.getColor()));
       p.setScale(constant::PIECE_SCALE, constant::PIECE_SCALE);
     };
 

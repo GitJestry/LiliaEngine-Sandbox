@@ -3,15 +3,9 @@
 #include <memory>
 #include <optional>
 
-#include "../../chess_types.hpp"
 #include "lilia/view/ui/screens/game_view.hpp"
-#include "../game_controller_types.hpp"
-#include "../time_controller.hpp"
-
-namespace lilia::model
-{
-  class ChessGame;
-}
+#include "lilia/controller/game_controller_types.hpp"
+#include "lilia/controller/time_controller.hpp"
 
 namespace lilia::controller
 {
@@ -19,7 +13,7 @@ namespace lilia::controller
   class ClockSystem
   {
   public:
-    ClockSystem(view::GameView &view, model::ChessGame &game);
+    ClockSystem(view::GameView &view);
 
     void reset(bool enabled, int baseSeconds, int incrementSeconds);
     void start(core::Color sideToMove);
@@ -39,7 +33,6 @@ namespace lilia::controller
 
   private:
     view::GameView &m_view;
-    model::ChessGame &m_game;
     std::unique_ptr<TimeController> m_time;
   };
 

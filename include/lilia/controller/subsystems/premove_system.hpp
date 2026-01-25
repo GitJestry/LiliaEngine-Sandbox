@@ -6,14 +6,16 @@
 #include <deque>
 #include <vector>
 
-#include "../../chess_types.hpp"
-#include "../../model/chess_game.hpp"
-#include "../../model/move.hpp"
-#include "../../model/move_generator.hpp"
-#include "../../model/position.hpp"
-#include "../../view/audio/sound_manager.hpp"
+#include "lilia/view/audio/sound_manager.hpp"
 #include "lilia/view/ui/screens/game_view.hpp"
-#include "../game_controller_types.hpp"
+#include "lilia/controller/game_controller_types.hpp"
+#include "lilia/model/position.hpp"
+#include "lilia/model/move_generator.hpp"
+
+namespace lilia::model
+{
+  class ChessGame;
+} // namespace lilia::model
 
 namespace lilia::controller
 {

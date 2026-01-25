@@ -11,8 +11,8 @@ namespace lilia::controller
 {
 
   HistorySystem::HistorySystem(view::GameView &view, model::ChessGame &game, SelectionManager &sel,
-                               view::sound::SoundManager &sfx, std::atomic<int> &evalCp)
-      : m_view(view), m_game(game), m_sel(sel), m_sfx(sfx), m_eval_cp(evalCp) {}
+                               view::sound::SoundManager &sfx)
+      : m_view(view), m_game(game), m_sel(sel), m_sfx(sfx) {}
 
   void HistorySystem::reset(const std::string &startFen, const model::analysis::TimeView &startTime)
   {
@@ -36,7 +36,6 @@ namespace lilia::controller
 
     // eval: start neutral or current live value; choose one:
     m_view.resetEvalBar();
-    m_view.updateEval(m_eval_cp.load());
 
     stashSelectedPiece();
     restoreSelectedPiece();
@@ -56,9 +55,6 @@ namespace lilia::controller
 
     m_fen_index = m_fen_history.size() - 1;
     m_view.setBoardFen(m_fen_history[m_fen_index]);
-
-    // at head: show live eval
-    m_view.updateEval(m_eval_cp.load());
 
     m_view.selectMove(m_fen_index ? m_fen_index - 1 : kInvalidMoveIdx);
     m_view.clearAllHighlights();
@@ -112,9 +108,6 @@ namespace lilia::controller
 
     m_view.updateFen(fenAfter);
     m_view.selectMove(m_fen_index ? m_fen_index - 1 : kInvalidMoveIdx);
-
-    // show live eval (engine callback updates m_eval_cp asynchronously)
-    m_view.updateEval(m_eval_cp.load());
 
     if (m_game.getResult() != core::GameResult::ONGOING)
     {
@@ -373,15 +366,6 @@ namespace lilia::controller
       m_view.restoreRightClickHighlights();
   }
 
-  void HistorySystem::updateEvalAtHead()
-  {
-    if (m_fen_history.empty())
-      return;
-    if (!atHead())
-      return;
-    m_view.updateEval(m_eval_cp.load());
-  }
-
   model::analysis::GameRecord HistorySystem::toRecord() const
   {
     model::analysis::GameRecord rec{};
@@ -481,7 +465,7 @@ namespace lilia::controller
       else
         effect = view::sound::Effect::EnemyMove;
 
-      MoveView mvInfo{mv, moverColorBefore, capturedType, effect, 0};
+      MoveView mvInfo{mv, moverColorBefore, capturedType, effect};
 
       m_move_history.push_back(mvInfo);
       m_fen_history.push_back(fenAfter);

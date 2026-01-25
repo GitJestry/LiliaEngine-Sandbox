@@ -26,6 +26,7 @@
 #include "lilia/view/ui/style/modals/game_setup/game_setup_modal.hpp"
 #include "lilia/view/ui/style/modals/game_setup/game_setup_validation.hpp"
 #include "lilia/view/ui/style/modals/palette_picker_modal.hpp"
+#include "lilia/view/ui/render/resource_table.hpp"
 
 namespace lilia::view
 {
@@ -114,8 +115,8 @@ namespace lilia::view
 
   StartScreen::StartScreen(sf::RenderWindow &window) : m_window(window)
   {
-    m_font.loadFromFile(std::string(constant::path::FONT));
-    m_logoTex.loadFromFile(std::string(constant::path::ICON_LILIA_START));
+    m_font.loadFromFile(std::string(constant::path::FONT_DIR));
+    m_logoTex = ResourceTable::getInstance().getAssetTexture(std::string(constant::asset_name::ICON_LILIA_START));
     m_logo.setTexture(m_logoTex);
   }
 
