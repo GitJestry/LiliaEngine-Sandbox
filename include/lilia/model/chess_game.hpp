@@ -31,7 +31,6 @@ namespace lilia::model
     bb::Piece getPiece(core::Square sq);
     const GameState &getGameState();
     const std::vector<Move> &generateLegalMoves();
-    const std::vector<Move> &generatePseudoLegalMoves();
     std::optional<Move> getMove(core::Square from, core::Square to);
 
     bool isKingInCheck(core::Color from) const;

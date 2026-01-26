@@ -241,13 +241,6 @@ namespace lilia::model
     return m_legal_moves;
   }
 
-  const std::vector<Move> &ChessGame::generatePseudoLegalMoves()
-  {
-    m_pseudo_moves.clear();
-    m_move_gen.generatePseudoLegalMoves(m_position.getBoard(), m_position.getState(), m_pseudo_moves);
-    return m_pseudo_moves;
-  }
-
   const GameState &ChessGame::getGameState()
   {
     return m_position.getState();

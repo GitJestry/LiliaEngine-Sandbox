@@ -48,7 +48,6 @@ namespace lilia::controller
       }
 
       m_pseudo.clear();
-      m_pseudo = m_game.generatePseudoLegalMoves();
       m_movegen.generatePseudoLegalMoves(board, st, m_pseudo);
       for (const auto &m : m_pseudo)
         if (m.from() == pieceSq)

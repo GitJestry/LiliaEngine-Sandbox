@@ -2,6 +2,8 @@
 
 #include <SFML/Graphics.hpp>
 #include <stdexcept>
+#include <iostream>
+#include <filesystem>
 
 #include "lilia/view/ui/style/palette_cache.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
@@ -66,11 +68,14 @@ namespace lilia::view
     if (it != m_textures.end())
       return it->second;
 
-    std::string_view file_dirs[] = {constant::path::ICONS_DIR, constant::path::PIECES_DIR};
     sf::Texture texture;
 
-    for (auto dir : file_dirs)
+    for (auto dir : {constant::path::ICONS_DIR, constant::path::PIECES_DIR})
     {
+      std::filesystem::path p = std::filesystem::path(std::string(dir)) / filename;
+      if (!std::filesystem::exists(p))
+        continue;
+
       if (texture.loadFromFile(std::string{dir} + "/" + filename))
       {
         m_textures[filename] = std::move(texture);
@@ -78,7 +83,6 @@ namespace lilia::view
       }
     }
     throw std::runtime_error("Error when loading asset: " + filename);
-    return {};
   }
 
   [[nodiscard]] const sf::Image &ResourceTable::getImage(const std::string &filename)
@@ -87,10 +91,8 @@ namespace lilia::view
     if (it != m_images.end())
       return it->second;
 
-    std::string_view file_dirs[] = {constant::path::ICONS_DIR, constant::path::PIECES_DIR};
     sf::Image img;
-
-    for (auto dir : file_dirs)
+    for (auto dir : {constant::path::ICONS_DIR})
     {
       if (img.loadFromFile(std::string{dir} + "/" + filename))
       {
@@ -99,7 +101,6 @@ namespace lilia::view
       }
     }
     throw std::runtime_error("Error when loading image: " + filename);
-    return {};
   }
 
   namespace

@@ -7,11 +7,13 @@
 
 #include "lilia/app/game_session.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
+#include "lilia/engine/engine.hpp"
 
 namespace lilia::app
 {
   int App::run()
   {
+    engine::Engine::init();
     lilia::view::ResourceTable::getInstance().preLoad();
 
     sf::RenderWindow window(
