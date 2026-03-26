@@ -7,7 +7,7 @@
 #include "lilia/controller/player.hpp"
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/analysis/config/start_config.hpp"
-#include "lilia/engine/uci/uci_engine_process.hpp"
+#include "lilia/uci/uci_engine_process.hpp"
 
 namespace lilia::controller
 {
@@ -27,7 +27,7 @@ namespace lilia::controller
 
   private:
     lilia::config::BotConfig m_cfg;
-    UciEngineProcess m_proc;
+    uci::UciEngineProcess m_proc;
     bool m_ok{false};
   };
 } // namespace lilia::controller

@@ -11,9 +11,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 #include "lilia/constants.hpp"
-#include "lilia/engine/uci/engine_registry.hpp"
+#include "lilia/uci/engine_registry.hpp"
+#include "lilia/uci/builtin_bootstrap.hpp"
 #include "lilia/view/ui/interaction/focus.hpp"
 #include "lilia/view/ui/render/layout.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
@@ -106,10 +108,13 @@ namespace lilia::view
 
     static std::string engineLabel(const lilia::config::EngineRef &r)
     {
-      const std::string name =
-          !r.displayName.empty() ? r.displayName
-                                 : (!r.engineId.empty() ? r.engineId : std::string("Select Bot..."));
-      return name;
+      if (!r.displayName.empty())
+        return r.displayName;
+      if (!r.engineId.empty())
+        return r.engineId;
+      if (!r.executablePath.empty())
+        return std::filesystem::path(r.executablePath).filename().string();
+      return "Select Bot...";
     }
   } // namespace
 
@@ -129,8 +134,7 @@ namespace lilia::view
     m_window.setView(m_window.getDefaultView());
 
     // Make sure registry is hydrated (disk + builtins should already be ensured by Engine::init()).
-    auto &reg = lilia::engine::uci::EngineRegistry::instance();
-    reg.load();
+    auto &reg = lilia::uci::EngineRegistry::instance();
 
     // Canonical StartConfig (single source of truth).
     lilia::config::StartConfig cfg{};

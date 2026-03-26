@@ -5,7 +5,7 @@
 #include "lilia/model/chess_game.hpp"
 #include "lilia/model/analysis/config/start_config.hpp"
 #include "lilia/controller/uci_engine_player.hpp"
-#include "lilia/engine/uci/engine_registry.hpp"
+#include "lilia/uci/engine_registry.hpp"
 
 namespace lilia::controller
 {
@@ -34,7 +34,7 @@ namespace lilia::controller
       auto bc = *sc.bot;
       if (bc.uciValues.empty() && !bc.engine.engineId.empty())
       {
-        bc = lilia::engine::uci::EngineRegistry::instance().makeDefaultBotConfig(bc.engine.engineId);
+        bc = lilia::uci::EngineRegistry::instance().makeDefaultBotConfig(bc.engine.engineId);
         bc.limits = sc.bot->limits; // keep chosen limits if set
       }
       return std::make_unique<UciEnginePlayer>(std::move(bc));

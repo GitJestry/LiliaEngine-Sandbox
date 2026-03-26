@@ -1,6 +1,8 @@
 #include "lilia/controller/uci_engine_player.hpp"
-#include "lilia/engine/uci/uci_utils.hpp"
+#include "lilia/uci/uci_helper.hpp"
+#include "lilia/uci/engine_registry.hpp"
 
+#include <filesystem>
 #include <sstream>
 
 namespace lilia::controller
@@ -13,13 +15,41 @@ namespace lilia::controller
   UciEnginePlayer::UciEnginePlayer(lilia::config::BotConfig cfg)
       : m_cfg(std::move(cfg))
   {
-    if (m_cfg.engine.executablePath.empty())
+    std::string exePath;
+    std::string workingDir;
+
+    // Preferred path: resolve by stable engine id through the registry.
+    if (!m_cfg.engine.engineId.empty())
+    {
+      auto entry = lilia::uci::EngineRegistry::instance().get(m_cfg.engine.engineId);
+      if (!entry)
+        return;
+
+      // Refresh the BotConfig's EngineRef with the registry-resolved platform install.
+      m_cfg.engine = entry->ref;
+      exePath = entry->ref.executablePath;
+      workingDir = entry->workingDirectory.string();
+    }
+    else
+    {
+      // Legacy fallback if only a raw path is present.
+      exePath = m_cfg.engine.executablePath;
+      if (!exePath.empty())
+      {
+        std::filesystem::path p(exePath);
+        workingDir = p.has_parent_path()
+                         ? p.parent_path().string()
+                         : std::filesystem::current_path().string();
+      }
+    }
+
+    if (exePath.empty())
       return;
 
-    if (!m_proc.start(m_cfg.engine.executablePath))
+    if (!m_proc.start(exePath, workingDir))
       return;
 
-    UciEngineProcess::Id id;
+    lilia::uci::UciEngineProcess::Id id;
     std::vector<lilia::config::UciOption> opts;
     if (!m_proc.uciHandshake(id, opts))
     {
@@ -27,7 +57,6 @@ namespace lilia::controller
       return;
     }
 
-    // Apply configured values (currently defaults from registry; later UI overrides)
     for (const auto &kv : m_cfg.uciValues)
       m_proc.setOption(kv.first, kv.second);
 
@@ -94,8 +123,8 @@ namespace lilia::controller
     auto uciTo = uci.substr(2, 2);
     char promo = (uci.size() >= 5) ? uci[4] : '\0';
 
-    const core::Square fromSq = lilia::engine::uci::stringToSquare(uciFrom);
-    const core::Square toSq = lilia::engine::uci::stringToSquare(uciTo);
+    const core::Square fromSq = lilia::uci::stringToSquare(uciFrom);
+    const core::Square toSq = lilia::uci::stringToSquare(uciTo);
 
     core::PieceType prom = core::PieceType::None;
     if (promo == 'q')

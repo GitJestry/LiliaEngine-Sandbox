@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "lilia/engine/uci/engine_registry.hpp"
+#include "lilia/uci/engine_registry.hpp"
 #include "lilia/view/ui/platform/file_dialog.hpp"
 #include "lilia/view/ui/render/engine_icons.hpp"
 #include "lilia/view/ui/render/layout.hpp"
@@ -253,7 +253,7 @@ namespace lilia::view
     {
       m_rows.clear();
 
-      auto &reg = lilia::engine::uci::EngineRegistry::instance();
+      auto &reg = lilia::uci::EngineRegistry::instance();
       reg.load();
 
       auto lowerCopy = [](std::string s)
@@ -264,7 +264,7 @@ namespace lilia::view
         return s;
       };
 
-      auto looksLike = [&](const lilia::engine::uci::EngineEntry &e, const std::string &token)
+      auto looksLike = [&](const lilia::uci::EngineEntry &e, const std::string &token)
       {
         const std::string t = lowerCopy(token);
         const std::string id = lowerCopy(e.ref.engineId);
@@ -343,7 +343,7 @@ namespace lilia::view
       if (!path || path->empty())
         return;
 
-      auto &reg = lilia::engine::uci::EngineRegistry::instance();
+      auto &reg = lilia::uci::EngineRegistry::instance();
       std::string err;
       auto installed = reg.installExternal(*path, &err);
       if (!installed)

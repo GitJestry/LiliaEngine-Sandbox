@@ -38,12 +38,18 @@ namespace lilia::config
 
   struct EngineRef
   {
-    // One of:
+    // Logical engine identity in the registry.
+    // This should be the primary way the app remembers an engine.
     bool builtin{false};
-    std::string engineId;       // stable id in registry (recommended)
-    std::string executablePath; // resolved path to binary
+    std::string engineId;       // stable logical id, e.g. "lilia", "stockfish", "ext_xxx"
+    std::string executablePath; // resolved executable for the current platform/install
     std::string displayName;
     std::string version;
+
+    // New fields for the redesigned registry/install model.
+    std::string iconKey;          // UI icon selection key
+    std::string artifactId;       // installed artifact id / fingerprint
+    std::string workingDirectory; // directory the engine should run from
   };
 
   struct SearchLimits

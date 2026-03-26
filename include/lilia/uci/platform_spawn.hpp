@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #endif
 
-namespace lilia::engine::uci
+namespace lilia::uci
 {
   struct SpawnedProcess
   {

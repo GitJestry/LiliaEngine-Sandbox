@@ -95,7 +95,7 @@ namespace lilia::controller
     }
 
     if (moveText.empty())
-      moveText = move_to_uci(mv.move);
+      moveText = uci::move_to_uci(mv.move);
 
     m_view.addMove(moveText);
 
@@ -440,7 +440,7 @@ namespace lilia::controller
       if (populateMoveListWithSan)
         moveText = model::notation::toSan(posBefore, mv);
       if (moveText.empty())
-        moveText = move_to_uci(mv);
+        moveText = uci::move_to_uci(mv);
 
       m_view.addMove(moveText);
 

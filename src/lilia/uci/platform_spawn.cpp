@@ -1,10 +1,10 @@
-#include "lilia/engine/uci/platform_spawn.hpp"
+#include "lilia/uci/platform_spawn.hpp"
 
 #include <cstring>
 
 #if defined(_WIN32)
 
-namespace lilia::engine::uci
+namespace lilia::uci
 {
   bool spawnWithPipes(const std::string &exePath, SpawnedProcess &out, std::string *outError)
   {
@@ -124,7 +124,7 @@ namespace lilia::engine::uci
 #include <sys/wait.h>
 #include <unistd.h>
 
-namespace lilia::engine::uci
+namespace lilia::uci
 {
   bool spawnWithPipes(const std::string &exePath, SpawnedProcess &out, std::string *outError)
   {

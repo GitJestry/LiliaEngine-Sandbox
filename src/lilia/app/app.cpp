@@ -4,6 +4,7 @@
 
 #include "lilia/view/ui/render/resource_table.hpp"
 #include "lilia/view/ui/screens/start_screen.hpp"
+#include "lilia/uci/builtin_bootstrap.hpp"
 
 #include "lilia/app/game_session.hpp"
 #include "lilia/view/ui/render/render_constants.hpp"
@@ -13,6 +14,7 @@ namespace lilia::app
 {
   int App::run()
   {
+    lilia::uci::bootstrapBuiltinEngines();
     engine::Engine::init();
     lilia::view::ResourceTable::getInstance().preLoad();
 

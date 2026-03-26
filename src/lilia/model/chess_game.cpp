@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "lilia/model/move_helper.hpp"
-#include "lilia/engine/uci/uci_utils.hpp"
+#include "lilia/uci/uci_helper.hpp"
 
 namespace lilia::model
 {
@@ -25,15 +25,15 @@ namespace lilia::model
       return false;
 
     const char *ptr = uciMove.c_str();
-    const int from = engine::uci::squareFromUCI(ptr + 0);
-    const int to = engine::uci::squareFromUCI(ptr + 2);
+    const int from = uci::squareFromUCI(ptr + 0);
+    const int to = uci::squareFromUCI(ptr + 2);
     if (from < 0 || to < 0)
       return false;
 
     core::PieceType promo = core::PieceType::None;
     if (len >= 5)
     {
-      switch (engine::uci::tolower_ascii(uciMove[4]))
+      switch (uci::tolower_ascii(uciMove[4]))
       {
       case 'q':
         promo = core::PieceType::Queen;
@@ -123,7 +123,7 @@ namespace lilia::model
       if (file > 7)
         continue; // guard malformed FEN
 
-      const char lo = engine::uci::tolower_ascii(ch);
+      const char lo = uci::tolower_ascii(ch);
       core::PieceType type;
       switch (lo)
       {
@@ -190,7 +190,7 @@ namespace lilia::model
     // En passant
     if (enPassant.size() == 2)
     {
-      m_position.getState().enPassantSquare = engine::uci::stringToSquare(enPassant);
+      m_position.getState().enPassantSquare = uci::stringToSquare(enPassant);
     }
     else
     {
@@ -201,11 +201,11 @@ namespace lilia::model
     int hm = 0, fm = 1;
     if (!halfmoveClock.empty())
     {
-      hm = engine::uci::parseInt(halfmoveClock);
+      hm = uci::parseInt(halfmoveClock);
     }
     if (!fullmoveNumber.empty())
     {
-      fm = engine::uci::parseInt(fullmoveNumber);
+      fm = uci::parseInt(fullmoveNumber);
       if (fm == 0)
         fm = 1;
     }
