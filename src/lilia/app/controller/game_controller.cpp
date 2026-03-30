@@ -273,19 +273,19 @@ namespace lilia::app::controller
     switch (event.type)
     {
     case sf::Event::MouseMoved:
-      m_board_input->onMouseMove(MousePos(event.mouseMove.x, event.mouseMove.y));
+      m_board_input->onMouseMove(view::MousePos(event.mouseMove.x, event.mouseMove.y));
       break;
     case sf::Event::MouseButtonPressed:
       if (event.mouseButton.button == sf::Mouse::Left)
-        m_board_input->onMousePressed(MousePos(event.mouseButton.x, event.mouseButton.y));
+        m_board_input->onMousePressed(view::MousePos(event.mouseButton.x, event.mouseButton.y));
       else if (event.mouseButton.button == sf::Mouse::Right)
-        m_board_input->onRightPressed(MousePos(event.mouseButton.x, event.mouseButton.y));
+        m_board_input->onRightPressed(view::MousePos(event.mouseButton.x, event.mouseButton.y));
       break;
     case sf::Event::MouseButtonReleased:
       if (event.mouseButton.button == sf::Mouse::Left)
-        m_board_input->onMouseReleased(MousePos(event.mouseButton.x, event.mouseButton.y));
+        m_board_input->onMouseReleased(view::MousePos(event.mouseButton.x, event.mouseButton.y));
       else if (event.mouseButton.button == sf::Mouse::Right)
-        m_board_input->onRightReleased(MousePos(event.mouseButton.x, event.mouseButton.y));
+        m_board_input->onRightReleased(view::MousePos(event.mouseButton.x, event.mouseButton.y));
       break;
     case sf::Event::MouseEntered:
       m_board_input->onMouseEntered();

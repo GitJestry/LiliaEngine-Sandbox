@@ -2,7 +2,7 @@
 
 #include <SFML/Graphics/Sprite.hpp>
 #include <atomic>
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 
 namespace sf
 {

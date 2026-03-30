@@ -7,7 +7,7 @@
 #include <SFML/Graphics/Text.hpp>
 
 #include "lilia/chess/chess_types.hpp"
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 
 namespace lilia::app::view::ui
 {

@@ -29,7 +29,7 @@ namespace lilia::app::controller
     case sf::Event::MouseButtonPressed:
       if (event.mouseButton.button == sf::Mouse::Left)
       {
-        m_drag_start = MousePos(event.mouseButton.x, event.mouseButton.y);
+        m_drag_start = view::MousePos(event.mouseButton.x, event.mouseButton.y);
         m_dragging = true;
       }
       break;
@@ -37,7 +37,7 @@ namespace lilia::app::controller
     case sf::Event::MouseMoved:
       if (m_dragging && m_drag_start)
       {
-        MousePos currentPos(event.mouseMove.x, event.mouseMove.y);
+        view::MousePos currentPos(event.mouseMove.x, event.mouseMove.y);
         if (m_on_drag)
           m_on_drag(m_drag_start.value(), currentPos);
       }
@@ -45,7 +45,7 @@ namespace lilia::app::controller
     case sf::Event::MouseButtonReleased:
       if (event.mouseButton.button == sf::Mouse::Left && m_dragging && m_drag_start)
       {
-        MousePos dropPos(event.mouseButton.x, event.mouseButton.y);
+        view::MousePos dropPos(event.mouseButton.x, event.mouseButton.y);
         if (isClick(m_drag_start.value(), dropPos))
         {
           if (m_on_click)
@@ -72,7 +72,7 @@ namespace lilia::app::controller
     m_drag_start.reset();
   }
 
-  [[nodiscard]] bool InputManager::isClick(const MousePos &start, const MousePos &end,
+  [[nodiscard]] bool InputManager::isClick(const view::MousePos &start, const view::MousePos &end,
                                            int threshold) const
   {
     int dx = end.x - start.x;

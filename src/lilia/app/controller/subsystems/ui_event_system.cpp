@@ -68,7 +68,7 @@ namespace lilia::app::controller
     // --- Normal UI (no modal open) ---
     if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left)
     {
-      const MousePos mp(event.mouseButton.x, event.mouseButton.y);
+      const view::MousePos mp(event.mouseButton.x, event.mouseButton.y);
 
       if (m_view.isOnEvalToggle(mp))
       {
@@ -147,7 +147,7 @@ namespace lilia::app::controller
     {
       if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left)
       {
-        const MousePos mp(event.mouseButton.x, event.mouseButton.y);
+        const view::MousePos mp(event.mouseButton.x, event.mouseButton.y);
         if (m_view.isOnFlipIcon(mp))
         {
           m_view.toggleBoardOrientation();

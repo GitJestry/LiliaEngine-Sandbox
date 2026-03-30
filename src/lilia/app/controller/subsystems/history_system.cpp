@@ -127,7 +127,7 @@ namespace lilia::app::controller
     m_sel.highlightLastMove();
   }
 
-  bool HistorySystem::handleMoveListClick(MousePos mp, PremoveSystem &premove)
+  bool HistorySystem::handleMoveListClick(view::MousePos mp, PremoveSystem &premove)
   {
     const std::size_t idx = m_view.getMoveIndexAt(mp);
     if (idx == kInvalidMoveIdx)

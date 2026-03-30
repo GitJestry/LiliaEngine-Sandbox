@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "lilia/chess/chess_types.hpp"
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 #include "lilia/app/view/animation/chess_animator.hpp"
 #include "lilia/app/view/ui/views/board_view.hpp"
 #include "lilia/app/view/ui/views/clock.hpp"

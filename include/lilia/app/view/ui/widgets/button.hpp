@@ -7,7 +7,7 @@
 
 #include "lilia/app/view/ui/style/style.hpp"
 #include "lilia/app/view/ui/style/theme.hpp"
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 
 namespace lilia::app::view::ui
 {

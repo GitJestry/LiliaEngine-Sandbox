@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 #include "lilia/app/view/ui/style/palette_cache.hpp"
 #include "lilia/app/view/ui/views/board_view.hpp"
 #include "piece_node.hpp"

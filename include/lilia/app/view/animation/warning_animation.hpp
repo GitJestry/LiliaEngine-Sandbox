@@ -1,5 +1,5 @@
 #pragma once
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 #include "i_animation.hpp"
 #include "lilia/app/view/ui/render/entity.hpp"
 

@@ -38,11 +38,11 @@ namespace lilia::app::controller
 
     /// @brief
     /// @param pos
-    void onMouseMove(MousePos pos);
-    void onMousePressed(MousePos pos);
-    void onMouseReleased(MousePos pos);
-    void onRightPressed(MousePos pos);
-    void onRightReleased(MousePos pos);
+    void onMouseMove(view::MousePos pos);
+    void onMousePressed(view::MousePos pos);
+    void onMouseReleased(view::MousePos pos);
+    void onRightPressed(view::MousePos pos);
+    void onRightReleased(view::MousePos pos);
 
     void onMouseEntered();
     void onLostFocus();
@@ -50,9 +50,9 @@ namespace lilia::app::controller
     void refreshActiveHighlights();
 
   private:
-    void onClick(MousePos mousePos);
-    void onDrag(MousePos start, MousePos current);
-    void onDrop(MousePos start, MousePos end);
+    void onClick(view::MousePos mousePos);
+    void onDrag(view::MousePos start, view::MousePos current);
+    void onDrop(view::MousePos start, view::MousePos end);
 
     bool isHumanPiece(chess::Square sq) const;
 

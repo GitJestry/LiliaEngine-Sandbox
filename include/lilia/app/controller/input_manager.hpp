@@ -9,7 +9,7 @@ namespace sf
 #include <functional>
 #include <optional>
 
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 
 namespace lilia::app::controller
 {
@@ -17,11 +17,11 @@ namespace lilia::app::controller
   class InputManager
   {
   public:
-    using ClickCallback = std::function<void(MousePos)>;
+    using ClickCallback = std::function<void(view::MousePos)>;
 
-    using DragCallback = std::function<void(MousePos start, MousePos current)>;
+    using DragCallback = std::function<void(view::MousePos start, view::MousePos current)>;
 
-    using DropCallback = std::function<void(MousePos start, MousePos end)>;
+    using DropCallback = std::function<void(view::MousePos start, view::MousePos end)>;
 
     void setOnClick(ClickCallback cb);
     void setOnDrag(DragCallback cb);
@@ -31,14 +31,14 @@ namespace lilia::app::controller
     void cancelDrag();
 
   private:
-    bool m_dragging = false;              // Indicates whether a drag operation is active.
-    std::optional<MousePos> m_drag_start; // Starting position of an active drag.
+    bool m_dragging = false;                    // Indicates whether a drag operation is active.
+    std::optional<view::MousePos> m_drag_start; // Starting position of an active drag.
 
     ClickCallback m_on_click = nullptr; // Registered click callback.
     DragCallback m_on_drag = nullptr;   // Registered drag callback.
     DropCallback m_on_drop = nullptr;   // Registered drop callback.
 
-    [[nodiscard]] bool isClick(const MousePos &start, const MousePos &end,
+    [[nodiscard]] bool isClick(const view::MousePos &start, const view::MousePos &end,
                                int threshold = 4) const;
   };
 

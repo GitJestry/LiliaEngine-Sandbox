@@ -14,7 +14,7 @@
 #include "lilia/app/view/ui/widgets/button.hpp"
 #include "lilia/app/view/ui/widgets/text_field.hpp"
 #include "lilia/app/view/ui/widgets/toggle_pill.hpp"
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 
 namespace lilia::app::view::ui
 {

@@ -7,7 +7,7 @@
 #include "lilia/app/view/ui/render/layout.hpp"
 #include "../../theme.hpp"
 #include "game_setup_draw.hpp"
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 
 namespace lilia::app::view::ui::game_setup
 {

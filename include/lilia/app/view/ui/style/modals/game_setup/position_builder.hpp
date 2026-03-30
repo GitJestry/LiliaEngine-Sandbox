@@ -4,7 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 
 namespace lilia::app::view::ui
 {

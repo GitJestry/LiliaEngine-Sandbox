@@ -41,7 +41,7 @@ namespace lilia::app::controller
     // removed evalAfter
     void onMoveCommitted(const MoveView &mv, const std::string &fenAfter, const domain::analysis::TimeView &timeAfter);
 
-    bool handleMoveListClick(MousePos mp, PremoveSystem &premove);
+    bool handleMoveListClick(view::MousePos mp, PremoveSystem &premove);
     void onWheelScroll(float delta);
     void stepBackward(PremoveSystem &premove);
     void stepForward(PremoveSystem &premove);

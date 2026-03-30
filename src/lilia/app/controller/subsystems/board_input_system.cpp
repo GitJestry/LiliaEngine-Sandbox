@@ -25,15 +25,15 @@ namespace lilia::app::controller
 
   void BoardInputSystem::bindInputCallbacks()
   {
-    m_input.setOnClick([this](MousePos pos)
+    m_input.setOnClick([this](view::MousePos pos)
                        { onClick(pos); });
-    m_input.setOnDrag([this](MousePos s, MousePos c)
+    m_input.setOnDrag([this](view::MousePos s, view::MousePos c)
                       { onDrag(s, c); });
-    m_input.setOnDrop([this](MousePos s, MousePos e)
+    m_input.setOnDrop([this](view::MousePos s, view::MousePos e)
                       { onDrop(s, e); });
   }
 
-  void BoardInputSystem::onMouseMove(MousePos pos)
+  void BoardInputSystem::onMouseMove(view::MousePos pos)
   {
     if (m_dragging || m_mouse_down)
     {
@@ -48,7 +48,7 @@ namespace lilia::app::controller
       m_view.setDefaultCursor();
   }
 
-  void BoardInputSystem::onMousePressed(MousePos pos)
+  void BoardInputSystem::onMousePressed(view::MousePos pos)
   {
     m_mouse_down = true;
 
@@ -110,7 +110,7 @@ namespace lilia::app::controller
     m_selection_changed_on_press = selectionWasDifferent && (m_sel.getSelectedSquare() == sq);
   }
 
-  void BoardInputSystem::onMouseReleased(MousePos pos)
+  void BoardInputSystem::onMouseReleased(view::MousePos pos)
   {
     m_mouse_down = false;
     if (m_dragging)
@@ -124,7 +124,7 @@ namespace lilia::app::controller
     onMouseMove(pos);
   }
 
-  void BoardInputSystem::onRightPressed(MousePos pos)
+  void BoardInputSystem::onRightPressed(view::MousePos pos)
   {
     m_premove.clearAll();
     m_view.clearAttackHighlights();
@@ -135,7 +135,7 @@ namespace lilia::app::controller
     m_right_drag_from = m_view.mousePosToSquare(pos);
   }
 
-  void BoardInputSystem::onRightReleased(MousePos pos)
+  void BoardInputSystem::onRightReleased(view::MousePos pos)
   {
     if (!m_right_mouse_down)
       return;
@@ -168,7 +168,7 @@ namespace lilia::app::controller
     if (!m_dragging)
       return;
 
-    const MousePos mp = m_view.getMousePosition();
+    const view::MousePos mp = m_view.getMousePosition();
     if (!m_mouse_down)
     {
       m_view.animationSnapAndReturn(m_drag_from, mp);
@@ -189,7 +189,7 @@ namespace lilia::app::controller
     m_mouse_down = false;
     if (m_dragging)
     {
-      const MousePos mp = m_view.getMousePosition();
+      const view::MousePos mp = m_view.getMousePosition();
       m_view.animationSnapAndReturn(m_drag_from, mp);
       m_dragging = false;
       m_drag_from = chess::NO_SQUARE;
@@ -231,7 +231,7 @@ namespace lilia::app::controller
     }
   }
 
-  void BoardInputSystem::onClick(MousePos mousePos)
+  void BoardInputSystem::onClick(view::MousePos mousePos)
   {
     if (m_view.isOnFlipIcon(mousePos))
     {
@@ -348,10 +348,10 @@ namespace lilia::app::controller
     }
   }
 
-  void BoardInputSystem::onDrag(MousePos start, MousePos current)
+  void BoardInputSystem::onDrag(view::MousePos start, view::MousePos current)
   {
     const chess::Square sqStart = m_view.mousePosToSquare(start);
-    const MousePos clamped = m_view.clampPosToBoard(current);
+    const view::MousePos clamped = m_view.clampPosToBoard(current);
     const chess::Square sqMous = m_view.mousePosToSquare(clamped);
 
     if (m_view.isInPromotionSelection())
@@ -378,7 +378,7 @@ namespace lilia::app::controller
     m_view.playPiecePlaceHolderAnimation(sqStart);
   }
 
-  void BoardInputSystem::onDrop(MousePos start, MousePos end)
+  void BoardInputSystem::onDrop(view::MousePos start, view::MousePos end)
   {
     const chess::Square from = m_view.mousePosToSquare(start);
     const chess::Square to = m_view.mousePosToSquare(m_view.clampPosToBoard(end));

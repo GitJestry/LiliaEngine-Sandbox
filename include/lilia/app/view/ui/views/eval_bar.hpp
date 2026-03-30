@@ -3,7 +3,7 @@
 #include <SFML/Graphics/Text.hpp>
 #include <string>
 
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 #include "lilia/app/view/ui/render/entity.hpp"
 
 namespace sf

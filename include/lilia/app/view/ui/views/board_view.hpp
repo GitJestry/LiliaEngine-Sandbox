@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "lilia/app/mousepos.hpp"
+#include "lilia/app/view/mousepos.hpp"
 #include "lilia/app/view/ui/render/scene/board_node.hpp"
 #include "lilia/app/view/ui/render/entity.hpp"
 
