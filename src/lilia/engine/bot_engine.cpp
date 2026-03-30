@@ -9,8 +9,8 @@
 #include <mutex>
 #include <thread>
 
-#include "lilia/model/chess_game.hpp"
-#include "lilia/uci/uci_helper.hpp"
+#include "lilia/chess/chess_game.hpp"
+#include "lilia/protocol/uci/uci_helper.hpp"
 
 namespace lilia::engine
 {
@@ -18,7 +18,7 @@ namespace lilia::engine
   BotEngine::BotEngine(const EngineConfig &cfg) : m_engine(cfg) {}
   BotEngine::~BotEngine() = default;
 
-  static inline std::string format_top_moves(const std::vector<std::pair<model::Move, int>> &top)
+  static inline std::string format_top_moves(const std::vector<std::pair<chess::Move, int>> &top)
   {
     std::string out;
     bool first = true;
@@ -27,13 +27,13 @@ namespace lilia::engine
       if (!first)
         out += ", ";
       first = false;
-      out += uci::move_to_uci(p.first) + "(" + std::to_string(p.second) + ")";
+      out += protocol::uci::move_to_uci(p.first) + "(" + std::to_string(p.second) + ")";
     }
     if (out.empty())
       out = "<none>";
     return out;
   }
-  SearchResult BotEngine::findBestMove(model::ChessGame &gameState, int maxDepth, int thinkMillis,
+  SearchResult BotEngine::findBestMove(chess::ChessGame &gameState, int maxDepth, int thinkMillis,
                                        std::atomic<bool> *externalCancel)
   {
     SearchResult res;
@@ -153,7 +153,7 @@ namespace lilia::engine
               << " bestScore=" << res.stats.bestScore;
     if (res.stats.bestMove.has_value())
     {
-      std::cout << " bestMove=" << uci::move_to_uci(res.stats.bestMove.value());
+      std::cout << " bestMove=" << protocol::uci::move_to_uci(res.stats.bestMove.value());
     }
     std::cout << "\n";
 
@@ -166,7 +166,7 @@ namespace lilia::engine
         if (!first)
           std::cout << "->";
         first = false;
-        std::cout << uci::move_to_uci(mv);
+        std::cout << protocol::uci::move_to_uci(mv);
       }
       std::cout << "\n";
     }

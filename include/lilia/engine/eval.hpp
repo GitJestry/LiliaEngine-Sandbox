@@ -1,33 +1,37 @@
 #pragma once
 #include <cstdint>
 
-namespace lilia {
-namespace model {
-class Position;
-}
+namespace lilia
+{
+  namespace engine
+  {
+    class SearchPosition;
+  }
 
-namespace engine {
+  namespace engine
+  {
 
-class Evaluator final {
- public:
-  Evaluator() noexcept;
-  ~Evaluator() noexcept;
+    class Evaluator final
+    {
+    public:
+      Evaluator() noexcept;
+      ~Evaluator() noexcept;
 
-  // evaluation in cp in the view of the one who's turn it is
-  int evaluate(model::Position& pos) const;
+      // evaluation in cp in the view of the one who's turn it is
+      int evaluate(const SearchPosition &pos) const;
 
-  // Eval- & Pawn-Caches clearing
-  void clearCaches() const noexcept;
+      // Eval- & Pawn-Caches clearing
+      void clearCaches() const noexcept;
 
-  Evaluator(const Evaluator&) = delete;
-  Evaluator& operator=(const Evaluator&) = delete;
-  Evaluator(Evaluator&&) = delete;
-  Evaluator& operator=(Evaluator&&) = delete;
+      Evaluator(const Evaluator &) = delete;
+      Evaluator &operator=(const Evaluator &) = delete;
+      Evaluator(Evaluator &&) = delete;
+      Evaluator &operator=(Evaluator &&) = delete;
 
- private:
-  struct Impl;
-  mutable Impl* m_impl = nullptr;
-};
+    private:
+      struct Impl;
+      mutable Impl *m_impl = nullptr;
+    };
 
-}  // namespace engine
-}  // namespace lilia
+  } // namespace engine
+} // namespace lilia

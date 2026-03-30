@@ -2,7 +2,6 @@
 
 namespace lilia::app
 {
-
   class App
   {
   public:

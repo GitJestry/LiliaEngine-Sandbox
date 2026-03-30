@@ -2,42 +2,42 @@
 
 #include <SFML/Graphics/RenderWindow.hpp>
 
-#include "lilia/view/ui/render/resource_table.hpp"
-#include "lilia/view/ui/screens/start_screen.hpp"
-#include "lilia/uci/builtin_bootstrap.hpp"
+#include "lilia/app/view/ui/render/resource_table.hpp"
+#include "lilia/app/view/ui/screens/start_screen.hpp"
+#include "lilia/app/engines/builtin_bootstrap.hpp"
 
-#include "lilia/app/game_session.hpp"
-#include "lilia/view/ui/render/render_constants.hpp"
+#include "lilia/app/session/game_session.hpp"
+#include "lilia/app/view/ui/render/render_constants.hpp"
 #include "lilia/engine/engine.hpp"
 
 namespace lilia::app
 {
   int App::run()
   {
-    lilia::uci::bootstrapBuiltinEngines();
+    engines::bootstrapBuiltinEngines();
     engine::Engine::init();
-    lilia::view::ResourceTable::getInstance().preLoad();
+    view::ui::ResourceTable::getInstance().preLoad();
 
     sf::RenderWindow window(
-        sf::VideoMode(lilia::view::constant::WINDOW_TOTAL_WIDTH,
-                      lilia::view::constant::WINDOW_TOTAL_HEIGHT),
+        sf::VideoMode(view::ui::constant::WINDOW_TOTAL_WIDTH,
+                      view::ui::constant::WINDOW_TOTAL_HEIGHT),
         "Lilia", sf::Style::Titlebar | sf::Style::Close);
 
     while (window.isOpen())
     {
-      lilia::view::StartScreen startScreen(window);
+      view::ui::StartScreen startScreen(window);
       const auto cfg = startScreen.run();
 
       for (;;)
       {
-        const auto action = lilia::app::runSession(window, cfg);
+        const auto action = session::runSession(window, cfg);
         if (!window.isOpen())
           return 0;
 
-        if (action == lilia::controller::NextAction::Rematch)
+        if (action == controller::NextAction::Rematch)
           continue;
 
-        if (action == lilia::controller::NextAction::NewBot)
+        if (action == controller::NextAction::NewBot)
           break;
 
         return 0;

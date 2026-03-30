@@ -1,13 +1,14 @@
 #include "lilia/engine/engine.hpp"
 
 #include <algorithm>
-#include <thread> // hardware_concurrency
+#include <thread>
 
 #include "lilia/engine/eval.hpp"
 #include "lilia/engine/move_order.hpp"
 #include "lilia/engine/search.hpp"
 #include "lilia/engine/thread_pool.hpp"
-#include "lilia/model/core/magic.hpp"
+#include "lilia/chess/core/magic.hpp"
+#include "lilia/engine/search_position.hpp"
 
 namespace lilia::engine
 {
@@ -15,7 +16,7 @@ namespace lilia::engine
   struct Engine::Impl
   {
     EngineConfig cfg;
-    model::TT5 tt;
+    TT5 tt;
 
     // collectively Evaluator-Instance, for all Searches/Threads used
     std::shared_ptr<const Evaluator> eval;
@@ -76,7 +77,7 @@ namespace lilia::engine
     delete pimpl;
   }
 
-  std::optional<model::Move> Engine::find_best_move(model::Position &pos, int maxDepth,
+  std::optional<chess::Move> Engine::find_best_move(chess::Position &pos, int maxDepth,
                                                     std::shared_ptr<std::atomic<bool>> stop)
   {
     if (maxDepth <= 0)
@@ -90,10 +91,11 @@ namespace lilia::engine
     {
     }
 
+    SearchPosition spos(pos);
+
     try
     {
-      (void)pimpl->search->search_root_lazy_smp(pos, maxDepth, stop, pimpl->cfg.threads
-                                                /*,pimpl->cfg.maxNodes*/);
+      (void)pimpl->search->search_root_lazy_smp(spos, maxDepth, stop, pimpl->cfg.threads);
     }
     catch (...)
     {
@@ -101,19 +103,19 @@ namespace lilia::engine
 
     const auto &stats = pimpl->search->getStats();
     if (stats.bestMove.has_value())
-      return stats.bestMove; // safe
+      return stats.bestMove;
 
-    // TT-Fallback look at root
+    // TT fallback
     try
     {
       auto &tt = pimpl->search->ttRef();
       if (auto e = tt.probe(pos.hash()))
       {
-        model::Move ttMove = e->best;
+        chess::Move ttMove = e->best;
         if (ttMove.from() >= 0 && ttMove.to() >= 0)
         {
-          model::Position tmp = pos;
-          if (tmp.doMove(ttMove)) // legal?
+          chess::Position tmp = pos;
+          if (tmp.doMove(ttMove))
             return ttMove;
         }
       }
@@ -122,27 +124,27 @@ namespace lilia::engine
     {
     }
 
-    // last Fallback: generate legal moves and decide heuristically
+    // Last fallback
     try
     {
-      model::MoveGenerator mg;
-      std::vector<model::Move> pseudo;
+      chess::MoveGenerator mg;
+      std::vector<chess::Move> pseudo;
       pseudo.reserve(128);
       mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), pseudo);
 
-      std::optional<model::Move> bestCapPromo;
+      std::optional<chess::Move> bestCapPromo;
       int bestCapScore = std::numeric_limits<int>::min();
-      std::optional<model::Move> firstLegal;
+      std::optional<chess::Move> firstLegal;
 
       for (auto &m : pseudo)
       {
-        model::Position tmp = pos;
+        chess::Position tmp = pos;
         if (!tmp.doMove(m))
-          continue; // illegal -> raus
+          continue;
 
-        if (m.isCapture() || m.promotion() != core::PieceType::None)
+        if (m.isCapture() || m.promotion() != chess::PieceType::None)
         {
-          int sc = mvv_lva_fast(pos, m); // vorhandene Heuristik
+          int sc = mvv_lva_fast(pos, m);
           if (!bestCapPromo || sc > bestCapScore)
           {
             bestCapPromo = m;
@@ -151,7 +153,7 @@ namespace lilia::engine
         }
         else if (!firstLegal)
         {
-          firstLegal = m; // merken als "zur Not"
+          firstLegal = m;
         }
       }
 
@@ -164,7 +166,6 @@ namespace lilia::engine
     {
     }
 
-    // no moves
     return std::nullopt;
   }
 

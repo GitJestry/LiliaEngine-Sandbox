@@ -7,7 +7,6 @@ project(ChessEngine_Lilia VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Default build type for single-config generators
 if (NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
@@ -21,20 +20,18 @@ option(LILIA_LTO          "Enable Link-Time Optimization in Release" ON)
 option(LILIA_PGO_GENERATE "Build with PGO generate (instrumentation)" OFF)
 option(LILIA_PGO_USE      "Build with PGO use (optimized by profiles)" OFF)
 
-option(LILIA_BUILD_UI     "Build the graphical UI application" OFF)
+option(LILIA_BUILD_APP    "Build the Lilia app" OFF)
 option(LILIA_BUILD_TEXEL  "Build the Texel tuner tool" ON)
+option(LILIA_BUILD_TESTS  "Build tests" OFF)
 
-# Only bundle Lilia beside runtime targets. Stockfish is runtime-downloaded now.
-option(LILIA_BUNDLE_BUILTIN_ENGINES "Copy built-in Lilia engine beside runtime targets" ON)
+option(LILIA_BUNDLE_LILIA_ENGINE "Copy built-in Lilia engine beside runtime targets" ON)
 
-# macOS universal build
 option(LILIA_UNIVERSAL2 "Build universal2 binary on macOS (arm64 + x86_64)" OFF)
 if (APPLE AND LILIA_UNIVERSAL2)
   set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
   set(LILIA_NATIVE OFF CACHE BOOL "" FORCE)
 endif()
 
-# Clang/AppleClang PGO
 set(LILIA_PGO_PROFDATA "" CACHE FILEPATH "Path to merged LLVM .profdata for Clang/AppleClang PGO use")
 
 # -------------------------------------------------
@@ -61,32 +58,32 @@ find_package(Threads REQUIRED)
 # -------------------------------------------------
 # Sources
 # -------------------------------------------------
-file(GLOB_RECURSE MODEL_FILES CONFIGURE_DEPENDS
-  "${PROJECT_SOURCE_DIR}/src/lilia/model/*.cpp"
+file(GLOB_RECURSE CHESS_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/chess/*.cpp"
 )
+
 file(GLOB_RECURSE ENGINE_FILES CONFIGURE_DEPENDS
   "${PROJECT_SOURCE_DIR}/src/lilia/engine/*.cpp"
 )
-file(GLOB_RECURSE UCI_FILES CONFIGURE_DEPENDS
-  "${PROJECT_SOURCE_DIR}/src/lilia/uci/*.cpp"
+
+file(GLOB_RECURSE PROTOCOL_UCI_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/src/lilia/protocol/uci/*.cpp"
 )
-file(GLOB_RECURSE CONTROLLER_FILES CONFIGURE_DEPENDS
-  "${PROJECT_SOURCE_DIR}/src/lilia/controller/*.cpp"
-)
-file(GLOB_RECURSE UI_FILES CONFIGURE_DEPENDS
-  "${PROJECT_SOURCE_DIR}/src/lilia/view/*.cpp"
-)
+
 file(GLOB_RECURSE APP_FILES CONFIGURE_DEPENDS
   "${PROJECT_SOURCE_DIR}/src/lilia/app/*.cpp"
 )
-file(GLOB_RECURSE TEST_FILES CONFIGURE_DEPENDS
-  "${PROJECT_SOURCE_DIR}/tests/*.cpp"
+
+file(GLOB_RECURSE CHESS_TEST_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/tests/chess/*.cpp"
 )
 
-set(CORE_FILES
-  ${MODEL_FILES}
-  ${ENGINE_FILES}
-  ${UCI_FILES}
+file(GLOB_RECURSE ENGINE_TEST_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/tests/engine/*.cpp"
+)
+
+file(GLOB_RECURSE APP_TEST_FILES CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/tests/app/*.cpp"
 )
 
 # -------------------------------------------------
@@ -99,6 +96,20 @@ function(lilia_runtime_resource_dir tgt out_var)
   else()
     set(${out_var} "$<TARGET_FILE_DIR:${tgt}>" PARENT_SCOPE)
   endif()
+endfunction()
+
+function(lilia_set_common_includes tgt)
+  target_include_directories(${tgt} PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+  )
+endfunction()
+
+function(lilia_set_output_dirs tgt)
+  set_target_properties(${tgt} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+  )
 endfunction()
 
 function(lilia_set_perf_flags tgt)
@@ -186,8 +197,17 @@ function(lilia_set_perf_flags tgt)
   endif()
 endfunction()
 
+function(lilia_apply_target_defaults tgt)
+  target_compile_definitions(${tgt} PUBLIC
+    $<$<PLATFORM_ID:Windows>:NOMINMAX>
+  )
+  lilia_set_common_includes(${tgt})
+  lilia_set_perf_flags(${tgt})
+  lilia_set_output_dirs(${tgt})
+endfunction()
+
 function(lilia_bundle_lilia_engine tgt)
-  if (NOT LILIA_BUNDLE_BUILTIN_ENGINES)
+  if (NOT LILIA_BUNDLE_LILIA_ENGINE)
     return()
   endif()
 
@@ -229,70 +249,9 @@ function(lilia_copy_assets tgt)
   )
 endfunction()
 
-function(lilia_set_common_includes tgt)
-  target_include_directories(${tgt} PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/include/lilia
-  )
-endfunction()
-
-function(lilia_set_output_dirs tgt)
-  set_target_properties(${tgt} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-  )
-endfunction()
-
-# -------------------------------------------------
-# Core library
-# -------------------------------------------------
-add_library(lilia_core STATIC ${CORE_FILES})
-target_compile_definitions(lilia_core PUBLIC
-  LILIA_ENGINE
-  $<$<PLATFORM_ID:Windows>:NOMINMAX>
-)
-lilia_set_common_includes(lilia_core)
-target_link_libraries(lilia_core PUBLIC Threads::Threads)
-lilia_set_perf_flags(lilia_core)
-lilia_set_output_dirs(lilia_core)
-
-# -------------------------------------------------
-# CLI engine target
-# -------------------------------------------------
-add_executable(lilia_engine examples/main.cpp)
-target_link_libraries(lilia_engine PRIVATE lilia_core)
-lilia_set_perf_flags(lilia_engine)
-lilia_set_output_dirs(lilia_engine)
-
-# -------------------------------------------------
-# Texel tuner
-# -------------------------------------------------
-if (LILIA_BUILD_TEXEL)
-  set(LILIA_TARGET lilia_core)
-  add_subdirectory(src/lilia/tools/texel)
-endif()
-
-# -------------------------------------------------
-# UI target
-# -------------------------------------------------
-if (LILIA_BUILD_UI)
-  add_executable(lilia_app
-    examples/main.cpp
-    ${UI_FILES}
-    ${APP_FILES}
-    ${CONTROLLER_FILES}
-  )
-
-  target_compile_definitions(lilia_app PRIVATE
-    LILIA_UI
-    $<$<PLATFORM_ID:Windows>:NOMINMAX>
-  )
-  lilia_set_common_includes(lilia_app)
-  target_link_libraries(lilia_app PRIVATE lilia_core)
-
-  if (APPLE)
-    set_target_properties(lilia_app PROPERTIES MACOSX_BUNDLE TRUE)
+function(lilia_enable_sfml)
+  if (TARGET sfml-system)
+    return()
   endif()
 
   include(FetchContent)
@@ -324,55 +283,130 @@ if (LILIA_BUILD_UI)
 
   unset(_lilia_old_build_shared_libs)
   unset(_lilia_had_build_shared_libs)
+endfunction()
 
-  target_link_libraries(lilia_app PRIVATE
-    sfml-graphics
-    sfml-window
-    sfml-system
-    sfml-audio
+function(lilia_copy_windows_runtime_dlls tgt)
+  if (NOT WIN32)
+    return()
+  endif()
+
+  add_custom_command(TARGET ${tgt} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:${tgt}>
+            $<TARGET_FILE_DIR:${tgt}>
+    COMMAND_EXPAND_LISTS
   )
 
-  lilia_set_perf_flags(lilia_app)
-  lilia_set_output_dirs(lilia_app)
+  if (EXISTS "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll")
+    add_custom_command(TARGET ${tgt} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll"
+              $<TARGET_FILE_DIR:${tgt}>
+    )
+  endif()
+endfunction()
+
+# -------------------------------------------------
+# Build graph decision: do we need app components?
+# -------------------------------------------------
+set(LILIA_NEEDS_APP_COMPONENTS OFF)
+if (LILIA_BUILD_APP)
+  set(LILIA_NEEDS_APP_COMPONENTS ON)
+endif()
+if (LILIA_BUILD_TESTS AND APP_TEST_FILES)
+  set(LILIA_NEEDS_APP_COMPONENTS ON)
+endif()
+
+# -------------------------------------------------
+# Libraries
+# -------------------------------------------------
+add_library(lilia_chess STATIC ${CHESS_FILES})
+lilia_apply_target_defaults(lilia_chess)
+
+add_library(lilia_engine_core STATIC ${ENGINE_FILES})
+target_link_libraries(lilia_engine_core PUBLIC lilia_chess Threads::Threads)
+lilia_apply_target_defaults(lilia_engine_core)
+
+add_library(lilia_protocol_uci STATIC ${PROTOCOL_UCI_FILES})
+target_link_libraries(lilia_protocol_uci PUBLIC lilia_engine_core)
+lilia_apply_target_defaults(lilia_protocol_uci)
+
+if (LILIA_NEEDS_APP_COMPONENTS)
+  lilia_enable_sfml()
+
+  add_library(lilia_app_core STATIC ${APP_FILES})
+  target_link_libraries(lilia_app_core
+    PUBLIC
+      lilia_chess
+      lilia_engine_core
+      sfml-graphics
+      sfml-window
+      sfml-system
+      sfml-audio
+  )
+  lilia_apply_target_defaults(lilia_app_core)
+endif()
+
+# -------------------------------------------------
+# Executables
+# -------------------------------------------------
+add_executable(lilia_engine apps/lilia_engine/main.cpp)
+target_link_libraries(lilia_engine PRIVATE lilia_protocol_uci)
+lilia_apply_target_defaults(lilia_engine)
+
+if (LILIA_BUILD_APP)
+  add_executable(lilia_app apps/lilia_app/main.cpp)
+  target_link_libraries(lilia_app PRIVATE lilia_app_core)
+
+  if (APPLE)
+    set_target_properties(lilia_app PROPERTIES MACOSX_BUNDLE TRUE)
+  endif()
+
+  lilia_apply_target_defaults(lilia_app)
   lilia_bundle_lilia_engine(lilia_app)
   lilia_copy_assets(lilia_app)
+  lilia_copy_windows_runtime_dlls(lilia_app)
+endif()
+
+# -------------------------------------------------
+# Texel tuner
+# -------------------------------------------------
+if (LILIA_BUILD_TEXEL)
+  set(LILIA_CHESS_TARGET lilia_chess)
+  set(LILIA_ENGINE_TARGET lilia_engine_core)
+  add_subdirectory(tools/texel)
 endif()
 
 # -------------------------------------------------
 # Tests
 # -------------------------------------------------
-if (TEST_FILES)
-  add_executable(engine_tests ${TEST_FILES})
-  target_compile_definitions(engine_tests PRIVATE
-    LILIA_ENGINE
-    $<$<PLATFORM_ID:Windows>:NOMINMAX>
-  )
-  lilia_set_common_includes(engine_tests)
-  target_link_libraries(engine_tests PRIVATE lilia_core)
+if (LILIA_BUILD_TESTS)
   enable_testing()
-  add_test(NAME engine_tests COMMAND engine_tests)
-  lilia_set_perf_flags(engine_tests)
-  lilia_set_output_dirs(engine_tests)
-  lilia_bundle_lilia_engine(engine_tests)
-endif()
 
-# -------------------------------------------------
-# Windows runtime DLL copy for UI
-# -------------------------------------------------
-if (WIN32 AND LILIA_BUILD_UI)
-  add_custom_command(TARGET lilia_app POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_RUNTIME_DLLS:lilia_app>
-            $<TARGET_FILE_DIR:lilia_app>
-    COMMAND_EXPAND_LISTS
-  )
+  if (CHESS_TEST_FILES)
+    add_executable(chess_tests ${CHESS_TEST_FILES})
+    target_link_libraries(chess_tests PRIVATE lilia_chess)
+    lilia_apply_target_defaults(chess_tests)
+    add_test(NAME chess_tests COMMAND chess_tests)
+  endif()
 
-  if (EXISTS "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll")
-    add_custom_command(TARGET lilia_app POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              "${sfml_SOURCE_DIR}/extlibs/bin/x64/openal32.dll"
-              $<TARGET_FILE_DIR:lilia_app>
-    )
+  if (ENGINE_TEST_FILES)
+    add_executable(engine_tests ${ENGINE_TEST_FILES})
+    target_link_libraries(engine_tests PRIVATE lilia_engine_core lilia_protocol_uci)
+    lilia_apply_target_defaults(engine_tests)
+    add_test(NAME engine_tests COMMAND engine_tests)
+  endif()
+
+  if (APP_TEST_FILES)
+    add_executable(app_tests ${APP_TEST_FILES})
+    target_link_libraries(app_tests PRIVATE lilia_app_core)
+    lilia_apply_target_defaults(app_tests)
+    lilia_bundle_lilia_engine(app_tests)
+    add_test(NAME app_tests COMMAND app_tests)
+
+    if (WIN32)
+      lilia_copy_windows_runtime_dlls(app_tests)
+    endif()
   endif()
 endif()
 

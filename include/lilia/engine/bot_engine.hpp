@@ -6,34 +6,38 @@
 #include <utility>
 #include <vector>
 
-#include "../model/move.hpp"
+#include "lilia/chess/move.hpp"
 #include "engine.hpp"
 #include "search.hpp"
 
-namespace lilia::model {
-class ChessGame;
-}  // namespace lilia::model
+namespace lilia::chess
+{
+  class ChessGame;
+} // namespace lilia::model
 
-namespace lilia::engine {
+namespace lilia::engine
+{
 
-struct SearchResult {
-  std::optional<model::Move> bestMove;
-  engine::SearchStats stats;
+  struct SearchResult
+  {
+    std::optional<chess::Move> bestMove;
+    engine::SearchStats stats;
 
-  std::vector<std::pair<model::Move, int>> topMoves;
-};
+    std::vector<std::pair<chess::Move, int>> topMoves;
+  };
 
-class BotEngine {
- public:
-  explicit BotEngine(const EngineConfig& cfg = {});
-  ~BotEngine();
+  class BotEngine
+  {
+  public:
+    explicit BotEngine(const EngineConfig &cfg = {});
+    ~BotEngine();
 
-  SearchResult findBestMove(model::ChessGame& gameState, int maxDepth, int thinkMillis,
-                            std::atomic<bool>* externalCancel = nullptr);
-  const engine::SearchStats& getLastSearchStats() const;
+    SearchResult findBestMove(chess::ChessGame &gameState, int maxDepth, int thinkMillis,
+                              std::atomic<bool> *externalCancel = nullptr);
+    const engine::SearchStats &getLastSearchStats() const;
 
- private:
-  Engine m_engine;
-};
+  private:
+    Engine m_engine;
+  };
 
-}  // namespace lilia::engine
+} // namespace lilia::engine

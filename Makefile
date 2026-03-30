@@ -1,19 +1,24 @@
 # =================================================
 # Lilia: cross-platform Makefile wrapper for CMake
 #
-# Usage:
-#   make engine     # build CLI engine only (no UI/SFML)
-#   make texel      # build texel_tuner only (if TEXEL=ON)
-#   make tools      # build lilia_engine + texel_tuner (if TEXEL=ON)
-#   make app        # build UI app + bundled Lilia engine (+ texel if TEXEL=ON)
-#   make all        # same as app
-#   make clean      # remove build dirs
+# Architecture:
+#   - chess            standalone library
+#   - engine           depends on chess
+#   - protocol/uci     depends on engine
+#   - app              depends on chess + engine
+#   - tools/texel      outside src/include lilia tree
 #
-# Optional overrides:
-#   make tools BUILD_TYPE=Release NATIVE=ON FAST_MATH=ON LTO=ON
-#   make app UNIVERSAL2=ON         # macOS only; disables NATIVE via CMake
-#   make app BUNDLE_ENGINES=ON
-#   make app JOBS=12
+# Usage:
+#   make engine        # build lilia_engine
+#   make texel         # build texel_tuner (requires TEXEL=ON)
+#   make tools         # build lilia_engine + texel_tuner (if TEXEL=ON)
+#   make app           # build lilia_app + bundled lilia_engine (+ texel if TEXEL=ON)
+#   make test-chess    # build/run chess tests
+#   make test-engine   # build/run engine tests
+#   make test-app      # build/run app tests
+#   make test-all      # build/run all tests
+#   make all           # alias for app
+#   make clean         # remove build dirs
 # =================================================
 
 # ---- Detect platform ----
@@ -56,13 +61,14 @@ FAST_MATH      ?= ON
 LTO            ?= ON
 UNIVERSAL2     ?= OFF
 TEXEL          ?= OFF
+TESTS          ?= OFF
 BUNDLE_ENGINES ?= ON
 
 # ---- Build directories ----
-BUILD_DIR_ENGINE := build-engine
-BUILD_DIR_UI     := build-ui
+BUILD_DIR_CORE := build-core
+BUILD_DIR_APP  := build-app
 
-# ---- Common CMake configure flags ----
+# ---- Common CMake flags ----
 CMAKE_COMMON_FLAGS = \
 	-G "$(CMAKE_GEN)" \
 	-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
@@ -71,7 +77,8 @@ CMAKE_COMMON_FLAGS = \
 	-DLILIA_LTO=$(LTO) \
 	-DLILIA_UNIVERSAL2=$(UNIVERSAL2) \
 	-DLILIA_BUILD_TEXEL=$(TEXEL) \
-	-DLILIA_BUNDLE_BUILTIN_ENGINES=$(BUNDLE_ENGINES)
+	-DLILIA_BUILD_TESTS=$(TESTS) \
+	-DLILIA_BUNDLE_LILIA_ENGINE=$(BUNDLE_ENGINES)
 
 # ---- Target groups ----
 ifeq ($(TEXEL),ON)
@@ -82,58 +89,82 @@ else
   APP_TARGETS   := lilia_engine lilia_app
 endif
 
-.PHONY: help engine texel tools app all clean configure-engine configure-ui
+.PHONY: help \
+        configure-core configure-app \
+        engine texel tools app all clean \
+        test-chess test-engine test-app test-all
 
 help:
 	@echo "Platform: $(PLATFORM)"
 	@echo ""
 	@echo "Targets:"
-	@echo "  make engine   -> configure+build lilia_engine (no UI/SFML)"
-	@echo "  make texel    -> configure+build texel_tuner (requires TEXEL=ON)"
-	@echo "  make tools    -> configure+build lilia_engine (+ texel_tuner if TEXEL=ON)"
-	@echo "  make app      -> configure+build lilia_app (+ engine, + texel if TEXEL=ON)"
-	@echo "  make all      -> alias for app"
-	@echo "  make clean    -> remove build dirs"
+	@echo "  make engine      -> configure+build lilia_engine"
+	@echo "  make texel       -> configure+build texel_tuner (requires TEXEL=ON)"
+	@echo "  make tools       -> configure+build lilia_engine (+ texel_tuner if TEXEL=ON)"
+	@echo "  make app         -> configure+build lilia_app (+ lilia_engine, + texel if TEXEL=ON)"
+	@echo "  make test-chess  -> configure+build+run chess tests"
+	@echo "  make test-engine -> configure+build+run engine tests"
+	@echo "  make test-app    -> configure+build+run app tests"
+	@echo "  make test-all    -> run all test groups"
+	@echo "  make clean       -> remove build dirs"
 	@echo ""
 	@echo "Overrides:"
 	@echo "  BUILD_TYPE=Release|RelWithDebInfo|Debug"
 	@echo "  NATIVE=ON/OFF FAST_MATH=ON/OFF LTO=ON/OFF"
-	@echo "  UNIVERSAL2=ON/OFF      (macOS only; disables NATIVE inside CMake)"
+	@echo "  UNIVERSAL2=ON/OFF   (macOS only; disables NATIVE inside CMake)"
 	@echo "  TEXEL=ON/OFF"
-	@echo "  BUNDLE_ENGINES=ON/OFF  (bundle built-in Lilia beside runtime targets)"
+	@echo "  TESTS=ON/OFF"
+	@echo "  BUNDLE_ENGINES=ON/OFF"
 	@echo "  JOBS=<n>"
 
-configure-engine:
-	cmake -S . -B "$(BUILD_DIR_ENGINE)" $(CMAKE_COMMON_FLAGS) \
-	  -DLILIA_BUILD_UI=OFF \
+configure-core:
+	cmake -S . -B "$(BUILD_DIR_CORE)" $(CMAKE_COMMON_FLAGS) \
+	  -DLILIA_BUILD_APP=OFF \
 	  -DLILIA_PGO_GENERATE=OFF \
 	  -DLILIA_PGO_USE=OFF
 
-configure-ui:
-	cmake -S . -B "$(BUILD_DIR_UI)" $(CMAKE_COMMON_FLAGS) \
-	  -DLILIA_BUILD_UI=ON \
+configure-app:
+	cmake -S . -B "$(BUILD_DIR_APP)" $(CMAKE_COMMON_FLAGS) \
+	  -DLILIA_BUILD_APP=ON \
 	  -DLILIA_PGO_GENERATE=OFF \
 	  -DLILIA_PGO_USE=OFF
 
-engine: configure-engine
-	cmake --build "$(BUILD_DIR_ENGINE)" --target lilia_engine -- -j$(JOBS)
+engine: configure-core
+	cmake --build "$(BUILD_DIR_CORE)" --target lilia_engine -- -j$(JOBS)
 
 texel:
 ifeq ($(TEXEL),ON)
-	$(MAKE) configure-engine
-	cmake --build "$(BUILD_DIR_ENGINE)" --target texel_tuner -- -j$(JOBS)
+	$(MAKE) configure-core
+	cmake --build "$(BUILD_DIR_CORE)" --target texel_tuner -- -j$(JOBS)
 else
 	@echo "texel_tuner is disabled because TEXEL=OFF"
 	@exit 1
 endif
 
-tools: configure-engine
-	cmake --build "$(BUILD_DIR_ENGINE)" --target $(TOOLS_TARGETS) -- -j$(JOBS)
+tools: configure-core
+	cmake --build "$(BUILD_DIR_CORE)" --target $(TOOLS_TARGETS) -- -j$(JOBS)
 
-app: configure-ui
-	cmake --build "$(BUILD_DIR_UI)" --target $(APP_TARGETS) -- -j$(JOBS)
+app: configure-app
+	cmake --build "$(BUILD_DIR_APP)" --target $(APP_TARGETS) -- -j$(JOBS)
 
 all: app
 
+test-chess:
+	$(MAKE) configure-core TESTS=ON
+	cmake --build "$(BUILD_DIR_CORE)" --target chess_tests -- -j$(JOBS)
+	ctest --test-dir "$(BUILD_DIR_CORE)" -R "^chess_tests$$" --output-on-failure
+
+test-engine:
+	$(MAKE) configure-core TESTS=ON
+	cmake --build "$(BUILD_DIR_CORE)" --target engine_tests -- -j$(JOBS)
+	ctest --test-dir "$(BUILD_DIR_CORE)" -R "^engine_tests$$" --output-on-failure
+
+test-app:
+	$(MAKE) configure-app TESTS=ON
+	cmake --build "$(BUILD_DIR_APP)" --target app_tests -- -j$(JOBS)
+	ctest --test-dir "$(BUILD_DIR_APP)" -R "^app_tests$$" --output-on-failure
+
+test-all: test-chess test-engine test-app
+
 clean:
-	@cmake -E rm -rf "$(BUILD_DIR_ENGINE)" "$(BUILD_DIR_UI)"
+	@cmake -E rm -rf "$(BUILD_DIR_CORE)" "$(BUILD_DIR_APP)"
