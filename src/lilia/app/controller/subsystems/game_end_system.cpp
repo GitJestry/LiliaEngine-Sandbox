@@ -42,7 +42,7 @@ namespace lilia::app::controller
     // Popup text (still view-facing; keep it here)
     switch (res)
     {
-    case chess::GameResult::CHECKMATE:
+    case chess::GameResult::Checkmate:
     {
       const chess::Color winner =
           (sideToMove == chess::Color::White) ? chess::Color::Black : chess::Color::White;
@@ -54,7 +54,7 @@ namespace lilia::app::controller
       break;
     }
 
-    case chess::GameResult::TIMEOUT:
+    case chess::GameResult::Timeout:
     {
       const chess::Color winner =
           (sideToMove == chess::Color::White) ? chess::Color::Black : chess::Color::White;
@@ -67,16 +67,16 @@ namespace lilia::app::controller
       break;
     }
 
-    case chess::GameResult::REPETITION:
+    case chess::GameResult::Repetition:
       m_view.showGameOverPopup("Draw by repetition", false);
       break;
-    case chess::GameResult::MOVERULE:
+    case chess::GameResult::MoveRule:
       m_view.showGameOverPopup("Draw by 50 move rule", false);
       break;
-    case chess::GameResult::STALEMATE:
+    case chess::GameResult::Stalemate:
       m_view.showGameOverPopup("Stalemate", false);
       break;
-    case chess::GameResult::INSUFFICIENT:
+    case chess::GameResult::InsufficientMaterial:
       m_view.showGameOverPopup("Insufficient material", false);
       break;
 

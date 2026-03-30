@@ -224,13 +224,13 @@ namespace lilia::engine
     static inline bool advanced_pawn_adjacent_to(const chess::Board &b, chess::Color us, int toSq)
     {
       auto paw = b.getPieces(us, chess::PieceType::Pawn);
-      const int toF = (int)chess::core::file_of(toSq);
+      const int toF = (int)chess::bb::file_of(toSq);
       while (paw)
       {
-        int s = chess::core::ctz64(paw);
+        int s = chess::bb::ctz64(paw);
         paw &= paw - 1;
-        int r = (int)chess::core::rank_of(s);
-        int f = (int)chess::core::file_of(s);
+        int r = (int)chess::bb::rank_of(s);
+        int f = (int)chess::bb::file_of(s);
         // "Advanced" = already deep enough to matter
         bool advanced = (us == chess::Color::White) ? (r >= 4) : (r <= 3);
         if (advanced && std::abs(f - toF) <= 1)
@@ -250,8 +250,8 @@ namespace lilia::engine
         return false;
 
       const int toSq = m.to();
-      const int toFile = chess::core::file_of(static_cast<chess::Square>(toSq));
-      const int toRank = chess::core::rank_of(static_cast<chess::Square>(toSq));
+      const int toFile = chess::bb::file_of(static_cast<chess::Square>(toSq));
+      const int toRank = chess::bb::rank_of(static_cast<chess::Square>(toSq));
 
       if (us == chess::Color::White)
       {
@@ -278,7 +278,7 @@ namespace lilia::engine
         for (int r = toRank + dir; r >= 0 && r < 8; r += dir)
         {
           int sq = (r << 3) | file;
-          auto sqBB = chess::core::sq_bb(static_cast<chess::Square>(sq));
+          auto sqBB = chess::bb::sq_bb(static_cast<chess::Square>(sq));
           if (oppPawns & sqBB)
             return false;
         }
@@ -293,13 +293,13 @@ namespace lilia::engine
         for (int t = 0; t < chess::SQ_NB; ++t)
           S.history[f][t] = clamp16((int)S.history[f][t] - ((int)S.history[f][t] >> shift));
 
-      for (int p = 0; p < chess::PIECE_NB; ++p)
+      for (int p = 0; p < chess::PIECE_TYPE_NB; ++p)
         for (int t = 0; t < chess::SQ_NB; ++t)
           S.quietHist[p][t] = clamp16((int)S.quietHist[p][t] - ((int)S.quietHist[p][t] >> shift));
 
-      for (int mp = 0; mp < chess::PIECE_NB; ++mp)
+      for (int mp = 0; mp < chess::PIECE_TYPE_NB; ++mp)
         for (int t = 0; t < chess::SQ_NB; ++t)
-          for (int cp = 0; cp < chess::PIECE_NB; ++cp)
+          for (int cp = 0; cp < chess::PIECE_TYPE_NB; ++cp)
             S.captureHist[mp][t][cp] =
                 clamp16((int)S.captureHist[mp][t][cp] - ((int)S.captureHist[mp][t][cp] >> shift));
 
@@ -308,9 +308,9 @@ namespace lilia::engine
           S.counterHist[f][t] = clamp16((int)S.counterHist[f][t] - ((int)S.counterHist[f][t] >> shift));
 
       for (int L = 0; L < CH_LAYERS; ++L)
-        for (int pp = 0; pp < chess::PIECE_NB; ++pp)
+        for (int pp = 0; pp < chess::PIECE_TYPE_NB; ++pp)
           for (int pt = 0; pt < chess::SQ_NB; ++pt)
-            for (int mp = 0; mp < chess::PIECE_NB; ++mp)
+            for (int mp = 0; mp < chess::PIECE_TYPE_NB; ++mp)
               for (int to = 0; to < chess::SQ_NB; ++to)
               {
                 int16_t &h = S.contHist[L][pp][pt][mp][to];
@@ -321,44 +321,44 @@ namespace lilia::engine
     // 0 = no signal; 1 = attacks high-value piece; 2 = gives check
     struct CheckTables
     {
-      chess::core::Bitboard KN_FROM[64];
-      chess::core::Bitboard K_FROM[64];
-      chess::core::Bitboard PAWN_CHK[2][64]; // [us][kSq]
-      chess::core::Bitboard LINE[64][64];
-      chess::core::Bitboard BETWEEN[64][64];
-      chess::core::Bitboard RAY[64][64]; // ray starting at a towards b
-      int DIR[64][64];                   // -1 if not aligned, else 0..7 for N,NE,E,SE,S,SW,W,NW
+      chess::bb::Bitboard KN_FROM[64];
+      chess::bb::Bitboard K_FROM[64];
+      chess::bb::Bitboard PAWN_CHK[2][64]; // [us][kSq]
+      chess::bb::Bitboard LINE[64][64];
+      chess::bb::Bitboard BETWEEN[64][64];
+      chess::bb::Bitboard RAY[64][64]; // ray starting at a towards b
+      int DIR[64][64];                 // -1 if not aligned, else 0..7 for N,NE,E,SE,S,SW,W,NW
     } CT;
 
     static inline void init_check_tables()
     {
       for (int s = 0; s < 64; ++s)
       {
-        CT.KN_FROM[s] = chess::core::knight_attacks_from(static_cast<chess::Square>(s));
-        CT.K_FROM[s] = chess::core::king_attacks_from(static_cast<chess::Square>(s));
+        CT.KN_FROM[s] = chess::bb::knight_attacks_from(static_cast<chess::Square>(s));
+        CT.K_FROM[s] = chess::bb::king_attacks_from(static_cast<chess::Square>(s));
       }
       for (int k = 0; k < 64; ++k)
       {
-        auto kB = chess::core::sq_bb(static_cast<chess::Square>(k));
-        CT.PAWN_CHK[(int)chess::Color::White][k] = chess::core::sw(kB) | chess::core::se(kB);
-        CT.PAWN_CHK[(int)chess::Color::Black][k] = chess::core::nw(kB) | chess::core::ne(kB);
+        auto kB = chess::bb::sq_bb(static_cast<chess::Square>(k));
+        CT.PAWN_CHK[(int)chess::Color::White][k] = chess::bb::sw(kB) | chess::bb::se(kB);
+        CT.PAWN_CHK[(int)chess::Color::Black][k] = chess::bb::nw(kB) | chess::bb::ne(kB);
       }
 
       auto on_line = [&](int a, int b) -> bool
       {
-        int ra = chess::core::rank_of(static_cast<chess::Square>(a));
-        int fa = chess::core::file_of(static_cast<chess::Square>(a));
-        int rb = chess::core::rank_of(static_cast<chess::Square>(b));
-        int fb = chess::core::file_of(static_cast<chess::Square>(b));
+        int ra = chess::bb::rank_of(static_cast<chess::Square>(a));
+        int fa = chess::bb::file_of(static_cast<chess::Square>(a));
+        int rb = chess::bb::rank_of(static_cast<chess::Square>(b));
+        int fb = chess::bb::file_of(static_cast<chess::Square>(b));
         return (ra == rb) || (fa == fb) || (std::abs(ra - rb) == std::abs(fa - fb));
       };
 
       auto dir_from_to = [&](int a, int b) -> int
       {
-        int ra = chess::core::rank_of(static_cast<chess::Square>(a));
-        int fa = chess::core::file_of(static_cast<chess::Square>(a));
-        int rb = chess::core::rank_of(static_cast<chess::Square>(b));
-        int fb = chess::core::file_of(static_cast<chess::Square>(b));
+        int ra = chess::bb::rank_of(static_cast<chess::Square>(a));
+        int fa = chess::bb::file_of(static_cast<chess::Square>(a));
+        int rb = chess::bb::rank_of(static_cast<chess::Square>(b));
+        int fb = chess::bb::file_of(static_cast<chess::Square>(b));
         int dr = (rb > ra) - (rb < ra); // -1,0,1
         int df = (fb > fa) - (fb < fa);
         if (dr == 0 && df == 0)
@@ -382,28 +382,28 @@ namespace lilia::engine
         return -1;
       };
 
-      auto step = [](int dir, chess::core::Bitboard b)
+      auto step = [](int dir, chess::bb::Bitboard b)
       {
         switch (dir)
         {
         case 0:
-          return chess::core::north(b);
+          return chess::bb::north(b);
         case 1:
-          return chess::core::ne(b);
+          return chess::bb::ne(b);
         case 2:
-          return chess::core::east(b);
+          return chess::bb::east(b);
         case 3:
-          return chess::core::se(b);
+          return chess::bb::se(b);
         case 4:
-          return chess::core::south(b);
+          return chess::bb::south(b);
         case 5:
-          return chess::core::sw(b);
+          return chess::bb::sw(b);
         case 6:
-          return chess::core::west(b);
+          return chess::bb::west(b);
         case 7:
-          return chess::core::nw(b);
+          return chess::bb::nw(b);
         }
-        return (chess::core::Bitboard)0;
+        return (chess::bb::Bitboard)0;
       };
 
       for (int a = 0; a < 64; ++a)
@@ -417,11 +417,11 @@ namespace lilia::engine
             CT.RAY[a][b] = 0;
             continue;
           }
-          auto A = lilia::chess::core::sq_bb(static_cast<chess::Square>(a));
-          auto B = lilia::chess::core::sq_bb(static_cast<chess::Square>(b));
+          auto A = lilia::chess::bb::sq_bb(static_cast<chess::Square>(a));
+          auto B = lilia::chess::bb::sq_bb(static_cast<chess::Square>(b));
           int d = CT.DIR[a][b];
           // RAY[a][b]: from a toward b, exclusive
-          chess::core::Bitboard ray = 0, r = step(d, A);
+          chess::bb::Bitboard ray = 0, r = step(d, A);
           while (r)
           {
             ray |= r;
@@ -435,7 +435,7 @@ namespace lilia::engine
           // LINE[a][b]: whole line through a,b (union of both rays + endpoints)
           // Build opposite ray too:
           int dOpp = (d + 4) & 7;
-          chess::core::Bitboard rayOpp = 0, r2 = step(dOpp, A);
+          chess::bb::Bitboard rayOpp = 0, r2 = step(dOpp, A);
           while (r2)
           {
             rayOpp |= r2;
@@ -456,7 +456,7 @@ namespace lilia::engine
     // Does moving to m.to() create an x-ray on the enemy king such that
     // removing exactly one blocker (which we already attack) would deliver check?
     static inline bool xray_check_after_one_capture(const SearchPosition &pos, const chess::Move &m,
-                                                    chess::core::Bitboard occ, int kingSq,
+                                                    chess::bb::Bitboard occ, int kingSq,
                                                     chess::Color us, chess::PieceType moverAfter)
     {
 
@@ -474,19 +474,19 @@ namespace lilia::engine
       // Require exactly one blocker on the ray
       if (blockers & (blockers - 1))
         return false;
-      const int blSq = chess::core::ctz64(blockers);
+      const int blSq = chess::bb::ctz64(blockers);
 
       const auto &B = pos.getBoard();
 
       // Compute if we (us) already attack that blocking square from the current position.
-      lilia::chess::core::Bitboard atk = 0;
+      lilia::chess::bb::Bitboard atk = 0;
 
       // Pawns that could cachess::PieceTypeure the blocker
       atk |= (CT.PAWN_CHK[(int)us][blSq] & B.getPieces(us, chess::PieceType::Pawn));
 
       // Knights / King
-      atk |= (chess::core::knight_attacks_from((chess::Square)blSq) & B.getPieces(us, chess::PieceType::Knight));
-      atk |= (chess::core::king_attacks_from((chess::Square)blSq) & B.getPieces(us, chess::PieceType::King));
+      atk |= (chess::bb::knight_attacks_from((chess::Square)blSq) & B.getPieces(us, chess::PieceType::Knight));
+      atk |= (chess::bb::king_attacks_from((chess::Square)blSq) & B.getPieces(us, chess::PieceType::King));
 
       // Sliders
       atk |= (chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)blSq, occ) &
@@ -511,16 +511,16 @@ namespace lilia::engine
       if (!enemyKingBB)
         return info;
 
-      const int kingSq = lilia::chess::core::ctz64(enemyKingBB);
-      const auto fromBB = lilia::chess::core::sq_bb(m.from());
-      const auto toBB = lilia::chess::core::sq_bb(m.to());
+      const int kingSq = lilia::chess::bb::ctz64(enemyKingBB);
+      const auto fromBB = lilia::chess::bb::sq_bb(m.from());
+      const auto toBB = lilia::chess::bb::sq_bb(m.to());
 
       auto occ = board.getAllPieces();
       occ = (occ & ~fromBB) | toBB;
       if (m.isEnPassant())
       {
         const int epSq = (us == chess::Color::White) ? m.to() - 8 : m.to() + 8;
-        occ &= ~lilia::chess::core::sq_bb(static_cast<chess::Square>(epSq));
+        occ &= ~lilia::chess::bb::sq_bb(static_cast<chess::Square>(epSq));
       }
 
       chess::PieceType moverBefore = chess::PieceType::None;
@@ -566,9 +566,9 @@ namespace lilia::engine
           int firstSq;
           // Use CTZ when indices grow along the ray: N(0), NE(1), E(2), NW(7)
           if (dir == 0 || dir == 1 || dir == 2 || dir == 7)
-            firstSq = lilia::chess::core::ctz64(blockers);
+            firstSq = lilia::chess::bb::ctz64(blockers);
           else
-            firstSq = 63 - lilia::chess::core::clz64(blockers);
+            firstSq = 63 - lilia::chess::bb::clz64(blockers);
 
           if (auto firstPiece = board.getPiece(firstSq); firstPiece && firstPiece->color == us)
           {
@@ -588,10 +588,10 @@ namespace lilia::engine
       {
         if (moverBefore == chess::PieceType::Pawn)
         {
-          const auto to = lilia::chess::core::sq_bb(m.to());
+          const auto to = lilia::chess::bb::sq_bb(m.to());
           const auto pawnAtk = (us == chess::Color::White)
-                                   ? (lilia::chess::core::ne(to) | lilia::chess::core::nw(to))
-                                   : (lilia::chess::core::se(to) | lilia::chess::core::sw(to));
+                                   ? (lilia::chess::bb::ne(to) | lilia::chess::bb::nw(to))
+                                   : (lilia::chess::bb::se(to) | lilia::chess::bb::sw(to));
 
           if (pawnAtk & enemyKingBB)
             info.pawnSignal = 2;
@@ -607,11 +607,11 @@ namespace lilia::engine
         }
         else if (moverBefore != chess::PieceType::None)
         {
-          lilia::chess::core::Bitboard attacks = 0;
+          lilia::chess::bb::Bitboard attacks = 0;
           switch (moverBefore)
           {
           case chess::PieceType::Knight:
-            attacks = lilia::chess::core::knight_attacks_from(m.to());
+            attacks = lilia::chess::bb::knight_attacks_from(m.to());
             break;
           case chess::PieceType::Bishop:
             attacks = lilia::chess::magic::sliding_attacks(lilia::chess::magic::Slider::Bishop,
@@ -628,7 +628,7 @@ namespace lilia::engine
                 lilia::chess::magic::sliding_attacks(lilia::chess::magic::Slider::Rook, m.to(), occ);
             break;
           case chess::PieceType::King:
-            attacks = lilia::chess::core::king_attacks_from(m.to());
+            attacks = lilia::chess::bb::king_attacks_from(m.to());
             break;
           default:
             break;
@@ -685,8 +685,8 @@ namespace lilia::engine
     }
     for (auto &h : history)
       h.fill(0);
-    std::fill(&quietHist[0][0], &quietHist[0][0] + chess::PIECE_NB * chess::SQ_NB, 0);
-    std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + chess::PIECE_NB * chess::SQ_NB * chess::PIECE_NB, 0);
+    std::fill(&quietHist[0][0], &quietHist[0][0] + chess::PIECE_TYPE_NB * chess::SQ_NB, 0);
+    std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + chess::PIECE_TYPE_NB * chess::SQ_NB * chess::PIECE_TYPE_NB, 0);
     std::fill(&counterHist[0][0], &counterHist[0][0] + chess::SQ_NB * chess::SQ_NB, 0);
     std::memset(contHist, 0, sizeof(contHist));
     for (auto &row : counterMove)
@@ -1004,7 +1004,7 @@ namespace lilia::engine
       {
         const chess::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : chess::Move{});
         const bool isRecap = (!pm.isNull() && pm.to() == m.to());
-        const int toFile = chess::core::file_of(m.to());
+        const int toFile = chess::bb::file_of(m.to());
         const bool onCenterFile = (toFile == 3 || toFile == 4); // d or e
 
         if (!isRecap && !onCenterFile)
@@ -1112,8 +1112,8 @@ namespace lilia::engine
       auto countSideNP = [&](chess::Color c)
       {
         const auto &B = pos.getBoard();
-        return chess::core::popcount(B.getPieces(c, chess::PieceType::Knight) | B.getPieces(c, chess::PieceType::Bishop) |
-                                     B.getPieces(c, chess::PieceType::Rook) | B.getPieces(c, chess::PieceType::Queen));
+        return chess::bb::popcount(B.getPieces(c, chess::PieceType::Knight) | B.getPieces(c, chess::PieceType::Bishop) |
+                                   B.getPieces(c, chess::PieceType::Rook) | B.getPieces(c, chess::PieceType::Queen));
       };
       const int nonP = countSideNP(chess::Color::White) + countSideNP(chess::Color::Black);
       if (nonP >= 2)
@@ -1275,8 +1275,8 @@ namespace lilia::engine
     {
       auto countSide = [&](chess::Color c)
       {
-        return chess::core::popcount(b.getPieces(c, chess::PieceType::Knight) | b.getPieces(c, chess::PieceType::Bishop) |
-                                     b.getPieces(c, chess::PieceType::Rook) | b.getPieces(c, chess::PieceType::Queen));
+        return chess::bb::popcount(b.getPieces(c, chess::PieceType::Knight) | b.getPieces(c, chess::PieceType::Bishop) |
+                                   b.getPieces(c, chess::PieceType::Rook) | b.getPieces(c, chess::PieceType::Queen));
       };
       nonP = countSide(chess::Color::White) + countSide(chess::Color::Black);
     }
@@ -2754,8 +2754,8 @@ namespace lilia::engine
     }
     for (auto &h : history)
       h.fill(0);
-    std::fill(&quietHist[0][0], &quietHist[0][0] + chess::PIECE_NB * chess::SQ_NB, 0);
-    std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + chess::PIECE_NB * chess::SQ_NB * chess::PIECE_NB, 0);
+    std::fill(&quietHist[0][0], &quietHist[0][0] + chess::PIECE_TYPE_NB * chess::SQ_NB, 0);
+    std::fill(&captureHist[0][0][0], &captureHist[0][0][0] + chess::PIECE_TYPE_NB * chess::SQ_NB * chess::PIECE_TYPE_NB, 0);
     std::fill(&counterHist[0][0], &counterHist[0][0] + chess::SQ_NB * chess::SQ_NB, 0);
     std::memset(contHist, 0, sizeof(contHist));
     for (auto &row : counterMove)
@@ -2806,14 +2806,14 @@ namespace lilia::engine
         history[f][t] = ema_merge(history[f][t], o.history[f][t], K);
 
     // Quiet history
-    for (int p = 0; p < chess::PIECE_NB; ++p)
+    for (int p = 0; p < chess::PIECE_TYPE_NB; ++p)
       for (int t = 0; t < chess::SQ_NB; ++t)
         quietHist[p][t] = ema_merge(quietHist[p][t], o.quietHist[p][t], K);
 
     // Capture history
-    for (int mp = 0; mp < chess::PIECE_NB; ++mp)
+    for (int mp = 0; mp < chess::PIECE_TYPE_NB; ++mp)
       for (int t = 0; t < chess::SQ_NB; ++t)
-        for (int cp = 0; cp < chess::PIECE_NB; ++cp)
+        for (int cp = 0; cp < chess::PIECE_TYPE_NB; ++cp)
           captureHist[mp][t][cp] = ema_merge(captureHist[mp][t][cp], o.captureHist[mp][t][cp], K);
 
     // Counter history + best countermove choice
@@ -2831,9 +2831,9 @@ namespace lilia::engine
 
     // Continuation History (EMA)
     for (int L = 0; L < CH_LAYERS; ++L)
-      for (int pp = 0; pp < chess::PIECE_NB; ++pp)
+      for (int pp = 0; pp < chess::PIECE_TYPE_NB; ++pp)
         for (int pt = 0; pt < chess::SQ_NB; ++pt)
-          for (int mp = 0; mp < chess::PIECE_NB; ++mp)
+          for (int mp = 0; mp < chess::PIECE_TYPE_NB; ++mp)
             for (int to = 0; to < chess::SQ_NB; ++to)
               contHist[L][pp][pt][mp][to] =
                   ema_merge(contHist[L][pp][pt][mp][to], o.contHist[L][pp][pt][mp][to], K);

@@ -110,7 +110,7 @@ namespace lilia::app::controller
     m_view.updateFen(fenAfter);
     m_view.selectMove(m_fen_index ? m_fen_index - 1 : kInvalidMoveIdx);
 
-    if (m_game.getResult() != chess::GameResult::ONGOING)
+    if (m_game.getResult() != chess::GameResult::Ongoing)
     {
       m_view.setEvalResult(domain::result_string(m_game.getResult(), m_game.getGameState().sideToMove, /*forPgn=*/false));
     }
@@ -135,11 +135,11 @@ namespace lilia::app::controller
 
     premove.clearAll();
 
-    const bool leavingFinalState = (m_game.getResult() != chess::GameResult::ONGOING && atHead() &&
+    const bool leavingFinalState = (m_game.getResult() != chess::GameResult::Ongoing && atHead() &&
                                     idx + 1 != m_fen_history.size() - 1);
 
     const bool enteringFinalState =
-        (m_game.getResult() != chess::GameResult::ONGOING && idx + 1 == m_fen_history.size() - 1);
+        (m_game.getResult() != chess::GameResult::Ongoing && idx + 1 == m_fen_history.size() - 1);
 
     if (leavingFinalState)
       m_view.resetEvalBar();
@@ -170,7 +170,7 @@ namespace lilia::app::controller
       const domain::analysis::TimeView &tv = m_time_history[m_fen_index];
       m_view.updateClock(chess::Color::White, tv.white);
       m_view.updateClock(chess::Color::Black, tv.black);
-      const bool latest = atHead() && m_game.getResult() == chess::GameResult::ONGOING;
+      const bool latest = atHead() && m_game.getResult() == chess::GameResult::Ongoing;
       m_view.setClockActive(latest ? std::optional<chess::Color>(tv.active) : std::nullopt);
     }
 
@@ -225,7 +225,7 @@ namespace lilia::app::controller
     if (m_fen_index == 0)
       return;
 
-    const bool leavingFinalState = (m_game.getResult() != chess::GameResult::ONGOING && atHead());
+    const bool leavingFinalState = (m_game.getResult() != chess::GameResult::Ongoing && atHead());
 
     if (atHead())
       m_view.stashRightClickHighlights();
@@ -283,7 +283,7 @@ namespace lilia::app::controller
       const domain::analysis::TimeView &tv = m_time_history[m_fen_index];
       m_view.updateClock(chess::Color::White, tv.white);
       m_view.updateClock(chess::Color::Black, tv.black);
-      const bool latest = atHead() && m_game.getResult() == chess::GameResult::ONGOING;
+      const bool latest = atHead() && m_game.getResult() == chess::GameResult::Ongoing;
       m_view.setClockActive(latest ? std::optional<chess::Color>(tv.active) : std::nullopt);
     }
 
@@ -301,7 +301,7 @@ namespace lilia::app::controller
     if (m_fen_index >= m_move_history.size())
       return;
 
-    const bool enteringFinalState = (m_game.getResult() != chess::GameResult::ONGOING &&
+    const bool enteringFinalState = (m_game.getResult() != chess::GameResult::Ongoing &&
                                      m_fen_index + 1 == m_fen_history.size() - 1);
 
     m_view.setBoardFen(m_fen_history[m_fen_index]);
@@ -357,7 +357,7 @@ namespace lilia::app::controller
       const domain::analysis::TimeView &tv = m_time_history[m_fen_index];
       m_view.updateClock(chess::Color::White, tv.white);
       m_view.updateClock(chess::Color::Black, tv.black);
-      const bool latest = atHead() && m_game.getResult() == chess::GameResult::ONGOING;
+      const bool latest = atHead() && m_game.getResult() == chess::GameResult::Ongoing;
       m_view.setClockActive(latest ? std::optional<chess::Color>(tv.active) : std::nullopt);
     }
 
@@ -390,7 +390,7 @@ namespace lilia::app::controller
       rec.plies.push_back(ply);
     }
 
-    if (m_game.getResult() != chess::GameResult::ONGOING)
+    if (m_game.getResult() != chess::GameResult::Ongoing)
       rec.result = domain::result_string(m_game.getResult(), m_game.getGameState().sideToMove, /*forPgn=*/true);
     else
       rec.result = "*";
@@ -407,7 +407,7 @@ namespace lilia::app::controller
 
     chess::ChessGame scratch;
     scratch.setPosition(startFen);
-    scratch.setResult(chess::GameResult::ONGOING);
+    scratch.setResult(chess::GameResult::Ongoing);
 
     // Position reference for SAN generation
     chess::Position posBefore = scratch.getPositionRefForBot();

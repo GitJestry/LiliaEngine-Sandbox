@@ -13,10 +13,10 @@ namespace lilia::engine
         return false;
 
       const chess::Color us = pos.getState().sideToMove;
-      if (us == chess::Color::White && m.from() == chess::core::E1 &&
+      if (us == chess::Color::White && m.from() == chess::bb::E1 &&
           (m.to() == chess::Square{6} || m.to() == chess::Square{2}))
         return true;
-      if (us == chess::Color::Black && m.from() == chess::core::E8 &&
+      if (us == chess::Color::Black && m.from() == chess::bb::E8 &&
           (m.to() == chess::Square{62} || m.to() == chess::Square{58}))
         return true;
 
@@ -114,16 +114,16 @@ namespace lilia::engine
       if (us == chess::Color::White)
       {
         if (m.to() == chess::Square{6} || m.castle() == chess::CastleSide::KingSide)
-          eval.move_piece(us, chess::PieceType::Rook, int(chess::core::H1), 5);
+          eval.move_piece(us, chess::PieceType::Rook, int(chess::bb::H1), 5);
         else
-          eval.move_piece(us, chess::PieceType::Rook, int(chess::core::A1), 3);
+          eval.move_piece(us, chess::PieceType::Rook, int(chess::bb::A1), 3);
       }
       else
       {
         if (m.to() == chess::Square{62} || m.castle() == chess::CastleSide::KingSide)
-          eval.move_piece(us, chess::PieceType::Rook, int(chess::core::H8), 61);
+          eval.move_piece(us, chess::PieceType::Rook, int(chess::bb::H8), 61);
         else
-          eval.move_piece(us, chess::PieceType::Rook, int(chess::core::A8), 59);
+          eval.move_piece(us, chess::PieceType::Rook, int(chess::bb::A8), 59);
       }
     }
   }

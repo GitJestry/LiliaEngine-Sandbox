@@ -22,6 +22,7 @@
 
 #include "lilia/chess/move_generator.hpp"
 #include "lilia/engine/search_position.hpp"
+#include "lilia/chess/chess_types.hpp"
 #include "tt5.hpp"
 #include "config.hpp"
 #include "eval.hpp"
@@ -98,16 +99,16 @@ namespace lilia::engine
 
     // extended heuristics (for better Move-Order/Cutoffs)
     // Quiet-History: (moverPiece, to)
-    alignas(64) int16_t quietHist[chess::PIECE_NB][chess::SQ_NB] = {};
+    alignas(64) int16_t quietHist[chess::PIECE_TYPE_NB][chess::SQ_NB] = {};
 
     // Capture-History: (moverPiece, to, capturedPiece)
-    alignas(64) int16_t captureHist[chess::PIECE_NB][chess::SQ_NB][chess::PIECE_NB] = {};
+    alignas(64) int16_t captureHist[chess::PIECE_TYPE_NB][chess::SQ_NB][chess::PIECE_TYPE_NB] = {};
 
     // Counter-Move: (from,to) typical answer
     // plus Counter-History-Bonus for this exact move
     alignas(64) chess::Move counterMove[chess::SQ_NB][chess::SQ_NB] = {};
     alignas(64) int16_t counterHist[chess::SQ_NB][chess::SQ_NB] = {};
-    alignas(64) int16_t contHist[CH_LAYERS][chess::PIECE_NB][chess::SQ_NB][chess::PIECE_NB][chess::SQ_NB];
+    alignas(64) int16_t contHist[CH_LAYERS][chess::PIECE_TYPE_NB][chess::SQ_NB][chess::PIECE_TYPE_NB][chess::SQ_NB];
 
     void set_thread_id(int id) { thread_id_ = id; }
     int thread_id() const { return thread_id_; }

@@ -70,7 +70,7 @@ namespace lilia::chess
   {
     // full reset
     m_position = Position{};
-    m_result = GameResult::ONGOING;
+    m_result = GameResult::Ongoing;
     m_pseudo_moves.clear();
     m_legal_moves.clear();
 
@@ -169,16 +169,16 @@ namespace lilia::chess
       switch (c)
       {
       case 'K':
-        rights |= Castling::WK;
+        rights |= CastlingRights::WhiteKingSide;
         break;
       case 'Q':
-        rights |= Castling::WQ;
+        rights |= CastlingRights::WhiteQueenSide;
         break;
       case 'k':
-        rights |= Castling::BK;
+        rights |= CastlingRights::BlackKingSide;
         break;
       case 'q':
-        rights |= Castling::BQ;
+        rights |= CastlingRights::BlackQueenSide;
         break;
       case '-':
       default:
@@ -259,10 +259,10 @@ namespace lilia::chess
 
   Square ChessGame::getKingSquare(Color color)
   {
-    const core::Bitboard kbb = m_position.getBoard().getPieces(color, PieceType::King);
+    const bb::Bitboard kbb = m_position.getBoard().getPieces(color, PieceType::King);
     if (!kbb)
       return NO_SQUARE;
-    return static_cast<Square>(core::ctz64(kbb));
+    return static_cast<Square>(bb::ctz64(kbb));
   }
 
   void ChessGame::checkGameResult()
@@ -270,16 +270,16 @@ namespace lilia::chess
     if (generateLegalMoves().empty())
     {
       if (isKingInCheck(m_position.getState().sideToMove))
-        m_result = GameResult::CHECKMATE;
+        m_result = GameResult::Checkmate;
       else
-        m_result = GameResult::STALEMATE;
+        m_result = GameResult::Stalemate;
     }
     if (m_position.checkInsufficientMaterial())
-      m_result = GameResult::INSUFFICIENT;
+      m_result = GameResult::InsufficientMaterial;
     if (m_position.checkMoveRule())
-      m_result = GameResult::MOVERULE;
+      m_result = GameResult::MoveRule;
     if (m_position.checkRepetition())
-      m_result = GameResult::REPETITION;
+      m_result = GameResult::Repetition;
   }
 
   GameResult ChessGame::getResult()
@@ -317,10 +317,10 @@ namespace lilia::chess
 
   bool ChessGame::isKingInCheck(Color from) const
   {
-    const core::Bitboard kbb = m_position.getBoard().getPieces(from, PieceType::King);
+    const bb::Bitboard kbb = m_position.getBoard().getPieces(from, PieceType::King);
     if (!kbb)
       return false;
-    const Square ksq = static_cast<Square>(core::ctz64(kbb));
+    const Square ksq = static_cast<Square>(bb::ctz64(kbb));
     return attackedBy(m_position.getBoard(), ksq, ~from, m_position.getBoard().getAllPieces());
   }
 
@@ -396,13 +396,13 @@ namespace lilia::chess
 
     if (st.castlingRights)
     {
-      if (st.castlingRights & Castling::WK)
+      if (st.castlingRights & CastlingRights::WhiteKingSide)
         fen.push_back('K');
-      if (st.castlingRights & Castling::WQ)
+      if (st.castlingRights & CastlingRights::WhiteQueenSide)
         fen.push_back('Q');
-      if (st.castlingRights & Castling::BK)
+      if (st.castlingRights & CastlingRights::BlackKingSide)
         fen.push_back('k');
-      if (st.castlingRights & Castling::BQ)
+      if (st.castlingRights & CastlingRights::BlackQueenSide)
         fen.push_back('q');
     }
     else

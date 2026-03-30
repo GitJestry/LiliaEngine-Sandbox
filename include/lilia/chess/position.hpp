@@ -37,14 +37,14 @@ namespace lilia::chess
       m_hash = Zobrist::compute(*this);
 
       // Rebuild pawnKey
-      core::Bitboard pk = 0;
+      bb::Bitboard pk = 0;
       for (auto c : {Color::White, Color::Black})
       {
-        core::Bitboard pawns = m_board.getPieces(c, PieceType::Pawn);
+        bb::Bitboard pawns = m_board.getPieces(c, PieceType::Pawn);
         while (pawns)
         {
-          Square s = core::pop_lsb(pawns);
-          pk ^= Zobrist::piece[core::ci(c)][static_cast<int>(PieceType::Pawn)][s];
+          Square s = bb::pop_lsb(pawns);
+          pk ^= Zobrist::piece[bb::ci(c)][static_cast<int>(PieceType::Pawn)][s];
         }
       }
       m_state.pawnKey = pk;
@@ -72,7 +72,7 @@ namespace lilia::chess
     Board m_board;
     GameState m_state;
     std::vector<StateInfo> m_history;
-    core::Bitboard m_hash = 0;
+    bb::Bitboard m_hash = 0;
     std::vector<NullState> m_null_history;
 
     // Internal helpers
@@ -82,10 +82,10 @@ namespace lilia::chess
     // Incremental Zobrist / pawnKey updates
     inline void hashXorPiece(Color c, PieceType pt, Square s)
     {
-      m_hash ^= Zobrist::piece[core::ci(c)][static_cast<int>(pt)][s];
+      m_hash ^= Zobrist::piece[bb::ci(c)][static_cast<int>(pt)][s];
       if (pt == PieceType::Pawn)
       {
-        m_state.pawnKey ^= Zobrist::piece[core::ci(c)][static_cast<int>(PieceType::Pawn)][s];
+        m_state.pawnKey ^= Zobrist::piece[bb::ci(c)][static_cast<int>(PieceType::Pawn)][s];
       }
     }
     inline void hashXorSide() { m_hash ^= Zobrist::side; }
@@ -105,13 +105,13 @@ namespace lilia::chess
         return;
 
       const auto stm = m_state.sideToMove;
-      const core::Bitboard pawnsSTM = m_board.getPieces(stm, PieceType::Pawn);
+      const bb::Bitboard pawnsSTM = m_board.getPieces(stm, PieceType::Pawn);
       if (!pawnsSTM)
         return; // nothing to do
 
       const int epIdx = static_cast<int>(ep);
       const int file = epIdx & 7;
-      const int ci = core::ci(stm);
+      const int ci = bb::ci(stm);
 
       if (pawnsSTM & Zobrist::epCaptureMask[ci][epIdx])
         m_hash ^= Zobrist::epFile[file];

@@ -31,11 +31,11 @@ namespace lilia::chess
 
     struct Tables
     {
-      core::Bitboard piece[2][6][64];
-      core::Bitboard castling[16];
-      core::Bitboard epFile[8];
-      core::Bitboard side;
-      core::Bitboard epCaptureMask[2][64];
+      bb::Bitboard piece[2][6][64];
+      bb::Bitboard castling[16];
+      bb::Bitboard epFile[8];
+      bb::Bitboard side;
+      bb::Bitboard epCaptureMask[2][64];
     };
 
     consteval Tables generate()
@@ -56,9 +56,9 @@ namespace lilia::chess
 
       for (int s = 0; s < 64; ++s)
       {
-        const core::Bitboard sq = core::sq_bb(static_cast<Square>(s));
-        t.epCaptureMask[core::ci(Color::White)][s] = core::sw(sq) | core::se(sq);
-        t.epCaptureMask[core::ci(Color::Black)][s] = core::nw(sq) | core::ne(sq);
+        const bb::Bitboard sq = bb::sq_bb(static_cast<Square>(s));
+        t.epCaptureMask[bb::ci(Color::White)][s] = bb::sw(sq) | bb::se(sq);
+        t.epCaptureMask[bb::ci(Color::Black)][s] = bb::nw(sq) | bb::ne(sq);
       }
 
       return t;
@@ -83,7 +83,7 @@ namespace lilia::chess
     static constexpr void init() noexcept {}
     static void init(std::uint64_t) = delete;
 
-    static inline core::Bitboard epHashIfRelevant(const Board &b, const GameState &st) noexcept
+    static inline bb::Bitboard epHashIfRelevant(const Board &b, const GameState &st) noexcept
     {
       const Square epSq = st.enPassantSquare;
       if (epSq == NO_SQUARE)
@@ -93,18 +93,18 @@ namespace lilia::chess
       const int file = ep & 7;
 
       const Color stm = st.sideToMove;
-      const int ci = core::ci(stm);
+      const int ci = bb::ci(stm);
 
       // If side-to-move has a pawn that can capture onto EP square, hash EP file.
-      const core::Bitboard pawnsSTM = b.getPieces(stm, PieceType::Pawn);
+      const bb::Bitboard pawnsSTM = b.getPieces(stm, PieceType::Pawn);
       return (pawnsSTM & epCaptureMask[ci][ep]) ? epFile[file] : 0ULL;
     }
 
   private:
     // Single implementation to avoid template bloat for different PositionLike types.
-    static inline core::Bitboard compute_from(const Board &b, const GameState &st) noexcept
+    static inline bb::Bitboard compute_from(const Board &b, const GameState &st) noexcept
     {
-      core::Bitboard h = 0ULL;
+      bb::Bitboard h = 0ULL;
 
       // Assumes PieceType values for Pawn..King map to 0..5 (your Board + Move code already relies on
       // this).
@@ -114,11 +114,11 @@ namespace lilia::chess
         for (int p = 0; p < 6; ++p)
         {
           const PieceType pt = static_cast<PieceType>(p);
-          core::Bitboard bbp = b.getPieces(color, pt);
+          bb::Bitboard bbp = b.getPieces(color, pt);
 
           while (bbp)
           {
-            const Square s = core::pop_lsb_unchecked(bbp);
+            const Square s = bb::pop_lsb_unchecked(bbp);
             h ^= piece[c][p][static_cast<int>(s)];
           }
         }
@@ -134,26 +134,26 @@ namespace lilia::chess
 
   public:
     template <class PositionLike>
-    static core::Bitboard compute(const PositionLike &pos) noexcept
+    static bb::Bitboard compute(const PositionLike &pos) noexcept
     {
       const Board &b = pos.getBoard();
       const GameState &st = pos.getState();
       return compute_from(b, st);
     }
 
-    static core::Bitboard computePawnKey(const Board &b) noexcept
+    static bb::Bitboard computePawnKey(const Board &b) noexcept
     {
-      core::Bitboard h = 0ULL;
+      bb::Bitboard h = 0ULL;
       constexpr int pawnIdx = 0; // Pawn == 0
 
       for (int c = 0; c < 2; ++c)
       {
         const Color color = static_cast<Color>(c);
-        core::Bitboard pawns = b.getPieces(color, PieceType::Pawn);
+        bb::Bitboard pawns = b.getPieces(color, PieceType::Pawn);
 
         while (pawns)
         {
-          const Square s = core::pop_lsb_unchecked(pawns);
+          const Square s = bb::pop_lsb_unchecked(pawns);
           h ^= piece[c][pawnIdx][static_cast<int>(s)];
         }
       }

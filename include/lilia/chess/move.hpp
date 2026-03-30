@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <type_traits>
 
-#include "core/core_types.hpp"
+#include "chess_types.hpp"
 
 namespace lilia::chess
 {

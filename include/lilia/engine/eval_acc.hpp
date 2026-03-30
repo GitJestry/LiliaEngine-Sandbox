@@ -50,10 +50,10 @@ namespace lilia::engine
     {
       auto PType = static_cast<chess::PieceType>(pt);
       // White
-      chess::core::Bitboard w = b.getPieces(chess::Color::White, PType);
+      chess::bb::Bitboard w = b.getPieces(chess::Color::White, PType);
       while (w)
       {
-        int s = chess::core::ctz64(w);
+        int s = chess::bb::ctz64(w);
         w &= (w - 1);
         mg += VAL_MG[pt] + pst_mg(PType, s);
         eg += VAL_EG[pt] + pst_eg(PType, s);
@@ -83,10 +83,10 @@ namespace lilia::engine
         }
       }
       // Black
-      chess::core::Bitboard bl = b.getPieces(chess::Color::Black, PType);
+      chess::bb::Bitboard bl = b.getPieces(chess::Color::Black, PType);
       while (bl)
       {
-        int s = chess::core::ctz64(bl);
+        int s = chess::bb::ctz64(bl);
         bl &= (bl - 1);
         mg -= VAL_MG[pt] + pst_mg(PType, mirror_sq_black(s));
         eg -= VAL_EG[pt] + pst_eg(PType, mirror_sq_black(s));

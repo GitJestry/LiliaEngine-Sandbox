@@ -5,16 +5,14 @@ namespace lilia::chess
 {
   using Square = std::uint8_t;
   inline constexpr Square NO_SQUARE = 64;
-
-  inline constexpr int PIECE_NB = 6;
   inline constexpr int SQ_NB = 64;
+  inline constexpr std::uint8_t PIECE_TYPE_NB = 6;
 
-  inline bool validSquare(Square sq)
+  [[nodiscard]] constexpr bool validSquare(Square sq) noexcept
   {
-    return sq != NO_SQUARE;
+    return sq < SQ_NB;
   }
 
-  inline constexpr std::uint8_t NUM_PIECE_TYPES = 6;
   enum class PieceType : std::uint8_t
   {
     Pawn = 0,
@@ -26,6 +24,17 @@ namespace lilia::chess
     None
   };
 
+  enum class Color : std::uint8_t
+  {
+    White = 0,
+    Black = 1
+  };
+
+  [[nodiscard]] constexpr Color operator~(Color c) noexcept
+  {
+    return c == Color::White ? Color::Black : Color::White;
+  }
+
   enum class CastleSide : std::uint8_t
   {
     None = 0,
@@ -33,45 +42,39 @@ namespace lilia::chess
     QueenSide = 2
   };
 
-  enum Castling : std::uint8_t
+  enum CastlingRights : std::uint8_t
   {
-    WK = 1 << 0,
-    WQ = 1 << 1,
-    BK = 1 << 2,
-    BQ = 1 << 3
-  };
-
-  enum class Color : std::uint8_t
-  {
-    White = 0,
-    Black = 1
+    NoCastling = 0,
+    WhiteKingSide = 1 << 0,
+    WhiteQueenSide = 1 << 1,
+    BlackKingSide = 1 << 2,
+    BlackQueenSide = 1 << 3
   };
 
   struct Piece
   {
-    PieceType type = PieceType::None;
-    Color color = Color::White;
-    [[nodiscard]] constexpr bool isNone() const noexcept { return type == PieceType::None; }
+    PieceType type{PieceType::None};
+    Color color{Color::White};
+
+    [[nodiscard]] constexpr bool isNone() const noexcept
+    {
+      return type == PieceType::None;
+    }
   };
 
-  constexpr int idx(PieceType p) noexcept
+  [[nodiscard]] constexpr int idx(PieceType p) noexcept
   {
     return static_cast<int>(p);
   }
 
-  constexpr inline Color operator~(Color c)
+  enum class GameResult : std::uint8_t
   {
-    return c == Color::White ? Color::Black : Color::White;
-  }
-
-  enum GameResult
-  {
-    ONGOING,
-    CHECKMATE,
-    TIMEOUT,
-    REPETITION,
-    MOVERULE,
-    STALEMATE,
-    INSUFFICIENT
+    Ongoing,
+    Checkmate,
+    Timeout,
+    Repetition,
+    MoveRule,
+    Stalemate,
+    InsufficientMaterial
   };
-} // namespace lilia
+} // namespace lilia::chess

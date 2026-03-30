@@ -242,7 +242,7 @@ namespace lilia::app::domain::notation
 
     chess::ChessGame g;
     g.setPosition(out.startFen);
-    g.setResult(chess::GameResult::ONGOING);
+    g.setResult(chess::GameResult::Ongoing);
 
     for (const std::string &t : toks)
     {

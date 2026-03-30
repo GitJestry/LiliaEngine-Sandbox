@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "core/bitboard.hpp"
+#include "core/piece_encoding.hpp"
 
 #ifndef LILIA_ALWAYS_INLINE
 #if defined(_MSC_VER)
@@ -30,17 +31,17 @@ namespace lilia::chess
     LILIA_ALWAYS_INLINE void removePiece(Square sq) noexcept;
     LILIA_ALWAYS_INLINE std::optional<Piece> getPiece(Square sq) const noexcept;
 
-    LILIA_ALWAYS_INLINE core::Bitboard getPieces(Color c) const noexcept
+    LILIA_ALWAYS_INLINE bb::Bitboard getPieces(Color c) const noexcept
     {
-      return m_color_occ[core::ci(c)];
+      return m_color_occ[bb::ci(c)];
     }
-    LILIA_ALWAYS_INLINE core::Bitboard getAllPieces() const noexcept { return m_all_occ; }
+    LILIA_ALWAYS_INLINE bb::Bitboard getAllPieces() const noexcept { return m_all_occ; }
 
     // Safe for None/invalid PieceType
-    LILIA_ALWAYS_INLINE core::Bitboard getPieces(Color c, PieceType t) const noexcept
+    LILIA_ALWAYS_INLINE bb::Bitboard getPieces(Color c, PieceType t) const noexcept
     {
-      const int ti = core::type_index(t);
-      return (ti < 0) ? 0ULL : m_bb[core::ci(c)][ti];
+      const int ti = bb::type_index(t);
+      return (ti < 0) ? 0ULL : m_bb[bb::ci(c)][ti];
     }
 
     LILIA_ALWAYS_INLINE void movePiece_noCapture(Square from, Square to) noexcept;
@@ -59,9 +60,9 @@ namespace lilia::chess
 
   private:
     // [color][typeIndex 0..5]
-    std::array<std::array<core::Bitboard, 6>, 2> m_bb{};
-    std::array<core::Bitboard, 2> m_color_occ{};
-    core::Bitboard m_all_occ = 0;
+    std::array<std::array<bb::Bitboard, 6>, 2> m_bb{};
+    std::array<bb::Bitboard, 2> m_color_occ{};
+    bb::Bitboard m_all_occ = 0;
 
     // O(1) per square (0 = empty, else (ptIdx+1) | (color<<3))
     std::array<std::uint8_t, 64> m_piece_on{};
@@ -93,7 +94,7 @@ namespace lilia::chess
 
   constexpr std::uint8_t Board::pack_piece(Piece p) noexcept
   {
-    const int ti = core::type_index(p.type);
+    const int ti = bb::type_index(p.type);
     if (ti < 0)
       return 0;
 
@@ -101,7 +102,7 @@ namespace lilia::chess
     assert(ti >= 0 && ti < 6 && "Invalid PieceType");
 #endif
 
-    const std::uint8_t c = static_cast<std::uint8_t>(core::ci(p.color) & 1u);
+    const std::uint8_t c = static_cast<std::uint8_t>(bb::ci(p.color) & 1u);
     return static_cast<std::uint8_t>((ti + 1) | (c << 3));
   }
 
@@ -122,7 +123,7 @@ namespace lilia::chess
     assert(s >= 0 && s < 64);
 #endif
 
-    const core::Bitboard mask = core::sq_bb(sq);
+    const bb::Bitboard mask = bb::sq_bb(sq);
 
     const std::uint8_t newPacked = pack_piece(p);
     const std::uint8_t oldPacked = m_piece_on[s];
@@ -132,8 +133,8 @@ namespace lilia::chess
     // Remove old if present
     if (oldPacked)
     {
-      const int oldTi = core::decode_ti(oldPacked);
-      const int oldCi = core::decode_ci(oldPacked);
+      const int oldTi = decode_ti(oldPacked);
+      const int oldCi = decode_ci(oldPacked);
 #ifndef NDEBUG
       assert(oldTi >= 0 && oldTi < 6 && (oldCi == 0 || oldCi == 1));
 #endif
@@ -146,8 +147,8 @@ namespace lilia::chess
     // Place new if not empty
     if (newPacked)
     {
-      const int ti = core::decode_ti(newPacked);
-      const int ci = core::decode_ci(newPacked);
+      const int ti = decode_ti(newPacked);
+      const int ci = decode_ci(newPacked);
 #ifndef NDEBUG
       assert(ti >= 0 && ti < 6 && (ci == 0 || ci == 1));
 #endif
@@ -169,13 +170,13 @@ namespace lilia::chess
     if (!packed)
       return;
 
-    const int ti = core::decode_ti(packed);
-    const int ci = core::decode_ci(packed);
+    const int ti = decode_ti(packed);
+    const int ci = decode_ci(packed);
 #ifndef NDEBUG
     assert(ti >= 0 && ti < 6 && (ci == 0 || ci == 1));
 #endif
 
-    const core::Bitboard mask = core::sq_bb(sq);
+    const bb::Bitboard mask = bb::sq_bb(sq);
 
     m_bb[ci][ti] &= ~mask;
     m_color_occ[ci] &= ~mask;
@@ -209,15 +210,15 @@ namespace lilia::chess
       return;
 #endif
 
-    const int ti = core::decode_ti(packed);
-    const int ci = core::decode_ci(packed);
+    const int ti = decode_ti(packed);
+    const int ci = decode_ci(packed);
 #ifndef NDEBUG
     assert(ti >= 0 && ti < 6 && (ci == 0 || ci == 1));
 #endif
 
-    const core::Bitboard fromBB = core::sq_bb(from);
-    const core::Bitboard toBB = core::sq_bb(to);
-    const core::Bitboard flip = fromBB ^ toBB; // squares distinct; XOR = OR
+    const bb::Bitboard fromBB = bb::sq_bb(from);
+    const bb::Bitboard toBB = bb::sq_bb(to);
+    const bb::Bitboard flip = fromBB ^ toBB; // squares distinct; XOR = OR
 
 #ifdef NDEBUG
     m_bb[ci][ti] ^= flip;
@@ -252,9 +253,9 @@ namespace lilia::chess
       return;
 #endif
 
-    const core::Bitboard fromBB = core::sq_bb(from);
-    const core::Bitboard capBB = core::sq_bb(capSq);
-    const core::Bitboard toBB = core::sq_bb(to);
+    const bb::Bitboard fromBB = bb::sq_bb(from);
+    const bb::Bitboard capBB = bb::sq_bb(capSq);
+    const bb::Bitboard toBB = bb::sq_bb(to);
 
 #ifndef NDEBUG
     // Normal capture: capSq == to (occupied by captured)
@@ -266,8 +267,8 @@ namespace lilia::chess
 #endif
 
     // Decode mover
-    const int m_ti = core::decode_ti(moverPacked);
-    const int m_ci = core::decode_ci(moverPacked);
+    const int m_ti = decode_ti(moverPacked);
+    const int m_ci = decode_ci(moverPacked);
 #ifndef NDEBUG
     assert(m_ti >= 0 && m_ti < 6 && (m_ci == 0 || m_ci == 1));
 #endif
@@ -286,18 +287,18 @@ namespace lilia::chess
     int c_ti, c_ci;
 #ifdef NDEBUG
     // In release, assume capSq is occupied (normal capture or EP).
-    c_ti = core::decode_ti(capPacked);
-    c_ci = core::decode_ci(capPacked);
+    c_ti = decode_ti(capPacked);
+    c_ci = decode_ci(capPacked);
 #else
     if (capPacked)
     {
-      c_ti = core::decode_ti(capPacked);
-      c_ci = core::decode_ci(capPacked);
+      c_ti = decode_ti(capPacked);
+      c_ci = decode_ci(capPacked);
     }
     else
     {
-      c_ti = core::type_index(captured.type);
-      c_ci = core::ci(captured.color);
+      c_ti = bb::type_index(captured.type);
+      c_ci = bb::ci(captured.color);
     }
     assert(c_ti >= 0 && c_ti < 6 && (c_ci == 0 || c_ci == 1));
 #endif
@@ -306,7 +307,7 @@ namespace lilia::chess
     // Combined occupancy flip:
     // - EP:  capBB ^ fromBB ^ toBB toggles cap off, from off, to on
     // - Normal capture where capBB==toBB: capBB cancels toBB => flip is fromBB only (correct)
-    const core::Bitboard occFlip = capBB ^ fromBB ^ toBB;
+    const bb::Bitboard occFlip = capBB ^ fromBB ^ toBB;
     m_all_occ ^= occFlip;
 
     // Captured side off at cap
@@ -314,7 +315,7 @@ namespace lilia::chess
     m_color_occ[c_ci] ^= capBB;
 
     // Mover side from -> to
-    const core::Bitboard moveFlip = fromBB ^ toBB;
+    const bb::Bitboard moveFlip = fromBB ^ toBB;
     m_bb[m_ci][m_ti] ^= moveFlip;
     m_color_occ[m_ci] ^= moveFlip;
 #else

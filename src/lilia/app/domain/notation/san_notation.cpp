@@ -86,7 +86,7 @@ namespace lilia::app::domain::notation
       chess::ChessGame g;
       g.getPositionRefForBot() = pos; // requires Position copy-assign
       g.buildHash();
-      g.setResult(chess::GameResult::ONGOING);
+      g.setResult(chess::GameResult::Ongoing);
       return g;
     }
 

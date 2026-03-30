@@ -143,7 +143,7 @@ namespace lilia::app::controller
     }
 
     // When game is over, allow board flip via icon click (kept from your old behavior).
-    if (m_game.getResult() != chess::GameResult::ONGOING)
+    if (m_game.getResult() != chess::GameResult::Ongoing)
     {
       if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left)
       {

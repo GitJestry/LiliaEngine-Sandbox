@@ -16,19 +16,19 @@ namespace lilia::chess::magic
 
   struct Magic
   {
-    core::Bitboard magic = 0ULL;
+    bb::Bitboard magic = 0ULL;
     std::uint8_t shift = 0;
   };
 
   void init_magics();
 
-  core::Bitboard sliding_attacks(Slider s, Square sq, core::Bitboard occ) noexcept;
+  bb::Bitboard sliding_attacks(Slider s, Square sq, bb::Bitboard occ) noexcept;
 
-  const std::array<core::Bitboard, 64> &rook_masks();
-  const std::array<core::Bitboard, 64> &bishop_masks();
+  const std::array<bb::Bitboard, 64> &rook_masks();
+  const std::array<bb::Bitboard, 64> &bishop_masks();
   const std::array<Magic, 64> &rook_magics();
   const std::array<Magic, 64> &bishop_magics();
-  const std::array<std::vector<core::Bitboard>, 64> &rook_tables();
-  const std::array<std::vector<core::Bitboard>, 64> &bishop_tables();
+  const std::array<std::vector<bb::Bitboard>, 64> &rook_tables();
+  const std::array<std::vector<bb::Bitboard>, 64> &bishop_tables();
 
 } // namespace lilia::model::magic

@@ -63,10 +63,10 @@ namespace lilia::engine
   constexpr bool PASS_RACE_NEED_QUEENLESS = true; // nur ohne Damen
 
   // Utility wrappers for derived constants
-  inline bool rook_on_start_square(chess::core::Bitboard rooks, bool white)
+  inline bool rook_on_start_square(chess::bb::Bitboard rooks, bool white)
   {
-    return white ? (rooks & (chess::core::sq_bb(chess::Square(0)) | chess::core::sq_bb(chess::Square(7))))    // a1,h1
-                 : (rooks & (chess::core::sq_bb(chess::Square(56)) | chess::core::sq_bb(chess::Square(63)))); // a8,h8
+    return white ? (rooks & (chess::bb::sq_bb(chess::Square(0)) | chess::bb::sq_bb(chess::Square(7))))    // a1,h1
+                 : (rooks & (chess::bb::sq_bb(chess::Square(56)) | chess::bb::sq_bb(chess::Square(63)))); // a8,h8
   }
 
   // =============================================================================

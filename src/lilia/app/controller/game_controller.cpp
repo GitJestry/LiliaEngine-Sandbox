@@ -62,7 +62,7 @@ namespace lilia::app::controller
     m_move_exec->applyMove(mv, isPlayerMove, onClick);
 
     m_game.checkGameResult();
-    if (m_game.getResult() != chess::GameResult::ONGOING) {
+    if (m_game.getResult() != chess::GameResult::Ongoing) {
       m_game_end->show(m_game.getResult(), m_game.getGameState().sideToMove, m_white_is_bot,
                        m_black_is_bot, *m_clock, *m_premove);
     } });
@@ -138,7 +138,7 @@ namespace lilia::app::controller
     if (m_replay_mode)
       return;
 
-    if (m_game.getResult() != chess::GameResult::ONGOING)
+    if (m_game.getResult() != chess::GameResult::Ongoing)
       return;
 
     if (m_clock->enabled())
@@ -146,10 +146,10 @@ namespace lilia::app::controller
       m_clock->update(dt);
       if (auto flag = m_clock->flagged())
       {
-        m_game.setResult(chess::GameResult::TIMEOUT);
+        m_game.setResult(chess::GameResult::Timeout);
         if (m_game_manager)
           m_game_manager->stopGame();
-        m_game_end->show(chess::GameResult::TIMEOUT, *flag, m_white_is_bot, m_black_is_bot, *m_clock,
+        m_game_end->show(chess::GameResult::Timeout, *flag, m_white_is_bot, m_black_is_bot, *m_clock,
                          *m_premove);
         return;
       }
@@ -267,7 +267,7 @@ namespace lilia::app::controller
     if (!m_history->atHead())
       return;
 
-    if (m_game.getResult() != chess::GameResult::ONGOING)
+    if (m_game.getResult() != chess::GameResult::Ongoing)
       return;
 
     switch (event.type)
@@ -303,7 +303,7 @@ namespace lilia::app::controller
   void GameController::resign()
   {
     m_game_manager->stopGame();
-    m_game.setResult(chess::GameResult::CHECKMATE);
+    m_game.setResult(chess::GameResult::Checkmate);
     m_view.clearAllHighlights();
     m_selection.highlightLastMove();
 
@@ -311,7 +311,7 @@ namespace lilia::app::controller
     if (m_game_manager && !m_game_manager->isHuman(loser))
       loser = ~loser;
 
-    m_game_end->show(chess::GameResult::CHECKMATE, loser, m_white_is_bot, m_black_is_bot, *m_clock,
+    m_game_end->show(chess::GameResult::Checkmate, loser, m_white_is_bot, m_black_is_bot, *m_clock,
                      *m_premove);
   }
 

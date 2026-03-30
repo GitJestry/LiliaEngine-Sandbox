@@ -34,33 +34,33 @@
 namespace lilia::chess::magic
 {
 
-  static std::array<core::Bitboard, 64> g_rook_mask{};
-  static std::array<core::Bitboard, 64> g_bishop_mask{};
+  static std::array<bb::Bitboard, 64> g_rook_mask{};
+  static std::array<bb::Bitboard, 64> g_bishop_mask{};
 
   static std::array<Magic, 64> g_rook_magic{};
   static std::array<Magic, 64> g_bishop_magic{};
 
   // Compatibility vector tables (can be dropped after packing; lazily reconstructable)
-  static std::array<std::vector<core::Bitboard>, 64> g_rook_table;
-  static std::array<std::vector<core::Bitboard>, 64> g_bishop_table;
+  static std::array<std::vector<bb::Bitboard>, 64> g_rook_table;
+  static std::array<std::vector<bb::Bitboard>, 64> g_bishop_table;
 
   // Flat arenas + offsets/lengths
   static std::array<std::uint32_t, 64> g_r_off_magic{}, g_b_off_magic{};
   static std::array<std::uint16_t, 64> g_r_len_magic{}, g_b_len_magic{};
-  static std::vector<core::Bitboard> g_r_arena_magic, g_b_arena_magic;
+  static std::vector<bb::Bitboard> g_r_arena_magic, g_b_arena_magic;
 
   static std::array<std::uint32_t, 64> g_r_off_pext{}, g_b_off_pext{};
   static std::array<std::uint16_t, 64> g_r_len_pext{}, g_b_len_pext{};
-  static std::vector<core::Bitboard> g_r_arena_pext, g_b_arena_pext;
+  static std::vector<bb::Bitboard> g_r_arena_pext, g_b_arena_pext;
 
   static bool g_use_pext = false;
 
   // -------------------- helpers --------------------
 
   template <class F>
-  static inline void foreach_subset(core::Bitboard mask, F &&f)
+  static inline void foreach_subset(bb::Bitboard mask, F &&f)
   {
-    core::Bitboard sub = mask;
+    bb::Bitboard sub = mask;
     while (true)
     {
       f(sub);
@@ -70,69 +70,69 @@ namespace lilia::chess::magic
     }
   }
 
-  static inline core::Bitboard brute_rook(Square sq, core::Bitboard occ)
+  static inline bb::Bitboard brute_rook(Square sq, bb::Bitboard occ)
   {
-    return core::rook_attacks(sq, occ);
+    return bb::rook_attacks(sq, occ);
   }
-  static inline core::Bitboard brute_bishop(Square sq, core::Bitboard occ)
+  static inline bb::Bitboard brute_bishop(Square sq, bb::Bitboard occ)
   {
-    return core::bishop_attacks(sq, occ);
+    return bb::bishop_attacks(sq, occ);
   }
-  static inline core::Bitboard brute_attacks(Slider s, Square sq, core::Bitboard occ)
+  static inline bb::Bitboard brute_attacks(Slider s, Square sq, bb::Bitboard occ)
   {
     return (s == Slider::Rook) ? brute_rook(sq, occ) : brute_bishop(sq, occ);
   }
 
   // Build-time / validation index (kept for generator paths)
-  static inline std::uint64_t index_for_occ_checked(core::Bitboard occ, core::Bitboard mask,
-                                                    core::Bitboard magic, std::uint8_t shift)
+  static inline std::uint64_t index_for_occ_checked(bb::Bitboard occ, bb::Bitboard mask,
+                                                    bb::Bitboard magic, std::uint8_t shift)
   {
-    const int bits = core::popcount(mask);
+    const int bits = bb::popcount(mask);
     if (bits == 0)
       return 0ULL;
-    const core::Bitboard subset = occ & mask;
+    const bb::Bitboard subset = occ & mask;
     return static_cast<std::uint64_t>((subset * magic) >> shift);
   }
 
   // Hot-path index: NO popcount, NO additional masking.
   // Safe for shift==64 via guard (avoids UB shift-by-64).
-  static inline std::uint32_t index_for_occ_fast(core::Bitboard occ, core::Bitboard mask,
-                                                 core::Bitboard magic, std::uint8_t shift) noexcept
+  static inline std::uint32_t index_for_occ_fast(bb::Bitboard occ, bb::Bitboard mask,
+                                                 bb::Bitboard magic, std::uint8_t shift) noexcept
   {
     if (LILIA_UNLIKELY(shift >= 64))
       return 0u;
-    const core::Bitboard subset = occ & mask;
+    const bb::Bitboard subset = occ & mask;
     return static_cast<std::uint32_t>((subset * magic) >> shift);
   }
 
-  static inline void build_table_for_square(Slider s, int sq, core::Bitboard mask, core::Bitboard magic,
-                                            std::uint8_t shift, std::vector<core::Bitboard> &outTable)
+  static inline void build_table_for_square(Slider s, int sq, bb::Bitboard mask, bb::Bitboard magic,
+                                            std::uint8_t shift, std::vector<bb::Bitboard> &outTable)
   {
-    const int bits = core::popcount(mask);
+    const int bits = bb::popcount(mask);
     const std::size_t tableSize = (bits == 0) ? 1ULL : (1ULL << bits);
     outTable.assign(tableSize, 0ULL);
 
-    foreach_subset(mask, [&](core::Bitboard occSubset)
+    foreach_subset(mask, [&](bb::Bitboard occSubset)
                    {
     const std::uint64_t index = index_for_occ_checked(occSubset, mask, magic, shift);
     outTable[static_cast<std::size_t>(index)] =
         brute_attacks(s, static_cast<Square>(sq), occSubset); });
   }
 
-  static inline bool try_magic_for_square(Slider s, int sq, core::Bitboard mask, core::Bitboard magic,
-                                          std::uint8_t shift, std::vector<core::Bitboard> &outTable)
+  static inline bool try_magic_for_square(Slider s, int sq, bb::Bitboard mask, bb::Bitboard magic,
+                                          std::uint8_t shift, std::vector<bb::Bitboard> &outTable)
   {
-    const int bits = core::popcount(mask);
+    const int bits = bb::popcount(mask);
     const std::size_t tableSize = (bits == 0) ? 1ULL : (1ULL << bits);
 
     std::vector<std::uint8_t> used(tableSize, 0);
-    std::vector<core::Bitboard> table(tableSize);
+    std::vector<bb::Bitboard> table(tableSize);
 
-    core::Bitboard occSubset = mask;
+    bb::Bitboard occSubset = mask;
     while (true)
     {
       const std::uint64_t idx = index_for_occ_checked(occSubset, mask, magic, shift);
-      const core::Bitboard atk = brute_attacks(s, static_cast<Square>(sq), occSubset);
+      const bb::Bitboard atk = brute_attacks(s, static_cast<Square>(sq), occSubset);
 
       const std::size_t j = static_cast<std::size_t>(idx);
       if (!used[j])
@@ -154,22 +154,22 @@ namespace lilia::chess::magic
     return true;
   }
 
-  static inline bool find_magic_for_square(Slider s, int sq, core::Bitboard mask,
-                                           core::Bitboard &out_magic, std::uint8_t &out_shift,
-                                           std::vector<core::Bitboard> &outTable)
+  static inline bool find_magic_for_square(Slider s, int sq, bb::Bitboard mask,
+                                           bb::Bitboard &out_magic, std::uint8_t &out_shift,
+                                           std::vector<bb::Bitboard> &outTable)
   {
-    const int bits = core::popcount(mask);
+    const int bits = bb::popcount(mask);
     const std::uint8_t shift =
         static_cast<std::uint8_t>((bits == 0) ? 64u : (64u - static_cast<std::uint8_t>(bits)));
     out_shift = shift;
 
-    core::Bitboard seed = 0xC0FFEE123456789ULL ^ (static_cast<core::Bitboard>(sq) << 32) ^
-                          (s == Slider::Rook ? 0xF0F0F0F0ULL : 0x0F0F0F0FULL);
+    bb::Bitboard seed = 0xC0FFEE123456789ULL ^ (static_cast<bb::Bitboard>(sq) << 32) ^
+                        (s == Slider::Rook ? 0xF0F0F0F0ULL : 0x0F0F0F0FULL);
 
     constexpr int MAX_ATTEMPTS = 2'000'000;
-    core::SplitMix64 splitmix(seed);
+    random::SplitMix64 splitmix(seed);
 
-    auto gen_candidate = [&](int strategy) -> core::Bitboard
+    auto gen_candidate = [&](int strategy) -> bb::Bitboard
     {
       switch (strategy)
       {
@@ -181,8 +181,8 @@ namespace lilia::chess::magic
         return splitmix.next() ^ (splitmix.next() << 1);
       case 3:
       {
-        core::Bitboard v = splitmix.next() & splitmix.next();
-        core::Bitboard hi = (splitmix.next() & 0xFFULL) << 56;
+        bb::Bitboard v = splitmix.next() & splitmix.next();
+        bb::Bitboard hi = (splitmix.next() & 0xFFULL) << 56;
         return v | hi;
       }
       default:
@@ -194,10 +194,10 @@ namespace lilia::chess::magic
     {
       for (int strat = 0; strat < 4; ++strat)
       {
-        core::Bitboard cand = gen_candidate(strat);
+        bb::Bitboard cand = gen_candidate(strat);
         if (bits > 0)
         {
-          const int highpop = core::popcount((cand * mask) & 0xFF00000000000000ULL);
+          const int highpop = bb::popcount((cand * mask) & 0xFF00000000000000ULL);
           if (highpop < 2)
             continue;
         }
@@ -220,33 +220,33 @@ namespace lilia::chess::magic
     return false;
   }
 
-  static inline core::Bitboard rook_relevant_mask(Square sq)
+  static inline bb::Bitboard rook_relevant_mask(Square sq)
   {
-    core::Bitboard mask = 0ULL;
-    int r = core::rank_of(sq), f = core::file_of(sq);
+    bb::Bitboard mask = 0ULL;
+    int r = bb::rank_of(sq), f = bb::file_of(sq);
     for (int rr = r + 1; rr <= 6; ++rr)
-      mask |= core::sq_bb(static_cast<Square>(rr * 8 + f));
+      mask |= bb::sq_bb(static_cast<Square>(rr * 8 + f));
     for (int rr = r - 1; rr >= 1; --rr)
-      mask |= core::sq_bb(static_cast<Square>(rr * 8 + f));
+      mask |= bb::sq_bb(static_cast<Square>(rr * 8 + f));
     for (int ff = f + 1; ff <= 6; ++ff)
-      mask |= core::sq_bb(static_cast<Square>(r * 8 + ff));
+      mask |= bb::sq_bb(static_cast<Square>(r * 8 + ff));
     for (int ff = f - 1; ff >= 1; --ff)
-      mask |= core::sq_bb(static_cast<Square>(r * 8 + ff));
+      mask |= bb::sq_bb(static_cast<Square>(r * 8 + ff));
     return mask;
   }
 
-  static inline core::Bitboard bishop_relevant_mask(Square sq)
+  static inline bb::Bitboard bishop_relevant_mask(Square sq)
   {
-    core::Bitboard mask = 0ULL;
-    int r = core::rank_of(sq), f = core::file_of(sq);
+    bb::Bitboard mask = 0ULL;
+    int r = bb::rank_of(sq), f = bb::file_of(sq);
     for (int rr = r + 1, ff = f + 1; rr <= 6 && ff <= 6; ++rr, ++ff)
-      mask |= core::sq_bb(static_cast<Square>(rr * 8 + ff));
+      mask |= bb::sq_bb(static_cast<Square>(rr * 8 + ff));
     for (int rr = r + 1, ff = f - 1; rr <= 6 && ff >= 1; ++rr, --ff)
-      mask |= core::sq_bb(static_cast<Square>(rr * 8 + ff));
+      mask |= bb::sq_bb(static_cast<Square>(rr * 8 + ff));
     for (int rr = r - 1, ff = f + 1; rr >= 1 && ff <= 6; --rr, ++ff)
-      mask |= core::sq_bb(static_cast<Square>(rr * 8 + ff));
+      mask |= bb::sq_bb(static_cast<Square>(rr * 8 + ff));
     for (int rr = r - 1, ff = f - 1; rr >= 1 && ff >= 1; --rr, --ff)
-      mask |= core::sq_bb(static_cast<Square>(rr * 8 + ff));
+      mask |= bb::sq_bb(static_cast<Square>(rr * 8 + ff));
     return mask;
   }
 
@@ -267,20 +267,20 @@ namespace lilia::chess::magic
 
     for (int sq = 0; sq < 64; ++sq)
     {
-      std::vector<core::Bitboard> table;
-      core::Bitboard magic = 0ULL;
+      std::vector<bb::Bitboard> table;
+      bb::Bitboard magic = 0ULL;
       std::uint8_t shift = 0;
-      const core::Bitboard mask = g_rook_mask[sq];
+      const bb::Bitboard mask = g_rook_mask[sq];
       (void)find_magic_for_square(Slider::Rook, sq, mask, magic, shift, table);
       g_rook_magic[sq] = Magic{magic, shift};
       g_rook_table[sq] = std::move(table);
     }
     for (int sq = 0; sq < 64; ++sq)
     {
-      std::vector<core::Bitboard> table;
-      core::Bitboard magic = 0ULL;
+      std::vector<bb::Bitboard> table;
+      bb::Bitboard magic = 0ULL;
       std::uint8_t shift = 0;
-      const core::Bitboard mask = g_bishop_mask[sq];
+      const bb::Bitboard mask = g_bishop_mask[sq];
       (void)find_magic_for_square(Slider::Bishop, sq, mask, magic, shift, table);
       g_bishop_magic[sq] = Magic{magic, shift};
       g_bishop_table[sq] = std::move(table);
@@ -289,10 +289,10 @@ namespace lilia::chess::magic
 
   // ---------------------- packing to flat -------------------------
 
-  static inline void pack_magic_vectors_to_flat(const std::array<std::vector<core::Bitboard>, 64> &src,
+  static inline void pack_magic_vectors_to_flat(const std::array<std::vector<bb::Bitboard>, 64> &src,
                                                 std::array<std::uint32_t, 64> &off,
                                                 std::array<std::uint16_t, 64> &len,
-                                                std::vector<core::Bitboard> &arena)
+                                                std::vector<bb::Bitboard> &arena)
   {
     std::uint32_t cur = 0;
 
@@ -326,14 +326,14 @@ namespace lilia::chess::magic
   // ---------------------- PEXT build (flat, no per-square tmp allocations) ----
 
 #if defined(LILIA_HAVE_PEXT_INTRINSIC)
-  static inline void build_table_for_square_pext_into(core::Bitboard mask, Slider s, int sq,
-                                                      core::Bitboard *dst /* size = 1<<bits or 1 */)
+  static inline void build_table_for_square_pext_into(bb::Bitboard mask, Slider s, int sq,
+                                                      bb::Bitboard *dst /* size = 1<<bits or 1 */)
   {
-    const int bits = core::popcount(mask);
+    const int bits = bb::popcount(mask);
     const std::size_t size = (bits == 0) ? 1ULL : (1ULL << bits);
     std::fill(dst, dst + size, 0ULL);
 
-    foreach_subset(mask, [&](core::Bitboard sub)
+    foreach_subset(mask, [&](bb::Bitboard sub)
                    {
     const std::uint64_t idx = _pext_u64(sub, mask);
     dst[static_cast<std::size_t>(idx)] = brute_attacks(s, static_cast<Square>(sq), sub); });
@@ -341,15 +341,15 @@ namespace lilia::chess::magic
 
   static inline void build_all_pext_flat(std::array<std::uint32_t, 64> &off,
                                          std::array<std::uint16_t, 64> &len,
-                                         std::vector<core::Bitboard> &arena, Slider s)
+                                         std::vector<bb::Bitboard> &arena, Slider s)
   {
     std::uint32_t cur = 0;
 
     std::size_t total = 0;
     for (int i = 0; i < 64; ++i)
     {
-      const core::Bitboard mask = (s == Slider::Rook) ? g_rook_mask[i] : g_bishop_mask[i];
-      const int bits = core::popcount(mask);
+      const bb::Bitboard mask = (s == Slider::Rook) ? g_rook_mask[i] : g_bishop_mask[i];
+      const int bits = bb::popcount(mask);
       total += (bits == 0) ? 1ULL : (1ULL << bits);
     }
 
@@ -358,8 +358,8 @@ namespace lilia::chess::magic
 
     for (int i = 0; i < 64; ++i)
     {
-      const core::Bitboard mask = (s == Slider::Rook) ? g_rook_mask[i] : g_bishop_mask[i];
-      const int bits = core::popcount(mask);
+      const bb::Bitboard mask = (s == Slider::Rook) ? g_rook_mask[i] : g_bishop_mask[i];
+      const int bits = bb::popcount(mask);
       const std::uint16_t L = static_cast<std::uint16_t>((bits == 0) ? 1u : (1u << bits));
 
       off[i] = cur;
@@ -454,15 +454,15 @@ namespace lilia::chess::magic
     // keep debug introspection memory as-is
 #else
     for (auto &v : g_rook_table)
-      std::vector<core::Bitboard>().swap(v);
+      std::vector<bb::Bitboard>().swap(v);
     for (auto &v : g_bishop_table)
-      std::vector<core::Bitboard>().swap(v);
+      std::vector<bb::Bitboard>().swap(v);
 #endif
   }
 
   // ---------------------- query (HOT) -------------------------
 
-  core::Bitboard sliding_attacks(Slider s, Square sq, core::Bitboard occ) noexcept
+  bb::Bitboard sliding_attacks(Slider s, Square sq, bb::Bitboard occ) noexcept
   {
     const int i = static_cast<int>(sq);
 
@@ -502,11 +502,11 @@ namespace lilia::chess::magic
 
   // ---------------------- getters -------------------------
 
-  const std::array<core::Bitboard, 64> &rook_masks()
+  const std::array<bb::Bitboard, 64> &rook_masks()
   {
     return g_rook_mask;
   }
-  const std::array<core::Bitboard, 64> &bishop_masks()
+  const std::array<bb::Bitboard, 64> &bishop_masks()
   {
     return g_bishop_mask;
   }
@@ -543,14 +543,14 @@ namespace lilia::chess::magic
     }
   }
 
-  const std::array<std::vector<core::Bitboard>, 64> &rook_tables()
+  const std::array<std::vector<bb::Bitboard>, 64> &rook_tables()
   {
     if (LILIA_UNLIKELY(g_rook_table[0].empty()))
       materialize_rook_vectors_if_needed();
     return g_rook_table;
   }
 
-  const std::array<std::vector<core::Bitboard>, 64> &bishop_tables()
+  const std::array<std::vector<bb::Bitboard>, 64> &bishop_tables()
   {
     if (LILIA_UNLIKELY(g_bishop_table[0].empty()))
       materialize_bishop_vectors_if_needed();

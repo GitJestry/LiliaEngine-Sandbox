@@ -10,11 +10,11 @@ namespace lilia::chess
 
   struct alignas(8) GameState
   {
-    core::Bitboard pawnKey = 0;       // incremental pawn hash
+    bb::Bitboard pawnKey = 0;         // incremental pawn hash
     std::uint32_t fullmoveNumber = 1; // 1..2^32-1
     std::uint16_t halfmoveClock = 0;  // 0..100 is plenty
     std::uint8_t castlingRights =
-        Castling::WK | Castling::WQ | Castling::BK | Castling::BQ;
+        CastlingRights::WhiteKingSide | CastlingRights::WhiteQueenSide | CastlingRights::BlackKingSide | CastlingRights::BlackQueenSide;
     Color sideToMove = Color::White;
     Square enPassantSquare = NO_SQUARE;
   };
@@ -22,8 +22,8 @@ namespace lilia::chess
   struct alignas(8) StateInfo
   {
     // Put 8-byte fields first to reduce padding; improves stack/array locality in search.
-    core::Bitboard zobristKey{};  // full hash before move
-    core::Bitboard prevPawnKey{}; // pawn hash before move
+    bb::Bitboard zobristKey{};  // full hash before move
+    bb::Bitboard prevPawnKey{}; // pawn hash before move
 
     Move move{};      // last move
     Piece captured{}; // captured piece (type+color)
@@ -36,7 +36,7 @@ namespace lilia::chess
 
   struct alignas(8) NullState
   {
-    core::Bitboard zobristKey{0}; // full hash before null move
+    bb::Bitboard zobristKey{0}; // full hash before null move
     std::uint32_t prevFullmoveNumber{1};
     std::uint16_t prevHalfmoveClock{0};
     std::uint8_t prevCastlingRights{0};
@@ -44,7 +44,7 @@ namespace lilia::chess
   };
 
   // Sanity checks (cheap, catch accidental changes early)
-  static_assert((Castling::WK | Castling::WQ | Castling::BK | Castling::BQ) <= 0xF,
+  static_assert((CastlingRights::WhiteKingSide | CastlingRights::WhiteQueenSide | CastlingRights::BlackKingSide | CastlingRights::BlackQueenSide) <= 0xF,
                 "Castling rights must fit in 4 bits");
 
   static_assert(std::is_trivially_copyable_v<GameState>, "GameState should be POD");

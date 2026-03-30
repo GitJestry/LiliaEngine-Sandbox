@@ -3,7 +3,7 @@
 #include <bit>
 #include <cstdint>
 
-#include "core_types.hpp"
+#include "lilia/chess/chess_types.hpp"
 
 #if defined(_MSC_VER)
 #define LILIA_ALWAYS_INLINE __forceinline
@@ -26,40 +26,62 @@
 #define LILIA_ASSUME(x) ((void)0)
 #endif
 
-namespace lilia::chess::core
+namespace lilia::chess::bb
 {
+  using Bitboard = std::uint64_t;
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool any(Bitboard b) noexcept
+  [[nodiscard]] constexpr int ci(Color c) noexcept
   {
-    return b != 0;
-  }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool none(Bitboard b) noexcept
-  {
-    return b == 0;
+    return c == Color::White ? 0 : 1;
   }
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr int popcount(Bitboard b) noexcept
+  [[nodiscard]] constexpr int file_of(Square s) noexcept { return s & 7; }
+  [[nodiscard]] constexpr int rank_of(Square s) noexcept { return s >> 3; }
+
+  [[nodiscard]] constexpr Bitboard sq_bb(Square s) noexcept
   {
-    return std::popcount(b);
+    return Bitboard{1} << static_cast<unsigned>(s);
   }
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr int ctz64(std::uint64_t x) noexcept
+  [[nodiscard]] constexpr int type_index(PieceType t) noexcept
   {
-    return static_cast<int>(std::countr_zero(x));
+    const int ti = static_cast<int>(t);
+    return (ti >= 0 && ti < 6) ? ti : -1;
   }
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr int clz64(std::uint64_t x) noexcept
-  {
-    return static_cast<int>(std::countl_zero(x));
-  }
+  constexpr Bitboard FILE_A = 0x0101010101010101ULL;
+  constexpr Bitboard FILE_B = 0x0202020202020202ULL;
+  constexpr Bitboard FILE_C = 0x0404040404040404ULL;
+  constexpr Bitboard FILE_D = 0x0808080808080808ULL;
+  constexpr Bitboard FILE_E = 0x1010101010101010ULL;
+  constexpr Bitboard FILE_F = 0x2020202020202020ULL;
+  constexpr Bitboard FILE_G = 0x4040404040404040ULL;
+  constexpr Bitboard FILE_H = 0x8080808080808080ULL;
 
-  // Hot-loop variant: caller guarantees b != 0
+  constexpr Bitboard RANK_1 = 0x00000000000000FFULL;
+  constexpr Bitboard RANK_2 = 0x000000000000FF00ULL;
+  constexpr Bitboard RANK_3 = 0x0000000000FF0000ULL;
+  constexpr Bitboard RANK_4 = 0x00000000FF000000ULL;
+  constexpr Bitboard RANK_5 = 0x000000FF00000000ULL;
+  constexpr Bitboard RANK_6 = 0x0000FF0000000000ULL;
+  constexpr Bitboard RANK_7 = 0x00FF000000000000ULL;
+  constexpr Bitboard RANK_8 = 0xFF00000000000000ULL;
+
+  constexpr Square A1 = 0, D1 = 3, E1 = 4, F1 = 5, H1 = 7;
+  constexpr Square A8 = 56, D8 = 59, E8 = 60, F8 = 61, H8 = 63;
+
+  [[nodiscard]] constexpr bool any(Bitboard b) noexcept { return b != 0; }
+  [[nodiscard]] constexpr bool none(Bitboard b) noexcept { return b == 0; }
+  [[nodiscard]] constexpr int popcount(Bitboard b) noexcept { return std::popcount(b); }
+  [[nodiscard]] constexpr int ctz64(std::uint64_t x) noexcept { return static_cast<int>(std::countr_zero(x)); }
+  [[nodiscard]] constexpr int clz64(std::uint64_t x) noexcept { return static_cast<int>(std::countl_zero(x)); }
+
   [[nodiscard]] LILIA_ALWAYS_INLINE Square pop_lsb_unchecked(Bitboard &b) noexcept
   {
     LILIA_ASSUME(b != 0);
-    const int idx = ctz64(b);
+    const int i = ctz64(b);
     b &= (b - 1);
-    return static_cast<Square>(idx);
+    return static_cast<Square>(i);
   }
 
   [[nodiscard]] LILIA_ALWAYS_INLINE Square pop_lsb(Bitboard &b) noexcept
@@ -69,45 +91,19 @@ namespace lilia::chess::core
     return pop_lsb_unchecked(b);
   }
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard north(Bitboard b) noexcept
-  {
-    return b << 8;
-  }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard south(Bitboard b) noexcept
-  {
-    return b >> 8;
-  }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard east(Bitboard b) noexcept
-  {
-    return (b & ~FILE_H) << 1;
-  }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard west(Bitboard b) noexcept
-  {
-    return (b & ~FILE_A) >> 1;
-  }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard ne(Bitboard b) noexcept
-  {
-    return (b & ~FILE_H) << 9;
-  }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard nw(Bitboard b) noexcept
-  {
-    return (b & ~FILE_A) << 7;
-  }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard se(Bitboard b) noexcept
-  {
-    return (b & ~FILE_H) >> 7;
-  }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard sw(Bitboard b) noexcept
-  {
-    return (b & ~FILE_A) >> 9;
-  }
+  [[nodiscard]] constexpr Bitboard north(Bitboard b) noexcept { return b << 8; }
+  [[nodiscard]] constexpr Bitboard south(Bitboard b) noexcept { return b >> 8; }
+  [[nodiscard]] constexpr Bitboard east(Bitboard b) noexcept { return (b & ~FILE_H) << 1; }
+  [[nodiscard]] constexpr Bitboard west(Bitboard b) noexcept { return (b & ~FILE_A) >> 1; }
+  [[nodiscard]] constexpr Bitboard ne(Bitboard b) noexcept { return (b & ~FILE_H) << 9; }
+  [[nodiscard]] constexpr Bitboard nw(Bitboard b) noexcept { return (b & ~FILE_A) << 7; }
+  [[nodiscard]] constexpr Bitboard se(Bitboard b) noexcept { return (b & ~FILE_H) >> 7; }
+  [[nodiscard]] constexpr Bitboard sw(Bitboard b) noexcept { return (b & ~FILE_A) >> 9; }
 
   namespace detail
   {
-
     template <Bitboard (*Step)(Bitboard)>
-    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard ray_attack_dir_fast(Bitboard from,
-                                                                             Bitboard occ) noexcept
+    [[nodiscard]] constexpr Bitboard ray_attack_dir_fast(Bitboard from, Bitboard occ) noexcept
     {
       Bitboard atk = 0;
       Bitboard r = Step(from);
@@ -128,8 +124,8 @@ namespace lilia::chess::core
       Bitboard l2 = (b & ~(FILE_A | FILE_B)) >> 2;
       Bitboard r1 = (b & ~FILE_H) << 1;
       Bitboard r2 = (b & ~(FILE_H | FILE_G)) << 2;
-      return (l2 << 8) | (l2 >> 8) | (r2 << 8) | (r2 >> 8) | (l1 << 16) | (l1 >> 16) | (r1 << 16) |
-             (r1 >> 16);
+      return (l2 << 8) | (l2 >> 8) | (r2 << 8) | (r2 >> 8) |
+             (l1 << 16) | (l1 >> 16) | (r1 << 16) | (r1 >> 16);
     }
 
     constexpr Bitboard king_from_sq(Square s) noexcept
@@ -156,83 +152,48 @@ namespace lilia::chess::core
 
     inline constexpr auto KNIGHT_ATTACKS = build_knight_table();
     inline constexpr auto KING_ATTACKS = build_king_table();
+  }
 
-  } // namespace detail
-
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard knight_attacks_from(Square s) noexcept
+  [[nodiscard]] constexpr Bitboard knight_attacks_from(Square s) noexcept
   {
     return detail::KNIGHT_ATTACKS[static_cast<int>(s)];
   }
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard king_attacks_from(Square s) noexcept
+  [[nodiscard]] constexpr Bitboard king_attacks_from(Square s) noexcept
   {
     return detail::KING_ATTACKS[static_cast<int>(s)];
   }
 
-  // Runtime-dispatched only; keep as compatibility entry-point.
-  [[nodiscard]] LILIA_ALWAYS_INLINE Bitboard ray_attack_dir(Bitboard from, Bitboard occ,
-                                                            Bitboard (*step)(Bitboard)) noexcept
+  [[nodiscard]] constexpr Bitboard bishop_attacks(Square s, Bitboard occ) noexcept
   {
-    if (step == &north)
-      return detail::ray_attack_dir_fast<north>(from, occ);
-    if (step == &south)
-      return detail::ray_attack_dir_fast<south>(from, occ);
-    if (step == &east)
-      return detail::ray_attack_dir_fast<east>(from, occ);
-    if (step == &west)
-      return detail::ray_attack_dir_fast<west>(from, occ);
-    if (step == &ne)
-      return detail::ray_attack_dir_fast<ne>(from, occ);
-    if (step == &nw)
-      return detail::ray_attack_dir_fast<nw>(from, occ);
-    if (step == &se)
-      return detail::ray_attack_dir_fast<se>(from, occ);
-    if (step == &sw)
-      return detail::ray_attack_dir_fast<sw>(from, occ);
-
-    Bitboard atk = 0;
-    Bitboard r = step(from);
-    while (r)
-    {
-      atk |= r;
-      if (r & occ)
-        break;
-      r = step(r);
-    }
-    return atk;
+    const Bitboard from = sq_bb(s);
+    return detail::ray_attack_dir_fast<ne>(from, occ) |
+           detail::ray_attack_dir_fast<nw>(from, occ) |
+           detail::ray_attack_dir_fast<se>(from, occ) |
+           detail::ray_attack_dir_fast<sw>(from, occ);
   }
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard bishop_attacks(Square s,
-                                                                      Bitboard occ) noexcept
+  [[nodiscard]] constexpr Bitboard rook_attacks(Square s, Bitboard occ) noexcept
   {
-    Bitboard from = sq_bb(s);
-    return detail::ray_attack_dir_fast<ne>(from, occ) | detail::ray_attack_dir_fast<nw>(from, occ) |
-           detail::ray_attack_dir_fast<se>(from, occ) | detail::ray_attack_dir_fast<sw>(from, occ);
-  }
-
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard rook_attacks(Square s,
-                                                                    Bitboard occ) noexcept
-  {
-    Bitboard from = sq_bb(s);
+    const Bitboard from = sq_bb(s);
     return detail::ray_attack_dir_fast<north>(from, occ) |
            detail::ray_attack_dir_fast<south>(from, occ) |
            detail::ray_attack_dir_fast<east>(from, occ) |
            detail::ray_attack_dir_fast<west>(from, occ);
   }
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard queen_attacks(Square s,
-                                                                     Bitboard occ) noexcept
+  [[nodiscard]] constexpr Bitboard queen_attacks(Square s, Bitboard occ) noexcept
   {
     return bishop_attacks(s, occ) | rook_attacks(s, occ);
   }
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard white_pawn_attacks(Bitboard pawns) noexcept
+  [[nodiscard]] constexpr Bitboard white_pawn_attacks(Bitboard pawns) noexcept
   {
     return nw(pawns) | ne(pawns);
   }
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Bitboard black_pawn_attacks(Bitboard pawns) noexcept
+
+  [[nodiscard]] constexpr Bitboard black_pawn_attacks(Bitboard pawns) noexcept
   {
     return sw(pawns) | se(pawns);
   }
-
-} // namespace lilia::model::bb
+} // namespace lilia::chess::bb

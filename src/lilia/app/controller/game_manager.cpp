@@ -44,7 +44,7 @@ namespace lilia::app::controller
     m_black_player = makeSide(cfg.black);
 
     m_game.checkGameResult();
-    if (m_game.getResult() != chess::GameResult::ONGOING)
+    if (m_game.getResult() != chess::GameResult::Ongoing)
     {
       m_cancel_bot.store(true);
       if (onGameEnd_)
@@ -159,7 +159,7 @@ namespace lilia::app::controller
       onMoveExecuted_(mv, wasPlayerMove, onClick);
 
     auto result = m_game.getResult();
-    if (result != chess::GameResult::ONGOING)
+    if (result != chess::GameResult::Ongoing)
     {
       if (onGameEnd_)
         onGameEnd_(result);
