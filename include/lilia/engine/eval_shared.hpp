@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "lilia/chess/core/bitboard.hpp"
+#include "lilia/chess/compiler.hpp"
 
 /**
  * @brief Its like the look up table as shared parameter values for the eval class
@@ -14,7 +15,7 @@
 namespace lilia::engine
 {
 
-  inline constexpr int mirror_sq_black(int sq) noexcept
+  LILIA_ALWAYS_INLINE constexpr int mirror_sq_black(int sq) noexcept
   {
     return sq ^ 56;
   }
@@ -45,7 +46,7 @@ namespace lilia::engine
   void set_eval_param_values(std::span<const int> values);
 
   constexpr int MAX_PHASE = 16;
-  inline int taper(int mg, int eg, int phase)
+  LILIA_ALWAYS_INLINE int taper(int mg, int eg, int phase)
   {
     // mg when phase=MAX_PHASE, eg when phase=0
     return ((mg * phase) + (eg * (MAX_PHASE - phase))) / MAX_PHASE;
@@ -63,7 +64,7 @@ namespace lilia::engine
   constexpr bool PASS_RACE_NEED_QUEENLESS = true; // nur ohne Damen
 
   // Utility wrappers for derived constants
-  inline bool rook_on_start_square(chess::bb::Bitboard rooks, bool white)
+  LILIA_ALWAYS_INLINE bool rook_on_start_square(chess::bb::Bitboard rooks, bool white)
   {
     return white ? (rooks & (chess::bb::sq_bb(chess::Square(0)) | chess::bb::sq_bb(chess::Square(7))))    // a1,h1
                  : (rooks & (chess::bb::sq_bb(chess::Square(56)) | chess::bb::sq_bb(chess::Square(63)))); // a8,h8
@@ -144,7 +145,7 @@ namespace lilia::engine
       12, 10, 4, -4, -4, 2, 4, 6, 6, 4, 2, -4, -8, -4, -4, -2, -2, -4, -4, -8};
 
   // -------- PST accessors (inline) --------
-  inline int pst_mg(chess::PieceType pt, int sq)
+  LILIA_ALWAYS_INLINE int pst_mg(chess::PieceType pt, int sq)
   {
     switch (pt)
     {
@@ -164,7 +165,7 @@ namespace lilia::engine
       return 0;
     }
   }
-  inline int pst_eg(chess::PieceType pt, int sq)
+  LILIA_ALWAYS_INLINE int pst_eg(chess::PieceType pt, int sq)
   {
     switch (pt)
     {

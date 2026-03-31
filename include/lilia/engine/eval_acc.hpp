@@ -5,6 +5,7 @@
 #include "lilia/chess/board.hpp"
 #include "lilia/chess/core/bitboard.hpp"
 #include "lilia/chess/move.hpp"
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::engine
 {
@@ -24,10 +25,10 @@ namespace lilia::engine
         P[i] = N[i] = B[i] = R[i] = Q[i] = 0, kingSq[i] = -1;
     }
 
-    void build_from_board(const chess::Board &b);
-    inline void add_piece(chess::Color c, chess::PieceType pt, int sq);
-    inline void remove_piece(chess::Color c, chess::PieceType pt, int sq);
-    inline void move_piece(chess::Color c, chess::PieceType pt, int from, int to);
+    inline void build_from_board(const chess::Board &b);
+    LILIA_ALWAYS_INLINE void add_piece(chess::Color c, chess::PieceType pt, int sq);
+    LILIA_ALWAYS_INLINE void remove_piece(chess::Color c, chess::PieceType pt, int sq);
+    LILIA_ALWAYS_INLINE void move_piece(chess::Color c, chess::PieceType pt, int from, int to);
   };
 
   struct EvalDelta
@@ -118,7 +119,7 @@ namespace lilia::engine
     }
   }
 
-  inline void EvalAcc::add_piece(chess::Color c, chess::PieceType pt, int sq)
+  LILIA_ALWAYS_INLINE void EvalAcc::add_piece(chess::Color c, chess::PieceType pt, int sq)
   {
     const int s = (c == chess::Color::White ? 0 : 1);
     const int i = (int)pt;
@@ -159,7 +160,7 @@ namespace lilia::engine
     }
   }
 
-  inline void EvalAcc::remove_piece(chess::Color c, chess::PieceType pt, int sq)
+  LILIA_ALWAYS_INLINE void EvalAcc::remove_piece(chess::Color c, chess::PieceType pt, int sq)
   {
     const int s = (c == chess::Color::White ? 0 : 1);
     const int i = (int)pt;
@@ -200,7 +201,7 @@ namespace lilia::engine
     }
   }
 
-  inline void EvalAcc::move_piece(chess::Color c, chess::PieceType pt, int from, int to)
+  LILIA_ALWAYS_INLINE void EvalAcc::move_piece(chess::Color c, chess::PieceType pt, int from, int to)
   {
     if (c == chess::Color::White)
     {

@@ -3,11 +3,12 @@
 #include "config.hpp"
 #include "lilia/chess/move.hpp"
 #include "lilia/chess/position.hpp"
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::engine
 {
 
-  inline int mvv_lva_fast(const chess::Position &pos, const chess::Move &m)
+  LILIA_ALWAYS_INLINE int mvv_lva_fast(const chess::Position &pos, const chess::Move &m)
   {
     if (!m.isCapture() && m.promotion() == chess::PieceType::None)
       return 0;

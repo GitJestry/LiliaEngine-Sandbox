@@ -8,8 +8,8 @@ namespace lilia::chess
 {
 
   // ---------------- Attack query ----------------
-  static LILIA_ALWAYS_INLINE bool attackedBy(const Board &b, Square sq, Color by,
-                                             bb::Bitboard occ) noexcept
+  [[nodiscard]] LILIA_ALWAYS_INLINE bool attackedBy(const Board &b, Square sq, Color by,
+                                                    bb::Bitboard occ) noexcept
   {
     const bb::Bitboard target = bb::sq_bb(sq);
     const bb::Bitboard occ2 = occ & ~target; // do not let the target piece block rays

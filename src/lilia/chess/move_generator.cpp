@@ -6,14 +6,7 @@
 
 #include "lilia/chess/core/magic.hpp"
 #include "lilia/chess/move_helper.hpp"
-
-#if defined(__GNUC__) || defined(__clang__)
-#define LILIA_LIKELY(x) __builtin_expect(!!(x), 1)
-#define LILIA_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#else
-#define LILIA_LIKELY(x) (x)
-#define LILIA_UNLIKELY(x) (x)
-#endif
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::chess
 {
@@ -170,13 +163,12 @@ namespace lilia::chess
                                               Square to) noexcept
     {
       const bb::Bitboard kbb = b.getPieces(side, PT::King);
-      if (!kbb)
+      if (LILIA_UNLIKELY(!kbb))
         return true;
 
       const Square ksq = static_cast<Square>(bb::ctz64(kbb));
 
-      // EP can only expose a rook/queen attack if king and pawn are on the same rank.
-      if (bb::rank_of(ksq) != bb::rank_of(from))
+      if (LILIA_LIKELY(bb::rank_of(ksq) != bb::rank_of(from)))
         return true;
 
       const int to_i = (int)to;
@@ -189,8 +181,9 @@ namespace lilia::chess
       occ |= bb::sq_bb(to);
 
       const bb::Bitboard sliders = b.getPieces(~side, PT::Rook) | b.getPieces(~side, PT::Queen);
-      if (!sliders)
+      if (LILIA_LIKELY(!sliders))
         return true;
+
       const bb::Bitboard rays = magic::sliding_attacks(magic::Slider::Rook, ksq, occ);
       return (rays & sliders) == 0ULL;
     }
@@ -753,7 +746,7 @@ namespace lilia::chess
         }
       }
 
-      if (numCheckers >= 2)
+      if (LILIA_UNLIKELY(numCheckers >= 2))
         return; // only king moves allowed
 
       // Block/capture single checker

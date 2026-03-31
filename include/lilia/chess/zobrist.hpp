@@ -4,6 +4,7 @@
 #include "board.hpp"
 #include "core/bitboard.hpp"
 #include "game_state.hpp"
+#include "compiler.hpp"
 
 namespace lilia::chess
 {
@@ -83,10 +84,10 @@ namespace lilia::chess
     static constexpr void init() noexcept {}
     static void init(std::uint64_t) = delete;
 
-    static inline bb::Bitboard epHashIfRelevant(const Board &b, const GameState &st) noexcept
+    static LILIA_ALWAYS_INLINE bb::Bitboard epHashIfRelevant(const Board &b, const GameState &st) noexcept
     {
       const Square epSq = st.enPassantSquare;
-      if (epSq == NO_SQUARE)
+      if (LILIA_UNLIKELY(epSq == NO_SQUARE))
         return 0ULL;
 
       const int ep = static_cast<int>(epSq);
@@ -102,7 +103,7 @@ namespace lilia::chess
 
   private:
     // Single implementation to avoid template bloat for different PositionLike types.
-    static inline bb::Bitboard compute_from(const Board &b, const GameState &st) noexcept
+    static LILIA_ALWAYS_INLINE bb::Bitboard compute_from(const Board &b, const GameState &st) noexcept
     {
       bb::Bitboard h = 0ULL;
 
@@ -134,14 +135,14 @@ namespace lilia::chess
 
   public:
     template <class PositionLike>
-    static bb::Bitboard compute(const PositionLike &pos) noexcept
+    static LILIA_ALWAYS_INLINE bb::Bitboard compute(const PositionLike &pos) noexcept
     {
       const Board &b = pos.getBoard();
       const GameState &st = pos.getState();
       return compute_from(b, st);
     }
 
-    static bb::Bitboard computePawnKey(const Board &b) noexcept
+    static LILIA_ALWAYS_INLINE bb::Bitboard computePawnKey(const Board &b) noexcept
     {
       bb::Bitboard h = 0ULL;
       constexpr int pawnIdx = 0; // Pawn == 0

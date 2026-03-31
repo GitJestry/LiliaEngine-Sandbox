@@ -6,16 +6,7 @@
 
 #include "core/bitboard.hpp"
 #include "core/piece_encoding.hpp"
-
-#ifndef LILIA_ALWAYS_INLINE
-#if defined(_MSC_VER)
-#define LILIA_ALWAYS_INLINE __forceinline
-#elif defined(__GNUC__) || defined(__clang__)
-#define LILIA_ALWAYS_INLINE inline __attribute__((always_inline))
-#else
-#define LILIA_ALWAYS_INLINE inline
-#endif
-#endif
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::chess
 {
@@ -41,7 +32,7 @@ namespace lilia::chess
     LILIA_ALWAYS_INLINE bb::Bitboard getPieces(Color c, PieceType t) const noexcept
     {
       const int ti = bb::type_index(t);
-      return (ti < 0) ? 0ULL : m_bb[bb::ci(c)][ti];
+      return LILIA_UNLIKELY(ti < 0) ? 0ULL : m_bb[bb::ci(c)][ti];
     }
 
     LILIA_ALWAYS_INLINE void movePiece_noCapture(Square from, Square to) noexcept;
@@ -95,7 +86,7 @@ namespace lilia::chess
   constexpr std::uint8_t Board::pack_piece(Piece p) noexcept
   {
     const int ti = bb::type_index(p.type);
-    if (ti < 0)
+    if (LILIA_UNLIKELY(ti < 0))
       return 0;
 
 #ifndef NDEBUG
@@ -122,12 +113,13 @@ namespace lilia::chess
 #ifndef NDEBUG
     assert(s >= 0 && s < 64);
 #endif
+    LILIA_ASSUME(s < 64);
 
     const bb::Bitboard mask = bb::sq_bb(sq);
 
     const std::uint8_t newPacked = pack_piece(p);
     const std::uint8_t oldPacked = m_piece_on[s];
-    if (oldPacked == newPacked)
+    if (LILIA_UNLIKELY(oldPacked == newPacked))
       return;
 
     // Remove old if present
@@ -165,9 +157,10 @@ namespace lilia::chess
 #ifndef NDEBUG
     assert(s >= 0 && s < 64);
 #endif
+    LILIA_ASSUME(s < 64);
 
     const std::uint8_t packed = m_piece_on[s];
-    if (!packed)
+    if (LILIA_UNLIKELY(!packed))
       return;
 
     const int ti = decode_ti(packed);
@@ -187,7 +180,7 @@ namespace lilia::chess
   LILIA_ALWAYS_INLINE std::optional<Piece> Board::getPiece(Square sq) const noexcept
   {
     const std::uint8_t packed = m_piece_on[static_cast<int>(sq)];
-    if (!packed)
+    if (LILIA_UNLIKELY(!packed))
       return std::nullopt;
     // Avoid extra temporaries; still returns the same type.
     return std::optional<Piece>{std::in_place, unpack_piece(packed)};
@@ -200,13 +193,15 @@ namespace lilia::chess
 #ifndef NDEBUG
     assert(sf >= 0 && sf < 64 && st >= 0 && st < 64);
 #endif
+    LILIA_ASSUME(sf < 64);
+    LILIA_ASSUME(st < 64);
 
     const std::uint8_t packed = m_piece_on[sf];
 #ifndef NDEBUG
     assert(packed != 0 && "movePiece_noCapture: from must be occupied");
     assert(m_piece_on[st] == 0 && "movePiece_noCapture: 'to' must be empty");
 #else
-    if (!packed)
+    if (LILIA_UNLIKELY(!packed))
       return;
 #endif
 
@@ -244,12 +239,15 @@ namespace lilia::chess
 #ifndef NDEBUG
     assert(sf >= 0 && sf < 64 && sc >= 0 && sc < 64 && st >= 0 && st < 64);
 #endif
+    LILIA_ASSUME(sf < 64);
+    LILIA_ASSUME(sc < 64);
+    LILIA_ASSUME(st < 64);
 
     const std::uint8_t moverPacked = m_piece_on[sf];
 #ifndef NDEBUG
     assert(moverPacked != 0 && "movePiece_withCapture: from must be occupied");
 #else
-    if (!moverPacked)
+    if (LILIA_UNLIKELY(!moverPacked))
       return;
 #endif
 

@@ -1,16 +1,5 @@
 #pragma once
 
-// -----------------------------------------------------------------------------
-// Branch-Prediction Hints
-// -----------------------------------------------------------------------------
-#if defined(__GNUC__) || defined(__clang__)
-#define LILIA_LIKELY(x) __builtin_expect(!!(x), 1)
-#define LILIA_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#else
-#define LILIA_LIKELY(x) (x)
-#define LILIA_UNLIKELY(x) (x)
-#endif
-
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -26,6 +15,7 @@
 #include "tt5.hpp"
 #include "config.hpp"
 #include "eval.hpp"
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::engine
 {
@@ -80,16 +70,16 @@ namespace lilia::engine
     int search_root_lazy_smp(SearchPosition &pos, int maxDepth,
                              std::shared_ptr<std::atomic<bool>> stop, int maxThreads,
                              std::uint64_t maxNodes = 0);
-    void set_node_limit(std::shared_ptr<std::atomic<std::uint64_t>> shared, std::uint64_t limit)
+    LILIA_ALWAYS_INLINE void set_node_limit(std::shared_ptr<std::atomic<std::uint64_t>> shared, std::uint64_t limit)
     {
       sharedNodes = std::move(shared);
       nodeLimit = limit;
     }
 
-    [[nodiscard]] const SearchStats &getStats() const noexcept { return stats; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE const SearchStats &getStats() const noexcept { return stats; }
     void clearSearchState(); // Killers/History reset
 
-    TT5 &ttRef() noexcept { return tt; }
+    LILIA_ALWAYS_INLINE TT5 &ttRef() noexcept { return tt; }
 
     // Killers: 2 every Ply
     alignas(64) std::array<std::array<chess::Move, 2>, MAX_PLY> killers{};
@@ -110,8 +100,8 @@ namespace lilia::engine
     alignas(64) int16_t counterHist[chess::SQ_NB][chess::SQ_NB] = {};
     alignas(64) int16_t contHist[CH_LAYERS][chess::PIECE_TYPE_NB][chess::SQ_NB][chess::PIECE_TYPE_NB][chess::SQ_NB];
 
-    void set_thread_id(int id) { thread_id_ = id; }
-    int thread_id() const { return thread_id_; }
+    LILIA_ALWAYS_INLINE void set_thread_id(int id) { thread_id_ = id; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE int thread_id() const { return thread_id_; }
 
   private:
     int thread_id_ = 0; // 0 = main, >0 helpers
@@ -131,28 +121,30 @@ namespace lilia::engine
     static constexpr uint32_t TICK_STEP = 1024;
 
     // to reduce exact node count
-    inline void fast_tick()
+    LILIA_ALWAYS_INLINE void fast_tick()
     {
       ++tick_;
-      if ((tick_ & (TICK_STEP - 1)) != 0)
+
+      if (LILIA_LIKELY((tick_ & (TICK_STEP - 1)) != 0))
         return;
 
       if (sharedNodes)
       {
         auto cur = sharedNodes->fetch_add(TICK_STEP, std::memory_order_relaxed) + TICK_STEP;
-        if (nodeLimit && cur >= nodeLimit)
+        if (LILIA_UNLIKELY(nodeLimit && cur >= nodeLimit))
         {
           if (stopFlag)
             stopFlag->store(true, std::memory_order_relaxed);
           throw SearchStoppedException();
         }
       }
-      if (stopFlag && stopFlag->load(std::memory_order_relaxed))
+
+      if (LILIA_UNLIKELY(stopFlag && stopFlag->load(std::memory_order_relaxed)))
         throw SearchStoppedException();
     }
 
     // so that the last nodes still count
-    inline void flush_tick()
+    LILIA_ALWAYS_INLINE void flush_tick()
     {
       if (!sharedNodes)
         return;

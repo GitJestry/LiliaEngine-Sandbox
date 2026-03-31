@@ -1,11 +1,12 @@
 #pragma once
 #include "lilia/chess/move.hpp"
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::engine
 {
 
   // descending insertion sort on parallel arrays
-  inline void sort_by_score_desc(int *score, chess::Move *moves, int n)
+  LILIA_ALWAYS_INLINE void sort_by_score_desc(int *score, chess::Move *moves, int n)
   {
     for (int i = 1; i < n; ++i)
     {

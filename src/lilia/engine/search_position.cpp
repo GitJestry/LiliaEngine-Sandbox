@@ -1,12 +1,13 @@
 #include "lilia/engine/search_position.hpp"
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::engine
 {
   namespace
   {
-    bool isCastleMove(const chess::Position &pos, const chess::Move &m, const chess::Piece &fromPiece)
+    LILIA_ALWAYS_INLINE bool isCastleMove(const chess::Position &pos, const chess::Move &m, const chess::Piece &fromPiece)
     {
-      if (m.castle() != chess::CastleSide::None)
+      if (LILIA_UNLIKELY(m.castle() != chess::CastleSide::None))
         return true;
 
       if (fromPiece.type != chess::PieceType::King)
@@ -23,9 +24,9 @@ namespace lilia::engine
       return false;
     }
 
-    bool isEnPassantMove(const chess::Position &pos, const chess::Move &m, const chess::Piece &fromPiece)
+    LILIA_ALWAYS_INLINE bool isEnPassantMove(const chess::Position &pos, const chess::Move &m, const chess::Piece &fromPiece)
     {
-      if (m.isEnPassant())
+      if (LILIA_UNLIKELY(m.isEnPassant()))
         return true;
 
       if (fromPiece.type != chess::PieceType::Pawn)

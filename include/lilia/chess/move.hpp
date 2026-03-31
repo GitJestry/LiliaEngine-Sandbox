@@ -3,6 +3,7 @@
 #include <type_traits>
 
 #include "chess_types.hpp"
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::chess
 {
@@ -61,21 +62,21 @@ namespace lilia::chess
     static constexpr Move null() noexcept { return Move{}; }
 
     // Accessors (raw-based)
-    [[nodiscard]] constexpr Square from() const noexcept
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Square from() const noexcept
     {
       return static_cast<Square>((raw >> FROM_SHIFT) & 0x3Fu);
     }
-    [[nodiscard]] constexpr Square to() const noexcept
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Square to() const noexcept
     {
       return static_cast<Square>((raw >> TO_SHIFT) & 0x3Fu);
     }
-    [[nodiscard]] constexpr PieceType promotion() const noexcept
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr PieceType promotion() const noexcept
     {
       return static_cast<PieceType>((raw >> PROMO_SHIFT) & 0x0Fu);
     }
-    [[nodiscard]] constexpr bool isCapture() const noexcept { return (raw & CAP_MASK) != 0; }
-    [[nodiscard]] constexpr bool isEnPassant() const noexcept { return (raw & EP_MASK) != 0; }
-    [[nodiscard]] constexpr CastleSide castle() const noexcept
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool isCapture() const noexcept { return (raw & CAP_MASK) != 0; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool isEnPassant() const noexcept { return (raw & EP_MASK) != 0; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr CastleSide castle() const noexcept
     {
       return static_cast<CastleSide>((raw >> CASTLE_SHIFT) & 0x03u);
     }
@@ -102,15 +103,15 @@ namespace lilia::chess
     constexpr void clear_flags() noexcept { raw &= ~(CAP_MASK | EP_MASK | CASTLE_MASK); }
 
     // Convenience helpers
-    [[nodiscard]] constexpr bool isCastle() const noexcept { return (raw & CASTLE_MASK) != 0; }
-    [[nodiscard]] constexpr bool isQuiet() const noexcept
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool isCastle() const noexcept { return (raw & CASTLE_MASK) != 0; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool isQuiet() const noexcept
     {
       return (raw & (CAP_MASK | EP_MASK | CASTLE_MASK | PROMO_MASK)) == 0;
     }
-    [[nodiscard]] constexpr bool isNull() const noexcept { return raw == 0; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool isNull() const noexcept { return raw == 0; }
 
     // 16-bit packing: low 16 bits are exactly from/to/promo
-    [[nodiscard]] constexpr std::uint16_t pack16() const noexcept
+    [[nodiscard]] LILIA_ALWAYS_INLINE constexpr std::uint16_t pack16() const noexcept
     {
       return static_cast<std::uint16_t>(raw & PACK16_MASK);
     }

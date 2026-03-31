@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "lilia/chess/move.hpp"
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::engine
 {
@@ -33,21 +34,6 @@ namespace lilia::engine
     std::uint8_t age = 0;                                     // generation (mod 256)
     int16_t staticEval = std::numeric_limits<int16_t>::min(); // INT16_MIN == "unset"
   };
-
-// -----------------------------------------------------------------------------
-// Tunables / platform helpers
-// -----------------------------------------------------------------------------
-#if defined(__GNUC__) || defined(__clang__)
-#define LILIA_LIKELY(x) (__builtin_expect(!!(x), 1))
-#define LILIA_UNLIKELY(x) (__builtin_expect(!!(x), 0))
-#define LILIA_PREFETCH_L1(ptr) __builtin_prefetch((ptr), 0, 3)
-#define LILIA_PREFETCHW_L1(ptr) __builtin_prefetch((ptr), 1, 3)
-#else
-#define LILIA_LIKELY(x) (x)
-#define LILIA_UNLIKELY(x) (x)
-#define LILIA_PREFETCH_L1(ptr) ((void)0)
-#define LILIA_PREFETCHW_L1(ptr) ((void)0)
-#endif
 
 #ifndef TT5_INDEX_MIX
 // 0: use low bits of Zobrist (fastest; Zobrist already random)
@@ -124,17 +110,17 @@ namespace lilia::engine
       generation_.store(1u, std::memory_order_relaxed);
     }
 
-    inline void new_generation() noexcept
+    LILIA_ALWAYS_INLINE void new_generation() noexcept
     {
       std::uint32_t g = generation_.fetch_add(1u, std::memory_order_relaxed) + 1u;
       if (g == 0u)
         generation_.store(1u, std::memory_order_relaxed);
     }
 
-    inline void prefetch(std::uint64_t key) const noexcept { LILIA_PREFETCH_L1(&table_[index(key)]); }
+    LILIA_ALWAYS_INLINE void prefetch(std::uint64_t key) const noexcept { LILIA_PREFETCH_L1(&table_[index(key)]); }
 
     // --- Probe into user entry ---
-    bool probe_into(std::uint64_t key, TTEntry5 &out) const noexcept
+    LILIA_ALWAYS_INLINE bool probe_into(std::uint64_t key, TTEntry5 &out) const noexcept
     {
       const Cluster &c = table_[index(key)];
       LILIA_PREFETCH_L1(&c);
@@ -147,17 +133,17 @@ namespace lilia::engine
         const std::uint64_t info1 = ent.info.load(std::memory_order_acquire);
 
         // occupied?
-        if (LILIA_UNLIKELY((info1 & INFO_VALID_MASK) == 0ull))
+        if ((info1 & INFO_VALID_MASK) == 0ull)
           continue;
 
         // key low fast-reject
-        if (LILIA_UNLIKELY((info1 & INFO_KEYLO_MASK) != keyLo))
+        if ((info1 & INFO_KEYLO_MASK) != keyLo)
           continue;
 
         // key high fast-reject (from info)
         const std::uint16_t infoKeyHi =
             static_cast<std::uint16_t>((info1 >> INFO_KEYHI_SHIFT) & 0xFFFFu);
-        if (LILIA_UNLIKELY(infoKeyHi != keyHi))
+        if (infoKeyHi != keyHi)
           continue;
 
         // read data
@@ -198,7 +184,7 @@ namespace lilia::engine
       return false;
     }
 
-    std::optional<TTEntry5> probe(std::uint64_t key) const
+    LILIA_ALWAYS_INLINE std::optional<TTEntry5> probe(std::uint64_t key) const
     {
       TTEntry5 tmp{};
       if (probe_into(key, tmp))
@@ -445,7 +431,7 @@ namespace lilia::engine
         std::uint64_t oldInfo = ent.info.load(std::memory_order_acquire);
         if ((oldInfo & INFO_VALID_MASK) == 0ull)
           continue;
-        if (oldInfo & INFO_BUSY_MASK)
+        if (LILIA_UNLIKELY(oldInfo & INFO_BUSY_MASK))
           continue;
         if ((oldInfo & INFO_KEYLO_MASK) != keyLo)
           continue;
@@ -497,7 +483,7 @@ namespace lilia::engine
 
       auto &ent = c.e[victim];
       std::uint64_t oldInfo = ent.info.load(std::memory_order_acquire);
-      if (oldInfo & INFO_BUSY_MASK)
+      if (LILIA_UNLIKELY(oldInfo & INFO_BUSY_MASK))
         return;
 
       if (info_quality(oldInfo) > newQ)
@@ -524,7 +510,7 @@ namespace lilia::engine
     static constexpr std::uint64_t INFO_VALID_MASK = (1ull << 63);
 
     // --- move packing (16 bit) ---
-    static inline std::uint16_t promo_to3(chess::PieceType p) noexcept
+    static LILIA_ALWAYS_INLINE std::uint16_t promo_to3(chess::PieceType p) noexcept
     {
       switch (p)
       {
@@ -540,7 +526,7 @@ namespace lilia::engine
         return 0;
       }
     }
-    static inline chess::PieceType promo_from3(uint16_t v) noexcept
+    static LILIA_ALWAYS_INLINE chess::PieceType promo_from3(uint16_t v) noexcept
     {
       switch (v & 0x7)
       {
@@ -556,7 +542,7 @@ namespace lilia::engine
         return chess::PieceType::None;
       }
     }
-    static inline std::uint16_t pack_move16(const chess::Move &m) noexcept
+    static LILIA_ALWAYS_INLINE std::uint16_t pack_move16(const chess::Move &m) noexcept
     {
       const std::uint16_t from = static_cast<std::uint16_t>(static_cast<unsigned>(m.from()) & 0x3F);
       const std::uint16_t to = static_cast<std::uint16_t>(static_cast<unsigned>(m.to()) & 0x3F);
@@ -564,7 +550,7 @@ namespace lilia::engine
       const std::uint16_t cap = m.isCapture() ? 1u : 0u;
       return static_cast<std::uint16_t>(from | (to << 6) | (pr3 << 12) | (cap << 15));
     }
-    static inline chess::Move unpack_move16(std::uint16_t v) noexcept
+    static LILIA_ALWAYS_INLINE chess::Move unpack_move16(std::uint16_t v) noexcept
     {
       chess::Move m{};
       m.set_from(static_cast<chess::Square>(v & 0x3F));
@@ -577,7 +563,7 @@ namespace lilia::engine
     }
 
     // --- replacement score: lower is worse (chosen as victim) ---
-    static inline int repl_score(const TTEntryPacked &ent, std::uint8_t curAge) noexcept
+    static LILIA_ALWAYS_INLINE int repl_score(const TTEntryPacked &ent, std::uint8_t curAge) noexcept
     {
       const std::uint64_t info = ent.info.load(std::memory_order_relaxed);
 
@@ -600,7 +586,7 @@ namespace lilia::engine
       return (int)dep * 512 + boundBias - (ageDelta * 2);
     }
 
-    inline std::size_t index(std::uint64_t key) const noexcept
+    LILIA_ALWAYS_INLINE std::size_t index(std::uint64_t key) const noexcept
     {
 #if TT5_INDEX_MIX
       // Cheap mix (Zobrist is already random; this is just insurance)

@@ -28,24 +28,24 @@ namespace lilia::engine
     }
 
     // ---- pure chess accessors ----
-    const chess::Position &position() const noexcept { return m_pos; }
+    LILIA_ALWAYS_INLINE const chess::Position &position() const noexcept { return m_pos; }
 
-    const chess::Board &getBoard() const noexcept { return m_pos.getBoard(); }
-    const chess::GameState &getState() const noexcept { return m_pos.getState(); }
+    LILIA_ALWAYS_INLINE const chess::Board &getBoard() const noexcept { return m_pos.getBoard(); }
+    LILIA_ALWAYS_INLINE const chess::GameState &getState() const noexcept { return m_pos.getState(); }
 
-    std::uint64_t hash() const noexcept { return m_pos.hash(); }
-    bool lastMoveGaveCheck() const noexcept { return m_pos.lastMoveGaveCheck(); }
+    LILIA_ALWAYS_INLINE std::uint64_t hash() const noexcept { return m_pos.hash(); }
+    LILIA_ALWAYS_INLINE bool lastMoveGaveCheck() const noexcept { return m_pos.lastMoveGaveCheck(); }
 
     bool checkInsufficientMaterial() { return m_pos.checkInsufficientMaterial(); }
     bool checkMoveRule() { return m_pos.checkMoveRule(); }
     bool checkRepetition() { return m_pos.checkRepetition(); }
 
-    bool inCheck() const { return m_pos.inCheck(); }
-    bool see(const chess::Move &m) const { return m_pos.see(m); }
-    bool isPseudoLegal(const chess::Move &m) const { return m_pos.isPseudoLegal(m); }
+    LILIA_ALWAYS_INLINE bool inCheck() const { return m_pos.inCheck(); }
+    LILIA_ALWAYS_INLINE bool see(const chess::Move &m) const { return m_pos.see(m); }
+    LILIA_ALWAYS_INLINE bool isPseudoLegal(const chess::Move &m) const { return m_pos.isPseudoLegal(m); }
 
     // ---- engine eval access ----
-    const EvalAcc &evalAcc() const noexcept { return m_eval; }
+    LILIA_ALWAYS_INLINE const EvalAcc &evalAcc() const noexcept { return m_eval; }
     void rebuildEvalAcc() { m_eval.build_from_board(m_pos.getBoard()); }
 
     // ---- incremental make/unmake ----

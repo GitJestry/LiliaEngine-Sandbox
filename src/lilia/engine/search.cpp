@@ -22,13 +22,14 @@
 #include "lilia/engine/thread_pool.hpp"
 #include "lilia/chess/core/bitboard.hpp"
 #include "lilia/chess/core/magic.hpp"
+#include "lilia/chess/compiler.hpp"
 
 namespace lilia::engine
 {
 
   using steady_clock = std::chrono::steady_clock;
 
-  inline int16_t clamp16(int x)
+  LILIA_ALWAYS_INLINE int16_t clamp16(int x)
   {
     if (x > 32767)
       return 32767;
@@ -37,24 +38,24 @@ namespace lilia::engine
     return (int16_t)x;
   }
 
-  inline int mate_in(int ply)
+  LILIA_ALWAYS_INLINE int mate_in(int ply)
   {
     return MATE - ply;
   }
-  inline int mated_in(int ply)
+  LILIA_ALWAYS_INLINE int mated_in(int ply)
   {
     return -MATE + ply;
   }
-  inline bool is_mate_score(int s)
+  LILIA_ALWAYS_INLINE bool is_mate_score(int s)
   {
     return std::abs(s) >= MATE_THR;
   }
-  inline int cap_ply(int ply)
+  LILIA_ALWAYS_INLINE int cap_ply(int ply)
   {
     return ply < 0 ? 0 : (ply >= MAX_PLY ? (MAX_PLY - 1) : ply);
   }
 
-  inline int encode_tt_score(int s, int ply)
+  LILIA_ALWAYS_INLINE int encode_tt_score(int s, int ply)
   {
     if (s >= MATE_THR)
       return s + ply;
@@ -62,7 +63,7 @@ namespace lilia::engine
       return s - ply;
     return s;
   }
-  inline int decode_tt_score(int s, int ply)
+  LILIA_ALWAYS_INLINE int decode_tt_score(int s, int ply)
   {
     if (s >= MATE_THR)
       return s - ply;
@@ -88,23 +89,23 @@ namespace lilia::engine
     {
       SearchPosition &pos;
       bool applied = false;
-      explicit MoveUndoGuard(SearchPosition &p) : pos(p) {}
-      bool doMove(const chess::Move &m)
+      LILIA_ALWAYS_INLINE explicit MoveUndoGuard(SearchPosition &p) : pos(p) {}
+      LILIA_ALWAYS_INLINE bool doMove(const chess::Move &m)
       {
         applied = pos.doMove(m);
         return applied;
       }
-      void rollback()
+      LILIA_ALWAYS_INLINE void rollback()
       {
-        if (applied)
+        if (LILIA_UNLIKELY(applied))
         {
           pos.undoMove();
           applied = false;
         }
       }
-      ~MoveUndoGuard()
+      LILIA_ALWAYS_INLINE ~MoveUndoGuard()
       {
-        if (applied)
+        if (LILIA_UNLIKELY(applied))
           pos.undoMove();
       }
     };
@@ -113,35 +114,35 @@ namespace lilia::engine
     {
       SearchPosition &pos;
       bool applied = false;
-      explicit NullUndoGuard(SearchPosition &p) : pos(p) {}
-      bool doNull()
+      LILIA_ALWAYS_INLINE explicit NullUndoGuard(SearchPosition &p) : pos(p) {}
+      LILIA_ALWAYS_INLINE bool doNull()
       {
         applied = pos.doNullMove();
         return applied;
       }
-      void rollback()
+      LILIA_ALWAYS_INLINE void rollback()
       {
-        if (applied)
+        if (LILIA_UNLIKELY(applied))
         {
           pos.undoNullMove();
           applied = false;
         }
       }
-      ~NullUndoGuard()
+      LILIA_ALWAYS_INLINE ~NullUndoGuard()
       {
-        if (applied)
+        if (LILIA_UNLIKELY(applied))
           pos.undoNullMove();
       }
     };
 
-    inline void check_stop(const std::shared_ptr<std::atomic<bool>> &stopFlag)
+    LILIA_ALWAYS_INLINE void check_stop(const std::shared_ptr<std::atomic<bool>> &stopFlag)
     {
-      if (stopFlag && stopFlag->load())
+      if (LILIA_UNLIKELY(stopFlag && stopFlag->load(std::memory_order_relaxed)))
         throw SearchStoppedException();
     }
 
     // piece index [0..5] for Pawn..King
-    inline int pidx(chess::PieceType pt)
+    LILIA_ALWAYS_INLINE int pidx(chess::PieceType pt)
     {
       switch (pt)
       {
@@ -165,7 +166,7 @@ namespace lilia::engine
 
     // --- kleine Int-Tools / History-Update ---
 
-    static inline int ilog2_u32(unsigned v)
+    static LILIA_ALWAYS_INLINE int ilog2_u32(unsigned v)
     {
 #if defined(__GNUC__) || defined(__clang__)
       return v ? 31 - __builtin_clz(v) : 0;
@@ -176,12 +177,12 @@ namespace lilia::engine
       return r;
 #endif
     }
-    static inline int iabs_int(int x)
+    static LILIA_ALWAYS_INLINE int iabs_int(int x)
     {
       return x < 0 ? -x : x;
     }
 
-    static inline int hist_bonus(int depth)
+    static LILIA_ALWAYS_INLINE int hist_bonus(int depth)
     {
       unsigned x = (unsigned)(depth * depth) + 1u;
       int lg = ilog2_u32(x);
@@ -189,7 +190,7 @@ namespace lilia::engine
     }
 
     template <typename T>
-    static inline void hist_update(T &h, int bonus)
+    static LILIA_ALWAYS_INLINE void hist_update(T &h, int bonus)
     {
       int x = (int)h;
       x += bonus - (x * iabs_int(bonus)) / 32768;
@@ -200,20 +201,20 @@ namespace lilia::engine
       h = (T)x;
     }
 
-    static inline int gen_all(chess::MoveGenerator &mg, SearchPosition &pos, chess::Move *out,
-                              int cap)
+    static LILIA_ALWAYS_INLINE int gen_all(chess::MoveGenerator &mg, SearchPosition &pos, chess::Move *out,
+                                           int cap)
     {
       chess::MoveBuffer buf(out, cap);
       return mg.generatePseudoLegalMoves(pos.getBoard(), pos.getState(), buf);
     }
-    static inline int gen_caps(chess::MoveGenerator &mg, SearchPosition &pos, chess::Move *out,
-                               int cap)
+    static LILIA_ALWAYS_INLINE int gen_caps(chess::MoveGenerator &mg, SearchPosition &pos, chess::Move *out,
+                                            int cap)
     {
       chess::MoveBuffer buf(out, cap);
       return mg.generateCapturesOnly(pos.getBoard(), pos.getState(), buf);
     }
-    static inline int gen_evasions(chess::MoveGenerator &mg, SearchPosition &pos, chess::Move *out,
-                                   int cap)
+    static LILIA_ALWAYS_INLINE int gen_evasions(chess::MoveGenerator &mg, SearchPosition &pos, chess::Move *out,
+                                                int cap)
     {
       chess::MoveBuffer buf(out, cap);
       return mg.generateEvasions(pos.getBoard(), pos.getState(), buf);
@@ -716,26 +717,23 @@ namespace lilia::engine
     class ThreadNodeBatch
     {
     public:
-      void reset() { local_ = 0; }
+      LILIA_ALWAYS_INLINE void reset() { local_ = 0; }
 
-      void bump(const std::shared_ptr<std::atomic<std::uint64_t>> &counter, std::uint64_t limit,
-                const std::shared_ptr<std::atomic<bool>> &stopFlag)
+      LILIA_ALWAYS_INLINE void bump(const std::shared_ptr<std::atomic<std::uint64_t>> &counter, std::uint64_t limit,
+                                    const std::shared_ptr<std::atomic<bool>> &stopFlag)
       {
         ++local_;
-        if ((local_ & 63u) == 0u)
+        if (LILIA_UNLIKELY((local_ & 63u) == 0u))
         {
           if (stopFlag && stopFlag->load(std::memory_order_relaxed))
-          {
             throw SearchStoppedException();
-          }
         }
-        if (local_ >= TICK_STEP)
-        {
+
+        if (LILIA_UNLIKELY(local_ >= TICK_STEP))
           flush_batch(counter, limit, stopFlag);
-        }
       }
 
-      std::uint64_t flush(const std::shared_ptr<std::atomic<std::uint64_t>> &counter)
+      LILIA_ALWAYS_INLINE std::uint64_t flush(const std::shared_ptr<std::atomic<std::uint64_t>> &counter)
       {
         if (!counter)
         {
@@ -754,21 +752,21 @@ namespace lilia::engine
       }
 
     private:
-      void flush_batch(const std::shared_ptr<std::atomic<std::uint64_t>> &counter, std::uint64_t limit,
-                       const std::shared_ptr<std::atomic<bool>> &stopFlag)
+      LILIA_ALWAYS_INLINE void flush_batch(const std::shared_ptr<std::atomic<std::uint64_t>> &counter, std::uint64_t limit,
+                                           const std::shared_ptr<std::atomic<bool>> &stopFlag)
       {
         local_ -= TICK_STEP;
         if (counter)
         {
           std::uint64_t cur = counter->fetch_add(TICK_STEP, std::memory_order_relaxed) + TICK_STEP;
-          if (limit && cur >= limit)
+          if (LILIA_UNLIKELY(limit && cur >= limit))
           {
             if (stopFlag)
               stopFlag->store(true, std::memory_order_relaxed);
             throw SearchStoppedException();
           }
         }
-        if (stopFlag && stopFlag->load(std::memory_order_relaxed))
+        if (LILIA_UNLIKELY(stopFlag && stopFlag->load(std::memory_order_relaxed)))
         {
           throw SearchStoppedException();
         }
@@ -778,18 +776,18 @@ namespace lilia::engine
       uint32_t local_ = 0;
     };
 
-    ThreadNodeBatch &node_batch()
+    LILIA_ALWAYS_INLINE ThreadNodeBatch &node_batch()
     {
       static thread_local ThreadNodeBatch instance;
       return instance;
     }
 
-    inline void reset_node_batch()
+    LILIA_ALWAYS_INLINE void reset_node_batch()
     {
       node_batch().reset();
     }
 
-    inline std::uint64_t flush_node_batch(const std::shared_ptr<std::atomic<std::uint64_t>> &counter)
+    LILIA_ALWAYS_INLINE std::uint64_t flush_node_batch(const std::shared_ptr<std::atomic<std::uint64_t>> &counter)
     {
       return node_batch().flush(counter);
     }
@@ -797,12 +795,12 @@ namespace lilia::engine
     class NodeFlushGuard
     {
     public:
-      explicit NodeFlushGuard(const std::shared_ptr<std::atomic<std::uint64_t>> &counter)
+      LILIA_ALWAYS_INLINE explicit NodeFlushGuard(const std::shared_ptr<std::atomic<std::uint64_t>> &counter)
           : counter_(counter)
       {
         reset_node_batch();
       }
-      ~NodeFlushGuard()
+      LILIA_ALWAYS_INLINE ~NodeFlushGuard()
       {
         // Force-flush this thread's local batch, even if we’re exiting via exception.
         (void)flush_node_batch(counter_);
@@ -814,9 +812,9 @@ namespace lilia::engine
 
   } // namespace
 
-  inline void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>> &counter,
-                                std::uint64_t limit,
-                                const std::shared_ptr<std::atomic<bool>> &stopFlag)
+  LILIA_ALWAYS_INLINE void bump_node_or_stop(const std::shared_ptr<std::atomic<std::uint64_t>> &counter,
+                                             std::uint64_t limit,
+                                             const std::shared_ptr<std::atomic<bool>> &stopFlag)
   {
     node_batch().bump(counter, limit, stopFlag);
   }
@@ -2789,7 +2787,7 @@ namespace lilia::engine
   }
 
   // EMA merge toward the worker's values: G += (L - G) / K
-  static inline int16_t ema_merge(int16_t G, int16_t L, int K)
+  static LILIA_ALWAYS_INLINE int16_t ema_merge(int16_t G, int16_t L, int K)
   {
     int d = (int)L - (int)G;
     return clamp16((int)G + d / K);

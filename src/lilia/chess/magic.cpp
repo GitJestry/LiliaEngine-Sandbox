@@ -12,14 +12,7 @@
 #include "lilia/chess/core/random.hpp"
 #include "lilia/chess/generated/magic_constants.hpp"
 #include "lilia/chess/magic_serializer.hpp"
-
-#if defined(__GNUC__) || defined(__clang__)
-#define LILIA_LIKELY(x) __builtin_expect(!!(x), 1)
-#define LILIA_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#else
-#define LILIA_LIKELY(x) (x)
-#define LILIA_UNLIKELY(x) (x)
-#endif
+#include "lilia/chess/compiler.hpp"
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
 #if defined(__BMI2__) || defined(_MSC_VER)
@@ -70,15 +63,15 @@ namespace lilia::chess::magic
     }
   }
 
-  static inline bb::Bitboard brute_rook(Square sq, bb::Bitboard occ)
+  static LILIA_ALWAYS_INLINE bb::Bitboard brute_rook(Square sq, bb::Bitboard occ)
   {
     return bb::rook_attacks(sq, occ);
   }
-  static inline bb::Bitboard brute_bishop(Square sq, bb::Bitboard occ)
+  static LILIA_ALWAYS_INLINE bb::Bitboard brute_bishop(Square sq, bb::Bitboard occ)
   {
     return bb::bishop_attacks(sq, occ);
   }
-  static inline bb::Bitboard brute_attacks(Slider s, Square sq, bb::Bitboard occ)
+  static LILIA_ALWAYS_INLINE bb::Bitboard brute_attacks(Slider s, Square sq, bb::Bitboard occ)
   {
     return (s == Slider::Rook) ? brute_rook(sq, occ) : brute_bishop(sq, occ);
   }
@@ -96,8 +89,8 @@ namespace lilia::chess::magic
 
   // Hot-path index: NO popcount, NO additional masking.
   // Safe for shift==64 via guard (avoids UB shift-by-64).
-  static inline std::uint32_t index_for_occ_fast(bb::Bitboard occ, bb::Bitboard mask,
-                                                 bb::Bitboard magic, std::uint8_t shift) noexcept
+  static LILIA_ALWAYS_INLINE std::uint32_t index_for_occ_fast(bb::Bitboard occ, bb::Bitboard mask,
+                                                              bb::Bitboard magic, std::uint8_t shift) noexcept
   {
     if (LILIA_UNLIKELY(shift >= 64))
       return 0u;

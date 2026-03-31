@@ -6,6 +6,7 @@
 #include "core/bitboard.hpp"
 #include "game_state.hpp"
 #include "zobrist.hpp"
+#include "compiler.hpp"
 
 namespace lilia::chess
 {
@@ -15,17 +16,17 @@ namespace lilia::chess
   public:
     Position() = default;
 
-    Board &getBoard() { return m_board; }
-    const Board &getBoard() const { return m_board; }
-    GameState &getState() { return m_state; }
-    const GameState &getState() const { return m_state; }
+    LILIA_ALWAYS_INLINE Board &getBoard() { return m_board; }
+    LILIA_ALWAYS_INLINE const Board &getBoard() const { return m_board; }
+    LILIA_ALWAYS_INLINE GameState &getState() { return m_state; }
+    LILIA_ALWAYS_INLINE const GameState &getState() const { return m_state; }
 
     // Recompute the full hash and pawnKey from the current position
-    [[nodiscard]] inline std::uint64_t hash() const noexcept
+    [[nodiscard]] LILIA_ALWAYS_INLINE std::uint64_t hash() const noexcept
     {
       return static_cast<std::uint64_t>(m_hash);
     }
-    [[nodiscard]] inline bool lastMoveGaveCheck() const noexcept
+    [[nodiscard]] LILIA_ALWAYS_INLINE bool lastMoveGaveCheck() const noexcept
     {
       return !m_history.empty() && m_history.back().gaveCheck != 0;
     }
@@ -80,7 +81,7 @@ namespace lilia::chess
     void unapplyMove(const StateInfo &st);
 
     // Incremental Zobrist / pawnKey updates
-    inline void hashXorPiece(Color c, PieceType pt, Square s)
+    LILIA_ALWAYS_INLINE void hashXorPiece(Color c, PieceType pt, Square s)
     {
       m_hash ^= Zobrist::piece[bb::ci(c)][static_cast<int>(pt)][s];
       if (pt == PieceType::Pawn)
@@ -88,8 +89,8 @@ namespace lilia::chess
         m_state.pawnKey ^= Zobrist::piece[bb::ci(c)][static_cast<int>(PieceType::Pawn)][s];
       }
     }
-    inline void hashXorSide() { m_hash ^= Zobrist::side; }
-    inline void hashSetCastling(std::uint8_t prev, std::uint8_t next)
+    LILIA_ALWAYS_INLINE void hashXorSide() { m_hash ^= Zobrist::side; }
+    LILIA_ALWAYS_INLINE void hashSetCastling(std::uint8_t prev, std::uint8_t next)
     {
       m_hash ^= Zobrist::castling[prev & 0xF];
       m_hash ^= Zobrist::castling[next & 0xF];
@@ -98,10 +99,10 @@ namespace lilia::chess
     // XOR the EP hash only if en passant is relevant for the current state.
     // Important: call this BEFORE state changes to remove the "old" value from the hash,
     // and call it AGAIN AFTER all state changes to add the "new" value.
-    void xorEPRelevant()
+    LILIA_ALWAYS_INLINE void xorEPRelevant()
     {
       const auto ep = m_state.enPassantSquare;
-      if (ep == NO_SQUARE)
+      if (LILIA_UNLIKELY(ep == NO_SQUARE))
         return;
 
       const auto stm = m_state.sideToMove;

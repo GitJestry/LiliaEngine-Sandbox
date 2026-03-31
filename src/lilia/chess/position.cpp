@@ -38,14 +38,14 @@ namespace lilia::chess
 
     constexpr std::array<std::uint8_t, 64> CR_CLEAR_TO = CR_CLEAR_FROM; // identisch
 
-    inline bb::Bitboard pawn_attackers_to(Square sq, Color by, bb::Bitboard pawns)
+    LILIA_ALWAYS_INLINE bb::Bitboard pawn_attackers_to(Square sq, Color by, bb::Bitboard pawns)
     {
       const bb::Bitboard t = bb::sq_bb(sq);
       return by == Color::White ? ((bb::sw(t) | bb::se(t)) & pawns)
                                 : ((bb::nw(t) | bb::ne(t)) & pawns);
     }
 
-    inline bool on_board_0_63(int s)
+    LILIA_ALWAYS_INLINE bool on_board_0_63(int s)
     {
       return (unsigned)s < 64u;
     }
@@ -148,11 +148,11 @@ namespace lilia::chess
   // For castling we also check path emptiness and (cheap) “no-through-check” to be safe.
   bool Position::isPseudoLegal(const Move &m) const
   {
-    if (!on_board_0_63(m.from()) || !on_board_0_63(m.to()) || m.from() == m.to())
+    if (LILIA_UNLIKELY(!on_board_0_63(m.from()) || !on_board_0_63(m.to()) || m.from() == m.to()))
       return false;
 
     const auto fromP = m_board.getPiece(m.from());
-    if (!fromP || fromP->color != m_state.sideToMove)
+    if (LILIA_UNLIKELY(!fromP || fromP->color != m_state.sideToMove))
       return false;
 
     const auto toP = m_board.getPiece(m.to());
@@ -550,12 +550,12 @@ namespace lilia::chess
 
   bool Position::doMove(const Move &m)
   {
-    if (m.from() == m.to())
+    if (LILIA_UNLIKELY(m.from() == m.to()))
       return false;
 
     Color us = m_state.sideToMove;
     auto fromPiece = m_board.getPiece(m.from());
-    if (!fromPiece || fromPiece->color != us)
+    if (LILIA_UNLIKELY(!fromPiece || fromPiece->color != us))
       return false;
 
     // Promotions robust validieren
@@ -684,7 +684,7 @@ namespace lilia::chess
 
     // Detect castling
     bool isCastleMove = (m.castle() != CastleSide::None);
-    if (!isCastleMove && fromPiece->type == PieceType::King)
+    if (LILIA_UNLIKELY(!isCastleMove && fromPiece->type == PieceType::King))
     {
       if (us == Color::White && m.from() == bb::E1 &&
           (m.to() == Square{6} || m.to() == Square{2}))
@@ -743,7 +743,7 @@ namespace lilia::chess
                           st.captured.type != PieceType::None);
     const bool fastEP = (isEP && m.promotion() == PieceType::None);
 
-    if (fastQuiet)
+    if (LILIA_LIKELY(fastQuiet))
     {
       hashXorPiece(us, placed.type, m.from());
       m_board.movePiece_noCapture(m.from(), m.to());
@@ -757,7 +757,7 @@ namespace lilia::chess
       m_board.movePiece_withCapture(m.from(), m.to(), m.to(), st.captured);
       hashXorPiece(us, placed.type, m.to());
     }
-    else if (fastEP)
+    else if (LILIA_UNLIKELY(fastEP))
     {
       const Square capSq = (us == Color::White) ? static_cast<Square>(m.to() - 8)
                                                 : static_cast<Square>(m.to() + 8);
@@ -855,7 +855,7 @@ namespace lilia::chess
     // castling rights & hash
     const std::uint8_t prevCR = m_state.castlingRights;
     m_state.castlingRights &= ~(CR_CLEAR_FROM[(int)m.from()] | CR_CLEAR_TO[(int)m.to()]);
-    if (prevCR != m_state.castlingRights)
+    if (LILIA_UNLIKELY(prevCR != m_state.castlingRights))
       hashSetCastling(prevCR, m_state.castlingRights);
 
     // side flip & fullmove
@@ -928,7 +928,7 @@ namespace lilia::chess
     }
 
     // Fast: no capture & no promotion
-    if (m.promotion() == PieceType::None && st.captured.type == PieceType::None)
+    if (LILIA_LIKELY(m.promotion() == PieceType::None && st.captured.type == PieceType::None))
     {
       if (auto moving = m_board.getPiece(m.to()))
       {
