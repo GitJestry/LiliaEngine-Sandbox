@@ -1,244 +1,173 @@
-# Lilia Chess Engine
+# Lilia
 
-**Lilia** is a cross-platform chess engine and sandbox written in modern **C++23**. This repository contains:
+**Lilia** is a modern **C++23 chess engine and analysis sandbox**.
+The repository contains two main applications:
 
-* **`lilia_engine`** — the standalone engine core with **UCI** support
-* **`lilia_app`** — an optional **SFML-based GUI** (sandbox + visual tooling)
+- **`lilia_engine`** — the standalone chess engine with **UCI** support
+- **`lilia_app`** — the desktop sandbox for analysis, testing, and engine tooling
 
-Prebuilt binaries are available in the GitHub **Releases**.
+Lilia is developed by **Julian Meyer**, a university student at the **University of Bonn**.
 
-* Download: Releases tab (Windows, Linux, macOS artifacts)
-  [https://github.com/JustAnoAim/Lilia/releases](https://github.com/JustAnoAim/Lilia/releases)
+## Overview
 
-## Project Goals
+This project started as a chess engine and grew into a broader sandbox for engine development and analysis.
+The goal is simple:
 
-Lilia is built as a playground for experimenting with modern chess-engine ideas and analysis tooling. The codebase is modular by design, so search/evaluation components can be swapped with minimal friction.
+- build a strong and fast chess engine
+- keep the engine code modular and easy to experiment with
+- provide a practical desktop app for testing, analysis, and visualization
 
-The long-term direction is to provide analysis tooling comparable to chess.com and extend beyond it with deeper visualization and engine debugging utilities.
+## What is included
 
----
+### Engine
+Lilia currently uses a classical search architecture with modern pruning and move-ordering ideas, including:
 
-## Search
+- iterative deepening
+- aspiration windows
+- principal variation search
+- late move reductions
+- null move pruning
+- futility pruning
+- razoring
+- SEE-based pruning
+- ProbCut
+- transposition tables
+- history, killer, counter-move, and continuation heuristics
 
-The current search is a classic **Negamax with Alpha-Beta pruning**, augmented with modern heuristics and pruning concepts:
+### Evaluation
+The engine uses a handcrafted evaluation with material, mobility, structure, and positional terms.
+An NNUE-based evaluation is planned for the future.
 
-* Iterative deepening, aspiration windows, principal variation search
-* Late Move Reductions (LMR) with tuned reduction tables
-* Null-move pruning, razoring, multi-stage futility pruning
-* SEE pruning, ProbCut, light check extensions
-* Move ordering: TT, killer moves, quiet/capture histories, counter moves, history pruning
+### App
+The sandbox app is built with **SFML** and is meant for:
 
----
+- local analysis
+- engine testing
+- visual debugging
+- experimentation with engine behavior and tooling
 
-## Evaluation
+## Project layout
 
-The handcrafted evaluator combines material, mobility, and structural heuristics to produce a more “human-like” style.
-Planned: integrate an **NNUE** backend (industry standard) for evaluation.
-
----
-
-## Transposition Table
-
-The engine currently uses **TT5**: a compact **16-byte entry** table with two-stage key verification and generation-based aging for fast lookups.
-
----
-
-## Project Structure
-
-```
+```text
 .
-├── assets/         # textures/audio/fonts for the GUI runtime
-├── examples/       # entry points / integration examples
-├── include/
-│   └── lilia/      # public headers
-└── src/lilia/
-    ├── app/        # GUI front-end logic
-    ├── bot/        # engine/bot integration
-    ├── controller/ # MVC controllers (GUI)
-    ├── engine/     # search, eval, TT
-    ├── model/      # board state & move generation
-    ├── uci/        # UCI protocol implementation
-    └── view/       # SFML rendering + UI
-```
-
----
+├── apps/                  # application entry points
+│   ├── lilia_engine/      # UCI engine executable
+│   └── lilia_app/         # sandbox application
+├── assets/                # runtime assets for the app
+├── include/lilia/         # public headers
+├── src/lilia/
+│   ├── chess/             # reusable chess domain logic
+│   ├── engine/            # search, eval, TT, engine internals
+│   ├── protocol/uci/      # UCI protocol implementation
+│   ├── app/               # app/session layer
+│   ├── controller/        # app control flow
+│   └── view/              # SFML UI
+├── tools/                 # developer tools such as texel tuning
+└── tests/                 # tests
+````
 
 ## Requirements
 
-### Common
+* **CMake 3.21+**
+* a compiler with **C++23** support
 
-* **CMake ≥ 3.21**
-* A C++ compiler with **C++23** support:
+Supported platforms:
 
-  * Windows: MSVC (VS 2022) or Clang/MinGW
-  * Linux: GCC or Clang
-  * macOS: AppleClang
+* **Windows** — MSVC / Visual Studio 2022 recommended
+* **Linux** — GCC or Clang
+* **macOS** — AppleClang
 
-### GUI (optional)
+## Build
 
-`lilia_app` uses **SFML**. The repository builds SFML via **FetchContent** when the UI is enabled, but your system still needs typical audio/windowing dependencies on Linux/macOS.
+### Fastest option
 
----
-
-## Building
-
-Lilia can be built in two ways:
-
-1. **CMake directly** (recommended for CI / IDE workflows)
-2. **Makefile wrapper** (convenient developer workflow on macOS/Linux and MSYS2/MinGW environments)
-
-### Build Targets
-
-* `lilia_engine` (UCI engine core)
-* `lilia_app` (GUI sandbox; optional)
-* `texel_tuner` (tooling target)
-
-> By default the UI is **OFF** in CMake. Enable it with `-DLILIA_BUILD_UI=ON`.
-
----
-
-## Building with the Makefile Wrapper
-
-The repo ships a cross-platform Makefile wrapper around CMake.
-
-### Linux / macOS
-
-Build engine + app:
+Use the provided Makefile wrapper:
 
 ```bash
-make all
+make engine   # build engine only
+make app      # build app
+make all      # build everything
+make clean    # remove build folders
 ```
 
-Build only the engine (no UI, no SFML):
+### Engine only
 
 ```bash
 make engine
 ```
 
-Build only the GUI app:
+### App
 
 ```bash
 make app
 ```
 
-Clean:
+### macOS universal build
 
 ```bash
-make clean
+make app UNIVERSAL2=ON
 ```
 
-### macOS Universal Binary (universal2)
+## Direct CMake build
 
-To build a universal binary (arm64 + x86_64), use:
+### Engine only
 
 ```bash
-make all UNIVERSAL2=ON
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLILIA_BUILD_UI=OFF
+cmake --build build --target lilia_engine
 ```
 
-Notes:
+### App + engine
 
-* Universal builds automatically disable native CPU flags (`-march=native`) since they do not apply to universal2.
-* Output is produced in `build-ui/bin/` (for UI builds) and `build-engine/bin/` (engine-only builds).
-
-### Windows (Makefile wrapper)
-
-The Makefile wrapper works on Windows only in Unix-like environments such as **MSYS2 / MinGW / Git Bash / Cygwin**.
-For native Windows builds, prefer the MSVC workflow below.
-
----
-
-## Building with CMake (Recommended / CI)
-
-### Windows (MSVC / Visual Studio)
-
-Configure:
-
-```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
-  -DCMAKE_BUILD_TYPE=Release `
-  -DLILIA_BUILD_UI=ON `
-  -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLILIA_BUILD_UI=ON
+cmake --build build --target lilia_app lilia_engine
 ```
 
-Build:
+### Windows with Visual Studio
 
 ```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DLILIA_BUILD_UI=ON
 cmake --build build --config Release --target lilia_app lilia_engine
 ```
 
-Artifacts typically land in:
+## Output
 
-* `build/bin/Release/` (multi-config layout)
+Build artifacts are placed in the build directory, typically under:
 
-### Linux (Ninja or Unix Makefiles)
-
-```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DLILIA_BUILD_UI=ON \
-  -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
-
-cmake --build build --target lilia_app lilia_engine
+```text
+build/bin/
 ```
 
-### macOS (AppleClang)
+The app also needs the `assets/` directory beside the executable.
+The build system copies runtime assets automatically when needed.
 
-```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DLILIA_BUILD_UI=ON \
-  -DLILIA_NATIVE=ON -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
+## Run
 
-cmake --build build --target lilia_app lilia_engine
-```
-
-Universal2 via CMake:
-
-```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DLILIA_BUILD_UI=ON \
-  -DLILIA_UNIVERSAL2=ON \
-  -DLILIA_FAST_MATH=ON -DLILIA_LTO=ON
-
-cmake --build build --target lilia_app lilia_engine
-```
-
----
-
-## Runtime Assets
-
-The GUI requires the `assets/` folder next to the executable.
-The build system copies assets automatically into the target output directory for convenience.
-
----
-
-## Using the Engine (UCI)
-
-`lilia_engine` implements the [UCI protocol](https://en.wikipedia.org/wiki/Universal_Chess_Interface) and can be used in any UCI-compatible chess GUI.
-
-Example (CLI):
+### UCI engine
 
 ```bash
 ./lilia_engine
 ```
 
-For minimal integration examples, see:
+You can use `lilia_engine` in any UCI-compatible chess GUI.
 
-* `examples/main.cpp`
+### Sandbox app
 
----
+Run `lilia_app` after building to launch the desktop interface.
 
-## Future Work
+## Releases
 
-* Integrate NNUE evaluation backend
-* Continue exploring pruning/search improvements
-* Expand visual analysis tooling and debugging features
+Prebuilt binaries are available on the project’s **GitHub Releases** page.
 
----
+## Notes
+
+This repository combines engine development and desktop tooling in one place.
+The long-term direction is to keep the chess core reusable while improving both:
+
+* engine strength
+* analysis and debugging tools
 
 ## Acknowledgements
 
-* Graphics, windowing, and audio: [SFML](https://www.sfml-dev.org/)
-
----
+* **SFML** for graphics, windowing, and audio
