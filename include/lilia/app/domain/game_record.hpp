@@ -24,4 +24,4 @@ namespace lilia::app::domain
     std::string result{"*"};      // "1-0", "0-1", "1/2-1/2", "*"
   };
 
-} // namespace lilia::model
+}

@@ -55,4 +55,4 @@ namespace lilia::chess
   static_assert(sizeof(Color) <= 1, "Color should be 1 byte for compact state");
   static_assert(sizeof(Square) <= 1, "Square should be 1 byte for compact state");
 
-} // namespace lilia::model
+}

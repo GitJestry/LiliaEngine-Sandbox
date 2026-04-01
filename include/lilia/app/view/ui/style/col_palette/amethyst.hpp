@@ -8,4 +8,4 @@ namespace lilia::app::view::ui
   // and cached for subsequent calls.
   const ColorPalette &amethystPalette();
 
-} // namespace lilia::view
+}

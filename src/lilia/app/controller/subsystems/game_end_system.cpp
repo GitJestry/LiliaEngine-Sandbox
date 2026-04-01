@@ -89,4 +89,4 @@ namespace lilia::app::controller
     m_view.setGameOver(true);
   }
 
-} // namespace lilia::controller
+}

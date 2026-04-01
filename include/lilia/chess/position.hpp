@@ -119,4 +119,4 @@ namespace lilia::chess
     }
   };
 
-} // namespace lilia::model
+}

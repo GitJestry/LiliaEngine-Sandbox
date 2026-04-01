@@ -80,4 +80,4 @@ namespace lilia::app::controller
     return (dx * dx + dy * dy) <= (threshold * threshold);
   }
 
-} // namespace lilia::controller
+}

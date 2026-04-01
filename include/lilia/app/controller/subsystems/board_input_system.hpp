@@ -82,4 +82,4 @@ namespace lilia::app::controller
     bool m_selection_changed_on_press{false};
   };
 
-} // namespace lilia::controller
+}

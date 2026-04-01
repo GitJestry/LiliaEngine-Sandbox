@@ -56,4 +56,4 @@ namespace lilia::app::view::ui
     bool m_scoreUseDarkText{true};
   };
 
-} // namespace lilia::view
+}

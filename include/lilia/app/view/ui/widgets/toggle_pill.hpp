@@ -283,4 +283,4 @@ namespace lilia::app::view::ui
     mutable bool m_pressed{false};
     bool m_prevDown{false};
   };
-} // namespace lilia::view::ui
+}

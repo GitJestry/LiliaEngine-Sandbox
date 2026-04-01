@@ -35,4 +35,4 @@ namespace lilia::app::domain
 
   ReplayInfo makeReplayInfo(const GameRecord &rec);
 
-} // namespace lilia::model::analysis
+}

@@ -12,4 +12,4 @@ namespace lilia::app::session
   /// @return returns the next controller Action
   lilia::app::controller::NextAction runSession(sf::RenderWindow &window,
                                                 const domain::analysis::config::StartConfig &cfg);
-} // namespace lilia::app
+}

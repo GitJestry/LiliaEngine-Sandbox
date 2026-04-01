@@ -46,4 +46,4 @@ namespace lilia::engine
   constexpr int MAX_MOVES = 256;
   constexpr int MATE_THR = MATE - 512;       // mate threshold for detection/encoding
   static constexpr int VALUE_INF = MATE - 1; // never greater than mate!
-} // namespace lilia::engine
+}

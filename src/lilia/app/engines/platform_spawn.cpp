@@ -225,6 +225,6 @@ namespace lilia::app::engines
       p.pid = -1;
     }
   }
-} // namespace lilia::engine::uci
+}
 
 #endif

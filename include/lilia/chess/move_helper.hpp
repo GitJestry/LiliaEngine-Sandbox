@@ -55,4 +55,4 @@ namespace lilia::chess
     return false;
   }
 
-} // namespace lilia::model
+}

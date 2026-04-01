@@ -48,4 +48,4 @@ namespace lilia::app::view::ui::game_setup
     std::unique_ptr<Impl> m;
   };
 
-} // namespace lilia::view
+}

@@ -100,4 +100,4 @@ namespace lilia::app::engines
   private:
     std::map<std::string, EngineRecord> m_records;
   };
-} // namespace lilia::engine::uci
+}

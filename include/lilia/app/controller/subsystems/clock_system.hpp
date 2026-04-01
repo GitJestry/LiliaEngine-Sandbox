@@ -36,4 +36,4 @@ namespace lilia::app::controller
     std::unique_ptr<TimeController> m_time;
   };
 
-} // namespace lilia::controller
+}

@@ -209,4 +209,4 @@ namespace lilia::app::controller
     return isHuman(m_game.getGameState().sideToMove);
   }
 
-} // namespace lilia::controller
+}

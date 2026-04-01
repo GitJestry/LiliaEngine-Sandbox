@@ -399,4 +399,4 @@ namespace lilia::app::engines
                              "stockfish");
     return true;
   }
-} // namespace lilia::uci
+}

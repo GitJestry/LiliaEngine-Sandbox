@@ -65,4 +65,4 @@ namespace lilia::app::session
 
     return gameController.getNextAction();
   }
-} // namespace app
+}

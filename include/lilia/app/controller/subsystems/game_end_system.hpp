@@ -25,4 +25,4 @@ namespace lilia::app::controller
     view::audio::SoundManager &m_sfx;
   };
 
-} // namespace lilia::controller
+}

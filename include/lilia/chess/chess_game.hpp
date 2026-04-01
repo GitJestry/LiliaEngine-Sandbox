@@ -51,4 +51,4 @@ namespace lilia::chess
     std::vector<Move> m_legal_moves;
   };
 
-} // namespace lilia::model
+}

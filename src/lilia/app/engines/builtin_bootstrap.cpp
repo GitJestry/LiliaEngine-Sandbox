@@ -26,4 +26,4 @@ namespace lilia::app::engines
     // 3) Refresh from disk so the rest of the app sees the final persisted state.
     registry.load();
   }
-} // namespace lilia::uci
+}

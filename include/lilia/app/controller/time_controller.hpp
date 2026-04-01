@@ -31,4 +31,4 @@ namespace lilia::app::controller
     std::optional<chess::Color> m_flagged;
   };
 
-} // namespace lilia::controller
+}

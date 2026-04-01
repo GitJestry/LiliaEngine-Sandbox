@@ -43,4 +43,4 @@ namespace lilia::app::view::ui
     std::unordered_map<ListenerID, std::function<void()>> m_listeners;
   };
 
-} // namespace lilia::view
+}

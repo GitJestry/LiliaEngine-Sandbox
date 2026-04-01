@@ -58,4 +58,4 @@ namespace lilia::app::view::ui
     sf::Sprite m_sprite;
   };
 
-} // namespace lilia::view
+}

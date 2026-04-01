@@ -37,4 +37,4 @@ namespace lilia::app::domain
     return info;
   }
 
-} // namespace lilia::model::analysis
+}

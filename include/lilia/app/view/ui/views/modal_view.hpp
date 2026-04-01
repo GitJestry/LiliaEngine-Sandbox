@@ -69,4 +69,4 @@ namespace lilia::app::view::ui
     std::optional<ModalAction> m_pending{};
   };
 
-} // namespace lilia::view
+}

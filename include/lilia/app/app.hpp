@@ -12,4 +12,4 @@ namespace lilia::app
     int run();
   };
 
-} // namespace lilia::app
+}

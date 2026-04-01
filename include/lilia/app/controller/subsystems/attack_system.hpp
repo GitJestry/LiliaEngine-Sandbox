@@ -8,7 +8,7 @@
 namespace lilia::chess
 {
   class ChessGame;
-} // namespace lilia::model
+}
 
 namespace lilia::app::view::ui
 {
@@ -42,4 +42,4 @@ namespace lilia::app::controller
     mutable std::vector<chess::Square> m_out;
   };
 
-} // namespace lilia::controller
+}

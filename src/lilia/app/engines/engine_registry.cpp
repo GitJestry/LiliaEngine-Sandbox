@@ -760,4 +760,4 @@ namespace lilia::app::engines
 
     return bot;
   }
-} // namespace lilia::engine::uci
+}

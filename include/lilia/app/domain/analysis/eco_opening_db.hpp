@@ -31,4 +31,4 @@ namespace lilia::app::domain::analysis
     static bool looksLikeEco(std::string_view s);
   };
 
-} // namespace lilia::model::analysis
+}

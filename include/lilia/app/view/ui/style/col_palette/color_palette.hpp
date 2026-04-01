@@ -217,4 +217,4 @@ namespace lilia::app::view::ui
     return std::nullopt;
   }
 
-} // namespace lilia::view
+}

@@ -36,4 +36,4 @@ namespace lilia::engine
     Impl *pimpl;
   };
 
-} // namespace lilia::engine
+}

@@ -99,4 +99,4 @@ namespace lilia::app::view::ui
     std::vector<std::unique_ptr<Modal>> m_modals;
   };
 
-} // namespace lilia::view::ui
+}

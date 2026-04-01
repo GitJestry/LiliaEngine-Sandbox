@@ -40,4 +40,4 @@ namespace lilia::app::view::ui
     bool m_flipped{false};
   };
 
-} // namespace lilia::view
+}

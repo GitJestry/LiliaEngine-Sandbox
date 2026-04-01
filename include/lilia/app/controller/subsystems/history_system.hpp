@@ -72,4 +72,4 @@ namespace lilia::app::controller
     chess::Square m_stashed_selected{chess::NO_SQUARE};
   };
 
-} // namespace lilia::controller
+}

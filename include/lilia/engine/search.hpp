@@ -179,4 +179,4 @@ namespace lilia::engine
     std::uint64_t nodeLimit = 0;
   };
 
-} // namespace lilia::engine
+}

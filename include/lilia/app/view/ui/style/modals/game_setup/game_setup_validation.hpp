@@ -42,4 +42,4 @@ namespace lilia::app::view::ui::game_setup
   bool looks_like_fen(const std::string &s);
   bool looks_like_pgn(const std::string &s);
 
-} // namespace lilia::view::ui::game_setup
+}

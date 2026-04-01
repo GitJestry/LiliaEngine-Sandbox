@@ -858,4 +858,4 @@ namespace lilia::app::engines
 #endif
     }
   }
-} // namespace lilia::engine::uci
+}

@@ -15,6 +15,7 @@
 #include "lilia/engine/tt5.hpp"
 #include "lilia/protocol/uci/uci_helper.hpp"
 #include "lilia/engine/search_position.hpp"
+#include "lilia/chess/chess_constants.hpp"
 
 using namespace lilia;
 
@@ -43,7 +44,7 @@ int main()
   // UCI move parsing should stay compatible with Stockfish output
   {
     chess::ChessGame game;
-    game.setPosition(START_FEN);
+    game.setPosition(std::string{chess::constant::START_FEN});
     assert(game.doMoveUCI("e2e4"));
     assert(game.doMoveUCI("e7e5"));
     assert(game.doMoveUCI("g1f3"));

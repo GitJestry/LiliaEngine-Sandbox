@@ -26,4 +26,4 @@ namespace lilia::app::engines
     static std::vector<std::filesystem::path> searchRoots();
     static std::filesystem::path withPlatformExecutableSuffix(std::filesystem::path p);
   };
-} // namespace lilia::uci
+}

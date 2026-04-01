@@ -134,4 +134,4 @@ namespace lilia::chess
   static_assert(std::is_trivially_copyable_v<Move>, "Move must be trivially copyable");
   static_assert(sizeof(Move) == 4, "Move should be tightly packed to 4 bytes");
 
-} // namespace lilia::model
+}

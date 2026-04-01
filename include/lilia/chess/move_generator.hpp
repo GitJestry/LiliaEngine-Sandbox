@@ -36,4 +36,4 @@ namespace lilia::chess
     int generateNonCapturePromotions(const Board &b, const GameState &st, MoveBuffer &buf);
   };
 
-} // namespace lilia::model
+}

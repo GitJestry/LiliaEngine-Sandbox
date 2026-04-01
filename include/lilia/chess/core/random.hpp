@@ -17,4 +17,4 @@ namespace lilia::chess::random
     }
   };
 
-} // namespace lilia::model::random
+}

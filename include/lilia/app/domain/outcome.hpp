@@ -40,4 +40,4 @@ namespace lilia::app::domain
     }
   }
 
-} // namespace lilia::model::analysis
+}

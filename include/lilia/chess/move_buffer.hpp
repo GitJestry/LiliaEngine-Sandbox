@@ -45,4 +45,4 @@ namespace lilia::chess
     LILIA_ALWAYS_INLINE void reset() noexcept { n = 0; }
   };
 
-} // namespace lilia::engine
+}

@@ -95,4 +95,4 @@ namespace lilia::protocol::uci
     return uci;
   }
 
-} // namespace lilia
+}

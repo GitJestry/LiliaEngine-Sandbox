@@ -109,4 +109,4 @@ namespace lilia::app::view::ui
     ui::ThemeCache m_theme;
   };
 
-} // namespace lilia::view
+}

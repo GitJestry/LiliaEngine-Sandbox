@@ -41,4 +41,4 @@ namespace lilia::app::controller
     void *m_resign_ctx{nullptr};
   };
 
-} // namespace lilia::controller
+}

@@ -149,4 +149,4 @@ namespace lilia::app::engines
 
     return out;
   }
-} // namespace lilia::uci
+}

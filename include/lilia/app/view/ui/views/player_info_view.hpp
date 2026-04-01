@@ -75,4 +75,4 @@ namespace lilia::app::view::ui
 
     std::string m_icon_name;
   };
-} // namespace lilia::view
+}

@@ -43,4 +43,4 @@ namespace lilia::app::view::ui
     std::unordered_map<std::string, sf::Image> m_images;
   };
 
-} // namespace lilia::view
+}

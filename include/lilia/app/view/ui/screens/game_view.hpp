@@ -204,4 +204,4 @@ namespace lilia::app::view::ui
     std::vector<std::pair<chess::Square, chess::Square>> m_saved_rclick_arrows;
   };
 
-} // namespace lilia::view
+}

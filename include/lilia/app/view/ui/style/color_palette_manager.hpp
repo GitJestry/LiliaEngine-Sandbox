@@ -57,4 +57,4 @@ namespace lilia::app::view::ui
     ListenerID m_nextListenerId{1};
   };
 
-} // namespace lilia::view
+}

@@ -57,4 +57,4 @@ namespace lilia::app::view::ui
     bool m_labelOutlineInit{false};
   };
 
-} // namespace lilia::view
+}

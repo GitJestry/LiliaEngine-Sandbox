@@ -69,4 +69,4 @@ namespace lilia::engine
     std::array<EvalAcc, EVAL_STACK_CAP> m_evalStack{};
     int m_evalTop = 0;
   };
-} // namespace lilia::engine
+}

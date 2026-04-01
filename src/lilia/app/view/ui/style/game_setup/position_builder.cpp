@@ -2245,4 +2245,4 @@ namespace lilia::app::view::ui::game_setup
     m->draw(rt, off);
   }
 
-} // namespace lilia::view
+}

@@ -91,4 +91,4 @@ namespace lilia::app::view::ui::game_setup
     void drawUsingFooter(sf::RenderTarget &rt) const;
   };
 
-} // namespace lilia::view::ui
+}

@@ -26,4 +26,4 @@ namespace lilia::app::engines
   bool spawnWithPipes(const std::string &exePath, SpawnedProcess &out, std::string *outError = nullptr);
   void terminateProcess(SpawnedProcess &p);
 
-} // namespace lilia::engine::uci
+}

@@ -42,4 +42,4 @@ namespace lilia::engine
     return score;
   }
 
-} // namespace lilia::engine
+}

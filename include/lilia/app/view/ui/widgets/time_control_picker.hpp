@@ -827,4 +827,4 @@ namespace lilia::app::view::ui
     sf::Text m_baseLabel{};
     sf::Text m_incLabel{};
   };
-} // namespace lilia::view::ui
+}

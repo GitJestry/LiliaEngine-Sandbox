@@ -30,4 +30,4 @@ namespace lilia::app::engines
   private:
     EngineRegistry &m_registry;
   };
-} // namespace lilia::uci
+}

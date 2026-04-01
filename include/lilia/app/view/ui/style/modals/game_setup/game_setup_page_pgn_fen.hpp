@@ -120,4 +120,4 @@ namespace lilia::app::view::ui::game_setup
     void refresh_resolved_field();
   };
 
-} // namespace lilia::view::game_setup
+}

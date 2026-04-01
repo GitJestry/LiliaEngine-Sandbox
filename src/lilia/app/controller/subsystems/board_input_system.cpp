@@ -460,4 +460,4 @@ namespace lilia::app::controller
       showAttacks(m_attacks.attacks(activeSq));
   }
 
-} // namespace lilia::controller
+}

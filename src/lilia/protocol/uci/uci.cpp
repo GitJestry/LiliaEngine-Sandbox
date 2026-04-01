@@ -669,4 +669,4 @@ namespace lilia::protocol::uci
     return 0;
   }
 
-} // namespace lilia
+}

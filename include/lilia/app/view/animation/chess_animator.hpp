@@ -42,4 +42,4 @@ namespace lilia::app::view::animation
     AnimationManager m_anim_manager;
   };
 
-} // namespace lilia::view::animation
+}

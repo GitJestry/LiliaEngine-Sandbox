@@ -385,4 +385,4 @@ namespace lilia::app::view::ui
     float m_anim{0.f};
     bool m_closing{false};
   };
-} // namespace lilia::view
+}

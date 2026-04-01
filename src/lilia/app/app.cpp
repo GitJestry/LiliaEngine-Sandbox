@@ -46,4 +46,4 @@ namespace lilia::app
 
     return 0;
   }
-} // namespace lilia::app
+}

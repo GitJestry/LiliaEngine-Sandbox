@@ -148,4 +148,4 @@ namespace lilia::app::controller
     }
     return noMove();
   }
-} // namespace lilia::controller
+}

@@ -678,4 +678,4 @@ namespace lilia::app::view::ui
     m_modal.onResize(m_window.getSize(), m_board_view.getPosition());
   }
 
-} // namespace lilia::view
+}

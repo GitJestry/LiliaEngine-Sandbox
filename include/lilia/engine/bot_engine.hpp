@@ -13,7 +13,7 @@
 namespace lilia::chess
 {
   class ChessGame;
-} // namespace lilia::model
+}
 
 namespace lilia::engine
 {
@@ -40,4 +40,4 @@ namespace lilia::engine
     Engine m_engine;
   };
 
-} // namespace lilia::engine
+}

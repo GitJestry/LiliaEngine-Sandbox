@@ -614,4 +614,4 @@ namespace lilia::engine
     std::atomic<std::uint32_t> generation_{1u};
   };
 
-} // namespace lilia::model
+}

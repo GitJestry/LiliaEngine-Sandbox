@@ -116,4 +116,4 @@ namespace lilia::app::controller
     m_premove.scheduleFromQueueIfTurnMatches();
   }
 
-} // namespace lilia::controller
+}

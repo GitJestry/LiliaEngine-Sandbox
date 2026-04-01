@@ -333,4 +333,4 @@ namespace lilia::chess
     m_piece_on[st] = moverPacked;
   }
 
-} // namespace lilia::model
+}

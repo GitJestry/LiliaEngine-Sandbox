@@ -234,4 +234,4 @@ namespace lilia::app::view::ui
     std::function<void()> m_onClose{};
   };
 
-} // namespace lilia::view::ui
+}

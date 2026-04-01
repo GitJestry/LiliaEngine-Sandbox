@@ -60,4 +60,4 @@ namespace lilia::app::controller
     return m_running ? std::optional<chess::Color>(m_active) : std::nullopt;
   }
 
-} // namespace lilia::controller
+}

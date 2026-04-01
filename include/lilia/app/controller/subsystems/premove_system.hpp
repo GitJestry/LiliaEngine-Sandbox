@@ -15,7 +15,7 @@
 namespace lilia::chess
 {
   class ChessGame;
-} // namespace lilia::chess
+}
 
 namespace lilia::app::controller
 {
@@ -90,4 +90,4 @@ namespace lilia::app::controller
     mutable std::vector<chess::Move> m_pseudo;
   };
 
-} // namespace lilia::controller
+}

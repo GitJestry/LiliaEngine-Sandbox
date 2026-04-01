@@ -77,4 +77,4 @@ namespace lilia::chess
     Stalemate,
     InsufficientMaterial
   };
-} // namespace lilia::chess
+}

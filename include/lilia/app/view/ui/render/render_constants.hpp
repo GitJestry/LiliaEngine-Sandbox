@@ -53,7 +53,7 @@ namespace lilia::app::view::ui::constant
 
     inline constexpr std::array<std::string_view, 5> all{DEFAULT, AMETHYST, GREEN_IVORY, SOFT_PINK,
                                                          KINTSUGI};
-  } // namespace palette_name
+  }
 
   // ------------------ Texture Keys ------------------
   namespace tex
@@ -74,7 +74,7 @@ namespace lilia::app::view::ui::constant
     inline constexpr std::string_view PREMOVE_HL{"premoveHighlight"};
     inline constexpr std::string_view WARNING_HL{"warningHighlight"};
     inline constexpr std::string_view RCLICK_HL{"rightClickHighlight"};
-  } // namespace tex
+  }
 
   // ------------------ Asset Paths ------------------
   namespace path
@@ -83,7 +83,7 @@ namespace lilia::app::view::ui::constant
     inline constexpr std::string_view PIECES_DIR{"apps/lilia_app/assets/textures"};
     inline constexpr std::string_view ICONS_DIR{"apps/lilia_app/assets/icons"};
     inline constexpr std::string_view SFX_DIR{"apps/lilia_app/assets/audio/sfx"};
-  } // namespace path
+  }
 
   namespace asset_name
   {
@@ -106,6 +106,6 @@ namespace lilia::app::view::ui::constant
     inline constexpr std::string_view GAME_BEGINS{"game_begins"};
     inline constexpr std::string_view GAME_ENDS{"game_ends"};
     inline constexpr std::string_view PREMOVE{"pre_move"};
-  } // namespace sfx
+  }
 
-} // namespace lilia::view::constant
+}

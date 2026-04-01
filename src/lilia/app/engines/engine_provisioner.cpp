@@ -161,4 +161,4 @@ namespace lilia::app::engines
                                engine.iconKey);
     }
   }
-} // namespace lilia::uci
+}

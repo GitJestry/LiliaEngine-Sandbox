@@ -33,4 +33,4 @@ namespace lilia::app::view::ui::game_setup
     sf::Text m_title{};
   };
 
-} // namespace lilia::view::game_setup
+}

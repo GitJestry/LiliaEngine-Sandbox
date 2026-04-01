@@ -85,4 +85,4 @@ namespace lilia::app::view::animation
     m_anim_manager.draw(window);
   }
 
-} // namespace lilia::view::animation
+}

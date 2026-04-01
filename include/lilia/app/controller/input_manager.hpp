@@ -42,4 +42,4 @@ namespace lilia::app::controller
                                int threshold = 4) const;
   };
 
-} // namespace lilia::controller
+}

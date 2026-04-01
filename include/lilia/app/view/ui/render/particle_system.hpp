@@ -51,4 +51,4 @@ namespace lilia::app::view::ui
     PaletteCache::ListenerID m_paletteListener{0};
   };
 
-} // namespace lilia::view
+}

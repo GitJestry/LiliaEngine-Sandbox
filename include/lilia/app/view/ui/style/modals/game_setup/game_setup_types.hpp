@@ -14,4 +14,4 @@ namespace lilia::app::view::ui::game_setup
     Fen,
     Pgn
   };
-} // namespace lilia::view::ui::game_setup
+}

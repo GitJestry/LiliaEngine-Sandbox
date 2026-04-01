@@ -29,4 +29,4 @@ namespace lilia::app::controller
     mutable const std::vector<chess::Move> *m_cached{nullptr};
   };
 
-} // namespace lilia::controller
+}

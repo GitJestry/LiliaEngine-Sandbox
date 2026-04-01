@@ -105,4 +105,4 @@ namespace lilia::engine
     bool stop_ = false;
   };
 
-} // namespace lilia::engine
+}

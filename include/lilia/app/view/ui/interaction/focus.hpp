@@ -39,4 +39,4 @@ namespace lilia::app::view::ui
     Focusable *m_focused{nullptr};
   };
 
-} // namespace lilia::view::ui
+}

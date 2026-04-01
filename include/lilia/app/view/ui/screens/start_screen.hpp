@@ -32,4 +32,4 @@ namespace lilia::app::view::ui
 
     ThemeCache m_theme; // stable cache; updates automatically on palette changes
   };
-} // namespace lilia::view
+}

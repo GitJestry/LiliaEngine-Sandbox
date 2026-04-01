@@ -787,4 +787,4 @@ namespace lilia::app::view::ui
     return cfg;
   }
 
-} // namespace lilia::view
+}

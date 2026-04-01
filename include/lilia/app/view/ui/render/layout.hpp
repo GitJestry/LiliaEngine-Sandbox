@@ -41,4 +41,4 @@ namespace lilia::app::view::ui
     return {(float(ws.x) - size.x) * 0.5f, top, size.x, size.y};
   }
 
-} // namespace lilia::view::ui
+}

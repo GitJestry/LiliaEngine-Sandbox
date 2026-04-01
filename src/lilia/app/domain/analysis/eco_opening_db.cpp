@@ -168,4 +168,4 @@ namespace lilia::app::domain::analysis
     return added > 0;
   }
 
-} // namespace lilia::model::analysis
+}

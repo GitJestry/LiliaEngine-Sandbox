@@ -71,4 +71,4 @@ namespace lilia::app::controller
 
   chess::Square SelectionManager::getHoveredSquare() const { return m_hover_sq; }
 
-} // namespace lilia::controller
+}

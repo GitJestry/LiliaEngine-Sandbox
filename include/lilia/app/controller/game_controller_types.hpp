@@ -36,4 +36,4 @@ namespace lilia::app::controller
     Rematch
   };
 
-} // namespace lilia::controller
+}

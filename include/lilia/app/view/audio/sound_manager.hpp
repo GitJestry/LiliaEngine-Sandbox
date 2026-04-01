@@ -34,4 +34,4 @@ namespace lilia::app::view::audio
     float m_effects_volume = 100.f;
   };
 
-} // namespace lilia::view::sound
+}

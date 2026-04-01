@@ -33,4 +33,4 @@ namespace lilia::app::controller
     std::pair<chess::Square, chess::Square> m_last_move_squares;
   };
 
-} // namespace lilia::controller
+}

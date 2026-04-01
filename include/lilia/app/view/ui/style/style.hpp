@@ -299,4 +299,4 @@ namespace lilia::app::view::ui
     rt.draw(t);
   }
 
-} // namespace lilia::view::ui
+}

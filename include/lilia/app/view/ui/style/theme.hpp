@@ -32,4 +32,4 @@ namespace lilia::app::view::ui
     sf::Color onAccent{};
   };
 
-} // namespace lilia::view::ui
+}

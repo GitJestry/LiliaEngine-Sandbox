@@ -31,4 +31,4 @@ namespace lilia::protocol::uci
     chess::ChessGame m_game;
   };
 
-} // namespace lilia
+}

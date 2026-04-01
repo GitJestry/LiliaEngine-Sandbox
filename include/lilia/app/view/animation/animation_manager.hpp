@@ -41,4 +41,4 @@ namespace lilia::app::view::animation
     std::unordered_map<ui::Entity::ID_type, std::unique_ptr<IAnimation>> m_animations;
   };
 
-} // namespace lilia::view::animation
+}

@@ -221,4 +221,4 @@ namespace lilia::engine
       kingSq[c == chess::Color::White ? 0 : 1] = to;
   }
 
-} // namespace lilia::engine
+}

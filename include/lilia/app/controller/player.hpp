@@ -7,7 +7,7 @@ namespace lilia::chess
 {
   class ChessGame;
   struct Move;
-} // namespace lilia::model
+}
 
 namespace lilia::app::controller
 {
@@ -21,4 +21,4 @@ namespace lilia::app::controller
     virtual bool isHuman() const = 0;
   };
 
-} // namespace lilia::controller
+}

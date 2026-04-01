@@ -4,25 +4,24 @@
 #include <memory>
 #include <string>
 
-namespace sf
-{
-  class Event;
-}
-
 #include "lilia/app/view/audio/sound_manager.hpp"
 #include "lilia/app/view/ui/screens/game_view.hpp"
 #include "game_controller_types.hpp"
 #include "input_manager.hpp"
 #include "selection_manager.hpp"
 #include "lilia/app/domain/game_record.hpp"
-
 #include "lilia/app/domain/analysis/config/start_config.hpp"
+
+namespace sf
+{
+  class Event;
+}
 
 namespace lilia::chess
 {
   class ChessGame;
   struct Move;
-} // namespace lilia::chess
+}
 
 namespace lilia::app::controller
 {

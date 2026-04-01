@@ -68,4 +68,4 @@ namespace lilia::app::view::ui
     bool m_dismissed{false};
   };
 
-} // namespace lilia::view::ui
+}

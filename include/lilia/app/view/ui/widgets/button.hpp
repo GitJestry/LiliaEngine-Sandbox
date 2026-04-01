@@ -212,4 +212,4 @@ namespace lilia::app::view::ui
     bool m_hoverOutline{false};
   };
 
-} // namespace lilia::view::ui
+}

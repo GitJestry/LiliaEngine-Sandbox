@@ -315,4 +315,4 @@ namespace lilia::app::controller
                      *m_premove);
   }
 
-} // namespace lilia::controller
+}

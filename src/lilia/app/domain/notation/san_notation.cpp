@@ -292,4 +292,4 @@ namespace lilia::app::domain::notation
     return false;
   }
 
-} // namespace lilia::chess::notation
+}

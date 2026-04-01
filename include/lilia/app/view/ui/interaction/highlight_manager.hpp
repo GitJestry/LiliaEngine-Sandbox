@@ -68,4 +68,4 @@ namespace lilia::app::view::ui
     std::unordered_map<unsigned int, std::pair<chess::Square, chess::Square>> m_rclick_arrows;
   };
 
-} // namespace lilia::view
+}

@@ -61,4 +61,4 @@ namespace lilia::app::controller
     return m_out;
   }
 
-} // namespace lilia::controller
+}

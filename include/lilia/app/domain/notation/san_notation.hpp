@@ -13,4 +13,4 @@ namespace lilia::app::domain::notation
   // Finds the move corresponding to a SAN token in the given position.
   bool fromSan(const chess::Position &pos, std::string_view sanToken, chess::Move &out);
 
-} // namespace lilia::model::notation
+}

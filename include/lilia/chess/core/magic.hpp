@@ -31,4 +31,4 @@ namespace lilia::chess::magic
   const std::array<std::vector<bb::Bitboard>, 64> &rook_tables();
   const std::array<std::vector<bb::Bitboard>, 64> &bishop_tables();
 
-} // namespace lilia::model::magic
+}

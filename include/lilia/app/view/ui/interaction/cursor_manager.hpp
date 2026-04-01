@@ -26,4 +26,4 @@ namespace lilia::app::view::ui
     sf::Cursor m_cursor_hand_closed;
   };
 
-} // namespace lilia::view
+}

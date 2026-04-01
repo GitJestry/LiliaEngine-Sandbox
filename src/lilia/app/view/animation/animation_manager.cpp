@@ -124,4 +124,4 @@ namespace lilia::app::view::animation
       anim->draw(window);
   }
 
-} // namespace lilia::view::animation
+}

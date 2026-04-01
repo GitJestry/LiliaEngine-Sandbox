@@ -43,4 +43,4 @@ namespace lilia::app::view::ui
     sf::RectangleShape m_icon_hand;
   };
 
-} // namespace lilia::view
+}

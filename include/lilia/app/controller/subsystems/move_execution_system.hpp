@@ -9,7 +9,7 @@ namespace lilia::chess
 {
   class ChessGame;
   struct Move;
-} // namespace lilia::model
+}
 
 namespace lilia::app::controller
 {
@@ -38,4 +38,4 @@ namespace lilia::app::controller
     PremoveSystem &m_premove;
   };
 
-} // namespace lilia::controller
+}

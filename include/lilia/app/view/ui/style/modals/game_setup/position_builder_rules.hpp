@@ -78,4 +78,4 @@ namespace lilia::app::view::ui::game_setup::rules
   // Returns error string if invalid, otherwise std::nullopt.
   std::optional<std::string> validateFenBasic(const std::string &fen);
 
-} // namespace lilia::view::pb
+}

@@ -79,4 +79,4 @@ namespace lilia::app::engines
 
     std::unique_ptr<Impl, ImplDeleter> m_impl;
   };
-} // namespace lilia::engine::uci
+}

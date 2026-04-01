@@ -1024,4 +1024,4 @@ namespace lilia::app::view::ui
     mutable sf::Clock m_caretClock{};
   };
 
-} // namespace lilia::view::ui
+}

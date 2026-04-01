@@ -176,4 +176,4 @@ namespace lilia::chess::bb
   {
     return sw(pawns) | se(pawns);
   }
-} // namespace lilia::chess::bb
+}

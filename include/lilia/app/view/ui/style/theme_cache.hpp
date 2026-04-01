@@ -72,4 +72,4 @@ namespace lilia::app::view::ui
     Theme m_ui{};
   };
 
-} // namespace lilia::view
+}

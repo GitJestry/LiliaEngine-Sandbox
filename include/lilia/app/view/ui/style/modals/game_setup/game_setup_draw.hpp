@@ -73,4 +73,4 @@ namespace lilia::app::view::ui::game_setup
     rt.draw(box);
   }
 
-} // namespace lilia::view::game_setup
+}

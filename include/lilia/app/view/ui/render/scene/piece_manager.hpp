@@ -77,4 +77,4 @@ namespace lilia::app::view::ui
     void onPaletteChanged();
   };
 
-} // namespace lilia::view
+}

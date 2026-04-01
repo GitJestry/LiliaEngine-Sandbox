@@ -35,4 +35,4 @@ namespace lilia::app::view::ui::game_setup
     PositionBuilder m_builder{};
   };
 
-} // namespace lilia::view::game_setup
+}

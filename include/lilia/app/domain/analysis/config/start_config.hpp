@@ -102,4 +102,4 @@ namespace lilia::app::domain::analysis::config
     SideConfig black;
   };
 
-} // namespace lilia::config
+}

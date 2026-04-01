@@ -51,4 +51,4 @@ namespace lilia::app::view::animation
     return m_finish;
   }
 
-} // namespace lilia::view::animation
+}
