@@ -334,4 +334,4 @@ namespace lilia::app::view::ui
     return static_cast<chess::Square>(rankFromWhite * 8 + fileFromWhite);
   }
 
-} // namespace lilia::view
+}

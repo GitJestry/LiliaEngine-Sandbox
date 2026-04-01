@@ -158,4 +158,4 @@ namespace lilia::app::view::ui
       m_gameOver = nullptr;
   }
 
-} // namespace lilia::view
+}

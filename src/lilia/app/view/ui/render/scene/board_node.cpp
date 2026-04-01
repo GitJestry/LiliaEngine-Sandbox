@@ -234,4 +234,4 @@ namespace lilia::app::view::ui
     return m_flipped;
   }
 
-} // namespace lilia::view
+}

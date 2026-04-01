@@ -9,9 +9,6 @@
 
 namespace lilia::chess
 {
-
-  // ---------------- Public API ----------------
-
   ChessGame::ChessGame()
   {
     m_pseudo_moves.reserve(256);
@@ -212,8 +209,6 @@ namespace lilia::chess
     m_position.getState().halfmoveClock = hm;
     m_position.getState().fullmoveNumber = fm;
 
-    // Rebuild pure chess hashes only.
-    // Engine-side eval state is built later inside engine::SearchPosition.
     m_position.buildHash();
   }
 
@@ -229,7 +224,6 @@ namespace lilia::chess
 
     m_move_gen.generatePseudoLegalMoves(m_position.getBoard(), m_position.getState(), m_pseudo_moves);
 
-    // Filter legality by make/unmake (fast because Position has fast quiet paths)
     for (const auto &m : m_pseudo_moves)
     {
       if (m_position.doMove(m))
@@ -249,11 +243,11 @@ namespace lilia::chess
   Square ChessGame::getRookSquareFromCastleside(CastleSide castleSide, Color side)
   {
     if (castleSide == CastleSide::KingSide)
-      return (side == Color::White) ? static_cast<Square>(7)
-                                    : static_cast<Square>(63);
+      return (side == Color::White) ? static_cast<Square>(bb::H1)
+                                    : static_cast<Square>(bb::H8);
     if (castleSide == CastleSide::QueenSide)
-      return (side == Color::White) ? static_cast<Square>(0)
-                                    : static_cast<Square>(56);
+      return (side == Color::White) ? static_cast<Square>(bb::A1)
+                                    : static_cast<Square>(bb::A8);
     return NO_SQUARE;
   }
 
@@ -309,7 +303,7 @@ namespace lilia::chess
         {
           return true;
         }
-        break; // execute once
+        break;
       }
     }
     return false;
@@ -429,4 +423,4 @@ namespace lilia::chess
     return fen;
   }
 
-} // namespace lilia::model
+}

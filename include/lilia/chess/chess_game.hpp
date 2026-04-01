@@ -10,11 +10,9 @@
 
 namespace lilia::chess
 {
-
   /**
-   * This is the definitive entry point for the controller to manage a game.
-   * Beside this for move gen the MoveGenerator class can, and only should be used.
-   * Any other class is not intended to be used by the controller and rather is for the engine itself.
+   * High-level game wrapper used by the app layer.
+   * It owns a Position, exposes legal move execution, FEN import/export, and basic game-state queries.
    */
   class ChessGame
   {
@@ -29,6 +27,7 @@ namespace lilia::chess
 
     Piece getPiece(Square sq);
     const GameState &getGameState();
+    // Generates pseudo-legal moves and filters them by make/unmake legality.
     const std::vector<Move> &generateLegalMoves();
     std::optional<Move> getMove(Square from, Square to);
 
@@ -37,6 +36,7 @@ namespace lilia::chess
     Square getKingSquare(Color color);
     GameResult getResult();
     void setResult(GameResult res);
+    // Exposes the underlying position for engine-side consumers.
     Position &getPositionRefForBot();
 
     std::string getFen() const;

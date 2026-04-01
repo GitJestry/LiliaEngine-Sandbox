@@ -11,6 +11,7 @@ namespace lilia::chess
 
   struct Move;
 
+  // Generates pseudo-legal moves for a position, including specialized subsets for search.
   class MoveGenerator
   {
   public:

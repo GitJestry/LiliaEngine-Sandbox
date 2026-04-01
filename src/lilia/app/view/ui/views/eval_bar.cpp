@@ -338,4 +338,4 @@ namespace lilia::app::view::ui
     return m_toggle_bounds.contains(mousePos.x, mousePos.y);
   }
 
-} // namespace lilia::view
+}

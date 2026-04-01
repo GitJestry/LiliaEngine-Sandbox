@@ -113,7 +113,7 @@ namespace lilia::engine
     if (timer.joinable())
       timer.join();
 
-    // >>> Important: only adapt stats, when engine succeeded
+    // only adapt stats, when engine succeeded
     if (!engineThrew)
     {
       res.stats = m_engine.getLastSearchStats();
@@ -186,4 +186,4 @@ namespace lilia::engine
     return m_engine.getLastSearchStats();
   }
 
-} // namespace lilia::engine
+}

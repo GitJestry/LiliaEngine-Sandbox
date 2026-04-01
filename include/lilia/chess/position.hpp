@@ -11,6 +11,7 @@
 namespace lilia::chess
 {
 
+  // Owns a full chess position and supports incremental make/unmake, hashing, and legality helpers.
   class Position
   {
   public:
@@ -31,10 +32,8 @@ namespace lilia::chess
       return !m_history.empty() && m_history.back().gaveCheck != 0;
     }
 
-    // buildHash(): fast & without iterating over all squares
     void buildHash()
     {
-      // Full hash (including EP relevance!) — NOTE: Zobrist::compute(*this) must use the same EP logic
       m_hash = Zobrist::compute(*this);
 
       // Rebuild pawnKey
@@ -51,22 +50,16 @@ namespace lilia::chess
       m_state.pawnKey = pk;
     }
 
-    // Make/Unmake
     bool doMove(const Move &m);
     void undoMove();
     bool doNullMove();
     void undoNullMove();
 
-    // Status queries
     bool checkInsufficientMaterial();
     bool checkMoveRule();
     bool checkRepetition();
 
     bool inCheck() const;
-    /// Static exchange evaluation. Simulates the capture sequence on the
-    /// destination square (also for quiet moves) and returns true if the net
-    /// material gain is non-negative.
-    bool see(const Move &m) const;
     bool isPseudoLegal(const Move &m) const;
 
   private:

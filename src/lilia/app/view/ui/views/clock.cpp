@@ -236,4 +236,4 @@ namespace lilia::app::view::ui
     window.draw(m_text);
   }
 
-} // namespace lilia::view
+}

@@ -97,4 +97,4 @@ namespace lilia::app::view::ui
     info.icon_name = iconForEngine(ref);
     return info;
   }
-} // namespace lilia::view
+}

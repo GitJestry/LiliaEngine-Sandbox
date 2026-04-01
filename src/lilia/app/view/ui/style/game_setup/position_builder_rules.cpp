@@ -464,4 +464,4 @@ namespace lilia::app::view::ui::game_setup::rules
     sanitizeMeta(b, m);
   }
 
-} // namespace lilia::view::pb
+}

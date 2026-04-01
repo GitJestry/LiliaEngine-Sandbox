@@ -99,4 +99,4 @@ namespace lilia::app::view::ui
     return palette;
   }
 
-} // namespace lilia::view
+}

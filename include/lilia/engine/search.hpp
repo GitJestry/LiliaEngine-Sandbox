@@ -19,20 +19,13 @@
 
 namespace lilia::engine
 {
-
-  // -----------------------------------------------------------------------------
-  // Limits / constants
-  // -----------------------------------------------------------------------------
-  static constexpr int CH_LAYERS = 6; // 1..6 ply
+  static constexpr int CONTHIST_LAYERS = 6; // 1..6 ply
 
   struct SearchStoppedException : public std::exception
   {
     const char *what() const noexcept override { return "Search stopped"; }
   };
 
-  // -----------------------------------------------------------------------------
-  // SearchStats – robust count (64-bit)
-  // -----------------------------------------------------------------------------
   struct SearchStats
   {
     std::uint64_t nodes = 0;
@@ -47,9 +40,6 @@ namespace lilia::engine
   // Forwarddecleration
   class Evaluator;
 
-  // -----------------------------------------------------------------------------
-  // Search – one Instance-per-Thread (no shared mutable Data)
-  // -----------------------------------------------------------------------------
   class Search
   {
   public:
@@ -87,18 +77,15 @@ namespace lilia::engine
     // Basehistory (from->to)
     alignas(64) std::array<std::array<int16_t, chess::SQ_NB>, chess::SQ_NB> history{};
 
-    // extended heuristics (for better Move-Order/Cutoffs)
     // Quiet-History: (moverPiece, to)
     alignas(64) int16_t quietHist[chess::PIECE_TYPE_NB][chess::SQ_NB] = {};
 
     // Capture-History: (moverPiece, to, capturedPiece)
     alignas(64) int16_t captureHist[chess::PIECE_TYPE_NB][chess::SQ_NB][chess::PIECE_TYPE_NB] = {};
 
-    // Counter-Move: (from,to) typical answer
-    // plus Counter-History-Bonus for this exact move
     alignas(64) chess::Move counterMove[chess::SQ_NB][chess::SQ_NB] = {};
     alignas(64) int16_t counterHist[chess::SQ_NB][chess::SQ_NB] = {};
-    alignas(64) int16_t contHist[CH_LAYERS][chess::PIECE_TYPE_NB][chess::SQ_NB][chess::PIECE_TYPE_NB][chess::SQ_NB];
+    alignas(64) int16_t contHist[CONTHIST_LAYERS][chess::PIECE_TYPE_NB][chess::SQ_NB][chess::PIECE_TYPE_NB][chess::SQ_NB];
 
     LILIA_ALWAYS_INLINE void set_thread_id(int id) { thread_id_ = id; }
     [[nodiscard]] LILIA_ALWAYS_INLINE int thread_id() const { return thread_id_; }
@@ -110,8 +97,6 @@ namespace lilia::engine
     int quiescence(SearchPosition &pos, int alpha, int beta, int ply);
     std::vector<chess::Move> build_pv_from_tt(SearchPosition pos, int max_len = 16);
     int signed_eval(SearchPosition &pos);
-    std::vector<chess::Move> build_pv_from_tt(chess::Position pos, int max_len = 16);
-    int signed_eval(chess::Position &pos);
     // Copy global heuristics into this worker (killers are reset, on purpose)
     void copy_heuristics_from(const Search &src);
     // Merge this worker's heuristics into the global (killers are NOT merged)
@@ -143,7 +128,6 @@ namespace lilia::engine
         throw SearchStoppedException();
     }
 
-    // so that the last nodes still count
     LILIA_ALWAYS_INLINE void flush_tick()
     {
       if (!sharedNodes)
@@ -153,9 +137,6 @@ namespace lilia::engine
         sharedNodes->fetch_add(rem, std::memory_order_relaxed);
     }
 
-    // ---------------------------------------------------------------------------
-    // Data
-    // ---------------------------------------------------------------------------
     TT5 &tt;
     chess::MoveGenerator mg;
     const EngineConfig &cfg;
@@ -172,7 +153,6 @@ namespace lilia::engine
     alignas(64) chess::Move ordArr_[MAX_PLY][MAX_MOVES];
     alignas(64) int ordScore_[MAX_PLY][MAX_MOVES];
 
-    // Stop/Stats
     std::shared_ptr<std::atomic<bool>> stopFlag;
     SearchStats stats;
     std::shared_ptr<std::atomic<std::uint64_t>> sharedNodes;

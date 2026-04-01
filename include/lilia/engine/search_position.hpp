@@ -7,6 +7,7 @@
 #include "config.hpp"
 #include "eval_acc.hpp"
 #include "lilia/chess/position.hpp"
+#include "lilia/engine/see.hpp"
 
 namespace lilia::engine
 {
@@ -27,7 +28,6 @@ namespace lilia::engine
       m_eval.build_from_board(m_pos.getBoard());
     }
 
-    // ---- pure chess accessors ----
     LILIA_ALWAYS_INLINE const chess::Position &position() const noexcept { return m_pos; }
 
     LILIA_ALWAYS_INLINE const chess::Board &getBoard() const noexcept { return m_pos.getBoard(); }
@@ -41,14 +41,12 @@ namespace lilia::engine
     bool checkRepetition() { return m_pos.checkRepetition(); }
 
     LILIA_ALWAYS_INLINE bool inCheck() const { return m_pos.inCheck(); }
-    LILIA_ALWAYS_INLINE bool see(const chess::Move &m) const { return m_pos.see(m); }
+    LILIA_ALWAYS_INLINE bool see(const chess::Move &m) const { return see::non_negative(m_pos, m); }
     LILIA_ALWAYS_INLINE bool isPseudoLegal(const chess::Move &m) const { return m_pos.isPseudoLegal(m); }
 
-    // ---- engine eval access ----
     LILIA_ALWAYS_INLINE const EvalAcc &evalAcc() const noexcept { return m_eval; }
     void rebuildEvalAcc() { m_eval.build_from_board(m_pos.getBoard()); }
 
-    // ---- incremental make/unmake ----
     bool doMove(const chess::Move &m);
     void undoMove();
 

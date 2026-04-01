@@ -102,4 +102,4 @@ namespace lilia::app::view::audio
     m_sounds[name] = std::move(sound);
   }
 
-} // namespace lilia::view::sound
+}

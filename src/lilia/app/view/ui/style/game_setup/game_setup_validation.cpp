@@ -573,4 +573,4 @@ namespace lilia::app::view::ui::game_setup
     return false;
   }
 
-} // namespace lilia::view::ui::game_setup
+}

@@ -7,6 +7,8 @@
 #include "lilia/chess/core/magic.hpp"
 #include "lilia/chess/move_helper.hpp"
 #include "lilia/chess/compiler.hpp"
+#include "lilia/chess/chess_types.hpp"
+#include "lilia/chess/core/bitboard.hpp"
 
 namespace lilia::chess
 {
@@ -26,7 +28,6 @@ namespace lilia::chess
       // All pseudo-legal moves (but with pin filtering and king-safety filtering for king moves).
       All,
       // Captures plus ALL promotions (quiet and capture promos), plus en-passant.
-      // This matches your current AcceptCaptures predicate (m.isCapture() || m.promotion()!=None).
       CapturesPlusPromos
     };
 
@@ -41,8 +42,6 @@ namespace lilia::chess
       const bb::Bitboard all = b.getPieces(c);
       return SideSets{pawns, knights, bishops, rooks, queens, king, all, all & ~king};
     }
-
-    // ---------------- Between table ----------------
 
     constexpr bb::Bitboard compute_between_single(int ai, int bi) noexcept
     {
@@ -69,11 +68,11 @@ namespace lilia::chess
       return mask;
     }
 
-    constexpr std::array<std::array<bb::Bitboard, 64>, 64> build_between_table()
+    constexpr std::array<std::array<bb::Bitboard, SQ_NB>, SQ_NB> build_between_table()
     {
-      std::array<std::array<bb::Bitboard, 64>, 64> T{};
-      for (int a = 0; a < 64; ++a)
-        for (int b = 0; b < 64; ++b)
+      std::array<std::array<bb::Bitboard, SQ_NB>, SQ_NB> T{};
+      for (int a = 0; a < SQ_NB; ++a)
+        for (int b = 0; b < SQ_NB; ++b)
           T[a][b] = compute_between_single(a, b);
       return T;
     }
@@ -85,25 +84,22 @@ namespace lilia::chess
       return Between[(int)a][(int)b];
     }
 
-    // Align helpers
     LILIA_ALWAYS_INLINE bool aligned_diag(Square a, Square b) noexcept
     {
-      const int af = (int)a & 7, bf = (int)b & 7;
-      const int ar = (int)a >> 3, br = (int)b >> 3;
+      const int af = (int)a & bb::H1, bf = (int)b & bb::H1;
+      const int ar = (int)a >> bb::D1, br = (int)b >> bb::D1;
       const int df = af - bf, dr = ar - br;
       return (df == dr) || (df == -dr);
     }
     LILIA_ALWAYS_INLINE bool aligned_ortho(Square a, Square b) noexcept
     {
-      return (((int)a ^ (int)b) & 7) == 0 || (((int)a ^ (int)b) & 56) == 0;
+      return (((int)a ^ (int)b) & bb::H1) == 0 || (((int)a ^ (int)b) & bb::A8) == 0;
     }
-
-    // ---------------- Pin info (array, O(1) lookup) ----------------
 
     struct PinInfo
     {
       bb::Bitboard pinned = 0ULL;
-      bb::Bitboard allow[64]; // only valid for squares flagged in 'pinned'
+      bb::Bitboard allow[SQ_NB]; // only valid for squares flagged in 'pinned'
 
       LILIA_ALWAYS_INLINE void reset() noexcept
       {
@@ -117,7 +113,6 @@ namespace lilia::chess
       LILIA_ALWAYS_INLINE bb::Bitboard allow_mask(Square s) const noexcept { return allow[(int)s]; }
     };
 
-    // Robust pins: iterate enemy sliders aligned with king; exactly-one-blocker rule.
     LILIA_ALWAYS_INLINE void compute_pins(const Board &b, Color us, const bb::Bitboard occ,
                                           PinInfo &out) noexcept
     {
@@ -158,7 +153,6 @@ namespace lilia::chess
         try_pinner(bb::pop_lsb_unchecked(s), false);
     }
 
-    // --------- Fast EP legality (tolerant on malformed setups) ---------
     LILIA_ALWAYS_INLINE bool ep_is_legal_fast(const Board &b, Color side, Square from,
                                               Square to) noexcept
     {
@@ -187,8 +181,6 @@ namespace lilia::chess
       const bb::Bitboard rays = magic::sliding_attacks(magic::Slider::Rook, ksq, occ);
       return (rays & sliders) == 0ULL;
     }
-
-    // ---------------- Piece generators ----------------
 
     template <Color Side, GenMode Mode, class Emit>
     LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board &board, const GameState &st, bb::Bitboard occ,
@@ -431,7 +423,6 @@ namespace lilia::chess
         }
       }
 
-      // En passant: only meaningful if we generate captures/promos or all.
       if (st.enPassantSquare != NO_SQUARE)
       {
         const Square epSq = st.enPassantSquare;
@@ -623,7 +614,6 @@ namespace lilia::chess
       const bb::Bitboard fromBB = bb::sq_bb(from);
       const bb::Bitboard occ_no_king = occ & ~fromBB;
 
-      // King captures are useful in both modes.
       for (bb::Bitboard caps = atk & enemyNoK; caps;)
       {
         const Square to = bb::pop_lsb_unchecked(caps);
@@ -640,60 +630,56 @@ namespace lilia::chess
           if (!attackedBy(board, to, ~side, occ_no_king))
             emit(Move{from, to, PT::None, false, false, CastleSide::None});
         }
-
-        // Castling is *quiet-only*. Keep the through-check tests here because Position::doMove()
-        // currently validates only the final king square.
         const Color enemySide = ~side;
         if (side == Color::White)
         {
           if ((st.castlingRights & CastlingRights::WhiteKingSide) && (our.rooks & bb::sq_bb(bb::H1)) &&
-              !(occ & (bb::sq_bb(Square{5}) | bb::sq_bb(Square{6}))))
+              !(occ & (bb::sq_bb(bb::F1) | bb::sq_bb(bb::G1))))
           {
-            if (!attackedBy(board, Square{4}, enemySide, occ) &&
-                !attackedBy(board, Square{5}, enemySide, occ) &&
-                !attackedBy(board, Square{6}, enemySide, occ))
+            if (!attackedBy(board, bb::E1, enemySide, occ) &&
+                !attackedBy(board, bb::F1, enemySide, occ) &&
+                !attackedBy(board, bb::G1, enemySide, occ))
             {
-              emit(Move{bb::E1, Square{6}, PT::None, false, false, CastleSide::KingSide});
+              emit(Move{bb::E1, bb::G1, PT::None, false, false, CastleSide::KingSide});
             }
           }
           if ((st.castlingRights & CastlingRights::WhiteQueenSide) && (our.rooks & bb::sq_bb(bb::A1)) &&
-              !(occ & (bb::sq_bb(Square{3}) | bb::sq_bb(Square{2}) | bb::sq_bb(Square{1}))))
+              !(occ & (bb::sq_bb(bb::D1) | bb::sq_bb(bb::C1) | bb::sq_bb(bb::B1))))
           {
-            if (!attackedBy(board, Square{4}, enemySide, occ) &&
-                !attackedBy(board, Square{3}, enemySide, occ) &&
-                !attackedBy(board, Square{2}, enemySide, occ))
+            if (!attackedBy(board, bb::E1, enemySide, occ) &&
+                !attackedBy(board, bb::D1, enemySide, occ) &&
+                !attackedBy(board, bb::C1, enemySide, occ))
             {
-              emit(Move{bb::E1, Square{2}, PT::None, false, false, CastleSide::QueenSide});
+              emit(Move{bb::E1, bb::C1, PT::None, false, false, CastleSide::QueenSide});
             }
           }
         }
         else
         {
           if ((st.castlingRights & CastlingRights::BlackKingSide) && (our.rooks & bb::sq_bb(bb::H8)) &&
-              !(occ & (bb::sq_bb(Square{61}) | bb::sq_bb(Square{62}))))
+              !(occ & (bb::sq_bb(bb::F8) | bb::sq_bb(bb::G8))))
           {
-            if (!attackedBy(board, Square{60}, enemySide, occ) &&
-                !attackedBy(board, Square{61}, enemySide, occ) &&
-                !attackedBy(board, Square{62}, enemySide, occ))
+            if (!attackedBy(board, bb::E8, enemySide, occ) &&
+                !attackedBy(board, bb::F8, enemySide, occ) &&
+                !attackedBy(board, bb::G8, enemySide, occ))
             {
-              emit(Move{bb::E8, Square{62}, PT::None, false, false, CastleSide::KingSide});
+              emit(Move{bb::E8, bb::G8, PT::None, false, false, CastleSide::KingSide});
             }
           }
           if ((st.castlingRights & CastlingRights::BlackQueenSide) && (our.rooks & bb::sq_bb(bb::A8)) &&
-              !(occ & (bb::sq_bb(Square{59}) | bb::sq_bb(Square{58}) | bb::sq_bb(Square{57}))))
+              !(occ & (bb::sq_bb(bb::D8) | bb::sq_bb(bb::C8) | bb::sq_bb(bb::B8))))
           {
-            if (!attackedBy(board, Square{60}, enemySide, occ) &&
-                !attackedBy(board, Square{59}, enemySide, occ) &&
-                !attackedBy(board, Square{58}, enemySide, occ))
+            if (!attackedBy(board, bb::E8, enemySide, occ) &&
+                !attackedBy(board, bb::D8, enemySide, occ) &&
+                !attackedBy(board, bb::C8, enemySide, occ))
             {
-              emit(Move{bb::E8, Square{58}, PT::None, false, false, CastleSide::QueenSide});
+              emit(Move{bb::E8, bb::C8, PT::None, false, false, CastleSide::QueenSide});
             }
           }
         }
       }
     }
 
-    // ---------- Evasions ----------
     template <class Emit>
     LILIA_ALWAYS_INLINE void generateEvasions_T(const Board &b, const GameState &st,
                                                 const PinInfo &pins, Emit &&emit) noexcept
@@ -708,7 +694,6 @@ namespace lilia::chess
 
       const bb::Bitboard occ = b.getAllPieces();
 
-      // Fast checker discovery (magic from king is enough to detect slider checkers).
       bb::Bitboard checkers = 0ULL;
       {
         const bb::Bitboard target = bb::sq_bb(ksq);
@@ -771,7 +756,7 @@ namespace lilia::chess
       genRookMoves_T<GenMode::All>(our, opp, occ, pins, emit, evasionTargets);
       genQueenMoves_T<GenMode::All>(our, opp, occ, pins, emit, evasionTargets);
 
-      // EP-evasion (strict): the EP capture must resolve the check.
+      // the EP capture must resolve the check.
       if (st.enPassantSquare != NO_SQUARE)
       {
         const Square epSq = st.enPassantSquare;
@@ -843,14 +828,11 @@ namespace lilia::chess
       genKingMoves_T<Mode>(b, st, side, our, opp, occ, emit);
     }
 
-  } // namespace
-
-  // ---------------- Public APIs (same signature as your current MoveGenerator) ----------------
+  }
 
   void MoveGenerator::generateNonCapturePromotions(const Board &b, const GameState &st,
                                                    std::vector<Move> &out) const
   {
-    // Keep your existing behavior; this is not in the hot path once CapturesPlusPromos is fast.
     if (out.capacity() < 16)
       out.reserve(16);
     out.clear();
@@ -983,8 +965,8 @@ namespace lilia::chess
   void MoveGenerator::generateCapturesOnly(const Board &b, const GameState &st,
                                            std::vector<Move> &out) const
   {
-    if (out.capacity() < 64)
-      out.reserve(64);
+    if (out.capacity() < SQ_NB)
+      out.reserve(SQ_NB);
     out.clear();
     auto sink = [&](const Move &m)
     { out.push_back(m); };
@@ -1030,4 +1012,4 @@ namespace lilia::chess
     return buf.n;
   }
 
-} // namespace lilia::model
+}

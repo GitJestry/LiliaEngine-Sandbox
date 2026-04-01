@@ -19,7 +19,7 @@ namespace lilia::engine
       static EvalParamStorage instance{};
       return instance;
     }
-  } // namespace
+  }
 
   EvalParams &eval_params() { return storage().current; }
   const EvalParams &default_eval_params() { return storage().defaults; }
@@ -70,7 +70,6 @@ namespace lilia::engine
     values.reserve(entries.size());
     for (const auto &entry : entries)
     {
-      // Recover default via pointer arithmetic by mapping name again.
       values.push_back(entry.default_value);
     }
     return values;
@@ -89,4 +88,4 @@ namespace lilia::engine
     }
   }
 
-} // namespace lilia::engine
+}

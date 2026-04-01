@@ -265,4 +265,4 @@ namespace lilia::app::view::ui
     m_rclick_arrows.clear();
   }
 
-} // namespace lilia::view
+}

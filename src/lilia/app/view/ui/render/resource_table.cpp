@@ -509,4 +509,4 @@ void main()
     load(constant::tex::TRANSPARENT, sf::Color::Transparent);
   }
 
-} // namespace lilia::view
+}

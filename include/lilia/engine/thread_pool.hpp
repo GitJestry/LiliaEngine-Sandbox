@@ -20,13 +20,11 @@ namespace lilia::engine
       return pool;
     }
 
-    // Submit a job returning T
     template <class F, class... Args>
     auto submit(F &&f, Args &&...args) -> std::future<std::invoke_result_t<F, Args...>>
     {
       using R = std::invoke_result_t<F, Args...>;
 
-      // packaged_task in shared_ptr, so that Callable is copyable
       auto task_ptr = std::make_shared<std::packaged_task<R()>>(
           std::bind(std::forward<F>(f), std::forward<Args>(args)...));
 
@@ -35,9 +33,7 @@ namespace lilia::engine
       {
         std::lock_guard<std::mutex> lk(m_);
         q_.emplace([task_ptr]() mutable
-                   {
-        // shared_ptr keeps the task alive
-        (*task_ptr)(); });
+                   { (*task_ptr)(); });
       }
       cv_.notify_one();
       return fut;
@@ -48,7 +44,6 @@ namespace lilia::engine
       if (desired <= 0)
         return;
       std::lock_guard<std::mutex> lk(m_);
-      // simple policy: never shrink; grow up to desired once
       while (!stop_ && threads_.size() < (size_t)desired)
       {
         threads_.emplace_back([this]

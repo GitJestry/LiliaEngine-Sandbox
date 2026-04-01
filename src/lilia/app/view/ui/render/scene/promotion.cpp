@@ -19,4 +19,4 @@ namespace lilia::app::view::ui
     return m_type;
   }
 
-} // namespace lilia::view
+}

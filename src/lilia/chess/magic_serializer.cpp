@@ -65,7 +65,7 @@ namespace lilia::chess::magic
   }
 
   static inline void write_magic_array(std::ostream &os, const char *name,
-                                       const std::array<Magic, 64> &mag)
+                                       const std::array<Magic, SQ_NB> &mag)
   {
     os << "const MagicPacked " << name << "[64] = {\n";
     for (int i = 0; i < 64; ++i)
@@ -80,17 +80,17 @@ namespace lilia::chess::magic
     os << "};\n\n";
   }
 
-  static inline void pack_flat(const std::array<std::vector<std::uint64_t>, 64> &src,
+  static inline void pack_flat(const std::array<std::vector<std::uint64_t>, SQ_NB> &src,
                                std::vector<std::uint32_t> &off, std::vector<std::uint16_t> &len,
                                std::vector<std::uint64_t> &arena)
   {
-    off.assign(64, 0);
-    len.assign(64, 0);
+    off.assign(SQ_NB, 0);
+    len.assign(SQ_NB, 0);
     arena.clear();
     arena.reserve(1 << 16);
 
     std::uint32_t cur = 0;
-    for (int i = 0; i < 64; ++i)
+    for (int i = 0; i < SQ_NB; ++i)
     {
       const auto &v = src[i];
       off[i] = cur;
@@ -120,8 +120,8 @@ namespace lilia::chess::magic
     const auto &btab = bishop_tables();
 
     // In flache Arenen packen
-    std::vector<std::uint32_t> r_off(64), b_off(64);
-    std::vector<std::uint16_t> r_len(64), b_len(64);
+    std::vector<std::uint32_t> r_off(SQ_NB), b_off(SQ_NB);
+    std::vector<std::uint16_t> r_len(SQ_NB), b_len(SQ_NB);
     std::vector<std::uint64_t> r_arena, b_arena;
 
     pack_flat(rtab, r_off, r_len, r_arena);
@@ -171,4 +171,4 @@ struct MagicPacked { std::uint64_t magic; std::uint8_t shift; };
     os.flush();
   }
 
-} // namespace lilia::model::magic
+}

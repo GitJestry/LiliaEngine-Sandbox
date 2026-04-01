@@ -47,10 +47,15 @@ namespace lilia::chess::bb
   constexpr Bitboard RANK_7 = 0x00FF000000000000ULL;
   constexpr Bitboard RANK_8 = 0xFF00000000000000ULL;
 
-  constexpr Square A1 = 0, D1 = 3, E1 = 4, F1 = 5, H1 = 7;
-  constexpr Square A8 = 56, D8 = 59, E8 = 60, F8 = 61, H8 = 63;
+  constexpr Square A1 = 0, B1 = 1, C1 = 2, D1 = 3, E1 = 4, F1 = 5, G1 = 6, H1 = 7;         // bottom rank
+  constexpr Square A8 = 56, B8 = 57, C8 = 58, D8 = 59, E8 = 60, F8 = 61, G8 = 62, H8 = 63; // top rank
+  constexpr Square D4 = 27, E4 = 28, D5 = 35, E5 = 36;                                     // Center
 
-  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool any(Bitboard b) noexcept { return b != 0; }
+  [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool
+  any(Bitboard b) noexcept
+  {
+    return b != 0;
+  }
   [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool none(Bitboard b) noexcept { return b == 0; }
   [[nodiscard]] LILIA_ALWAYS_INLINE constexpr int popcount(Bitboard b) noexcept { return std::popcount(b); }
   [[nodiscard]] LILIA_ALWAYS_INLINE constexpr int ctz64(std::uint64_t x) noexcept { return static_cast<int>(std::countr_zero(x)); }

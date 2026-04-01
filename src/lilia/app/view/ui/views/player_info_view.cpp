@@ -552,4 +552,4 @@ namespace lilia::app::view::ui
     layoutText(); // keep text safe vs. updated capture box
   }
 
-} // namespace lilia::view
+}

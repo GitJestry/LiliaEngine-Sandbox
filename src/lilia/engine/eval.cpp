@@ -20,10 +20,6 @@
 namespace lilia::engine
 {
 
-  // =============================================================================
-  // Utility
-  // =============================================================================
-
   LILIA_ALWAYS_INLINE int lsb_i(chess::bb::Bitboard b) noexcept
   {
     return b ? chess::bb::ctz64(b) : -1;
@@ -46,8 +42,6 @@ namespace lilia::engine
     const int dr = ar > br ? ar - br : br - ar;
     return df + dr;
   }
-
-  // micro helpers
   template <typename T>
   LILIA_ALWAYS_INLINE void prefetch_ro(const T *p) noexcept
   {
@@ -56,23 +50,20 @@ namespace lilia::engine
 #endif
   }
 
-  // =============================================================================
-  // Masks
-  // =============================================================================
   struct Masks
   {
-    std::array<chess::bb::Bitboard, 64> file{};
-    std::array<chess::bb::Bitboard, 64> adjFiles{};
-    std::array<chess::bb::Bitboard, 64> wPassed{}, bPassed{}, wFront{}, bFront{};
-    std::array<chess::bb::Bitboard, 64> kingRing{};
-    std::array<chess::bb::Bitboard, 64> wShield{}, bShield{};
-    std::array<chess::bb::Bitboard, 64> frontSpanW{}, frontSpanB{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> file{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> adjFiles{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> wPassed{}, bPassed{}, wFront{}, bFront{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> kingRing{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> wShield{}, bShield{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> frontSpanW{}, frontSpanB{};
   };
 
   consteval Masks init_masks()
   {
     Masks m{};
-    for (int sq = 0; sq < 64; ++sq)
+    for (int sq = 0; sq < chess::SQ_NB; ++sq)
     {
       int f = chess::bb::file_of(static_cast<chess::Square>(sq));
       int r = chess::bb::rank_of(static_cast<chess::Square>(sq));
@@ -160,13 +151,9 @@ namespace lilia::engine
   }
   static constexpr Masks M = init_masks();
 
-  // =============================================================================
-  // Tunables – structure & style
-  // =============================================================================
   constexpr chess::bb::Bitboard CENTER4 =
-      chess::bb::sq_bb(chess::Square(27)) | chess::bb::sq_bb(chess::Square(28)) | chess::bb::sq_bb(chess::Square(35)) | chess::bb::sq_bb(chess::Square(36));
+      chess::bb::sq_bb(chess::bb::D4) | chess::bb::sq_bb(chess::bb::E4) | chess::bb::sq_bb(chess::bb::D5) | chess::bb::sq_bb(chess::bb::E5);
 
-  // Material imbalance (leicht)
   struct MaterialCounts
   {
     int P[2]{}, N[2]{}, B[2]{}, R[2]{}, Q[2]{};
@@ -177,20 +164,22 @@ namespace lilia::engine
     {
       return (kw * (w * (w - 1)) / 2) - (kb * (b * (b - 1)) / 2);
     };
+
     int sc = 0;
-    sc += s(mc.N[0], mc.N[1], 3, 3);
-    sc += s(mc.B[0], mc.B[1], 4, 4);
-    sc += (mc.B[0] >= 2 ? +16 : 0) + (mc.B[1] >= 2 ? -16 : 0);
-    sc += (mc.R[0] * mc.N[0] * 2) - (mc.R[1] * mc.N[1] * 2);
-    sc += (mc.R[0] * mc.B[0] * 1) - (mc.R[1] * mc.B[1] * 1);
-    sc += (mc.Q[0] * mc.R[0] * (-2)) - (mc.Q[1] * mc.R[1] * (-2));
+    sc += s(mc.N[0], mc.N[1], MAT_IMB_N_PAIR_COEF, MAT_IMB_N_PAIR_COEF);
+    sc += s(mc.B[0], mc.B[1], MAT_IMB_B_PAIR_COEF, MAT_IMB_B_PAIR_COEF);
+
+    sc += (mc.B[0] >= 2 ? +MAT_IMB_BISHOP_PAIR_BONUS : 0);
+    sc -= (mc.B[1] >= 2 ? +MAT_IMB_BISHOP_PAIR_BONUS : 0);
+
+    sc += (mc.R[0] * mc.N[0] * MAT_IMB_RN_SYNERGY) - (mc.R[1] * mc.N[1] * MAT_IMB_RN_SYNERGY);
+    sc += (mc.R[0] * mc.B[0] * MAT_IMB_RB_SYNERGY) - (mc.R[1] * mc.B[1] * MAT_IMB_RB_SYNERGY);
+    sc += (mc.Q[0] * mc.R[0] * MAT_IMB_QR_SYNERGY) - (mc.Q[1] * mc.R[1] * MAT_IMB_QR_SYNERGY);
+
     return sc;
   }
 
-  // =============================================================================
-  // Space
-  // =============================================================================
-  static int space_term(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  static int space_term(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                         chess::bb::Bitboard wPA, chess::bb::Bitboard bPA)
   {
     chess::bb::Bitboard wocc = W[0] | W[1] | W[2] | W[3] | W[4] | W[5];
@@ -242,12 +231,12 @@ namespace lilia::engine
         if (!(wp & ADJ))
         {
           mg -= ISO_P * wc;
-          eg -= (ISO_P * wc) / 2;
+          eg -= (ISO_P * wc) / ISO_EG_DEN;
         }
         if (wc > 1)
         {
           mg -= DOUBLED_P * (wc - 1);
-          eg -= (DOUBLED_P * (wc - 1)) / 2;
+          eg -= (DOUBLED_P * (wc - 1)) / DOUBLED_EG_DEN;
         }
       }
       if (bc)
@@ -255,12 +244,12 @@ namespace lilia::engine
         if (!(bp & ADJ))
         {
           mg += ISO_P * bc;
-          eg += (ISO_P * bc) / 2;
+          eg += (ISO_P * bc) / ISO_EG_DEN;
         }
         if (bc > 1)
         {
           mg += DOUBLED_P * (bc - 1);
-          eg += (DOUBLED_P * (bc - 1)) / 2;
+          eg += (DOUBLED_P * (bc - 1)) / DOUBLED_EG_DEN;
         }
       }
     }
@@ -275,19 +264,19 @@ namespace lilia::engine
       if (f > 0 && (wp & chess::bb::sq_bb(chess::Square(s - 1))))
       {
         mg += PHALANX;
-        eg += PHALANX / 2;
+        eg += PHALANX / PHALANX_EG_DEN;
       }
       if (f < 7 && (wp & chess::bb::sq_bb(chess::Square(s + 1))))
       {
         mg += PHALANX;
-        eg += PHALANX / 2;
+        eg += PHALANX / PHALANX_EG_DEN;
       }
       bool passed = (M.wPassed[s] & bp) == 0;
       bool candidate = !passed && ((M.wPassed[s] & bp & ~M.wFront[s]) == 0);
       if (candidate)
       {
         mg += CANDIDATE_P;
-        eg += CANDIDATE_P / 2;
+        eg += CANDIDATE_P / CANDIDATE_EG_DEN;
       }
       if (passed)
       {
@@ -295,12 +284,12 @@ namespace lilia::engine
         eg += PASSED_EG[r];
         out.wPass |= chess::bb::sq_bb(chess::Square(s));
         int steps = 7 - r;
-        if (steps <= 2)
+        if (steps <= PASS_NEAR_PROMO_STEP2_MAX)
         {
           mg += PASS_NEAR_PROMO_STEP2_MG;
           eg += PASS_NEAR_PROMO_STEP2_EG;
         }
-        else if (steps == 3)
+        else if (steps == PASS_NEAR_PROMO_STEP3_EQ)
         {
           mg += PASS_NEAR_PROMO_STEP3_MG;
           eg += PASS_NEAR_PROMO_STEP3_EG;
@@ -316,19 +305,19 @@ namespace lilia::engine
       if (f > 0 && (bp & chess::bb::sq_bb(chess::Square(s - 1))))
       {
         mg -= PHALANX;
-        eg -= PHALANX / 2;
+        eg -= PHALANX / PHALANX_EG_DEN;
       }
       if (f < 7 && (bp & chess::bb::sq_bb(chess::Square(s + 1))))
       {
         mg -= PHALANX;
-        eg -= PHALANX / 2;
+        eg -= PHALANX / PHALANX_EG_DEN;
       }
       bool passed = (M.bPassed[s] & wp) == 0;
       bool candidate = !passed && ((M.bPassed[s] & wp & ~M.bFront[s]) == 0);
       if (candidate)
       {
         mg -= CANDIDATE_P;
-        eg -= CANDIDATE_P / 2;
+        eg -= CANDIDATE_P / CANDIDATE_EG_DEN;
       }
       if (passed)
       {
@@ -336,12 +325,12 @@ namespace lilia::engine
         eg -= PASSED_EG[7 - chess::bb::rank_of(s)];
         out.bPass |= chess::bb::sq_bb(chess::Square(s));
         int steps = chess::bb::rank_of(s);
-        if (steps <= 2)
+        if (steps <= PASS_NEAR_PROMO_STEP2_MAX)
         {
           mg -= PASS_NEAR_PROMO_STEP2_MG;
           eg -= PASS_NEAR_PROMO_STEP2_EG;
         }
-        else if (steps == 3)
+        else if (steps == PASS_NEAR_PROMO_STEP3_EQ)
         {
           mg -= PASS_NEAR_PROMO_STEP3_MG;
           eg -= PASS_NEAR_PROMO_STEP3_EG;
@@ -398,7 +387,7 @@ namespace lilia::engine
 
         // it's backward: penalize white
         mg -= BACKWARD_P;
-        eg -= BACKWARD_P / 2;
+        eg -= BACKWARD_P / BACKWARD_EG_DEN;
       }
     }
 
@@ -430,17 +419,17 @@ namespace lilia::engine
 
         // it's backward: penalize black (i.e., bonus for white)
         mg += BACKWARD_P;
-        eg += BACKWARD_P / 2;
+        eg += BACKWARD_P / BACKWARD_EG_DEN;
       }
     }
 
-    // connected passers (pawn-only) – prevent a/h wrap
+    // connected passers (pawn-only)
     chess::bb::Bitboard wConn =
         (((out.wPass & ~chess::bb::FILE_H) << 1) & out.wPass) | (((out.wPass & ~chess::bb::FILE_A) >> 1) & out.wPass);
     chess::bb::Bitboard bConn =
         (((out.bPass & ~chess::bb::FILE_H) << 1) & out.bPass) | (((out.bPass & ~chess::bb::FILE_A) >> 1) & out.bPass);
     int wC = chess::bb::popcount(wConn), bC = chess::bb::popcount(bConn);
-    mg += (CONNECTED_PASSERS / 2) * (wC - bC);
+    mg += (CONNECTED_PASSERS / CONNECTED_PASSERS_MG_DEN) * (wC - bC);
     eg += CONNECTED_PASSERS * (wC - bC);
 
     return out;
@@ -451,9 +440,6 @@ namespace lilia::engine
     int mg = 0, eg = 0;
   };
 
-  // =============================================================================
-  // Threats & hanging
-  // =============================================================================
   struct AttackMap
   {
     chess::bb::Bitboard wAll{0}, bAll{0};
@@ -468,14 +454,14 @@ namespace lilia::engine
     // Cached slider rays (per piece chess::square)
     chess::bb::Bitboard wBPos{0}, wRPos{0}, wQPos{0};
     chess::bb::Bitboard bBPos{0}, bRPos{0}, bQPos{0};
-    std::array<chess::bb::Bitboard, 64> wBishopRays{};
-    std::array<chess::bb::Bitboard, 64> bBishopRays{};
-    std::array<chess::bb::Bitboard, 64> wRookRays{};
-    std::array<chess::bb::Bitboard, 64> bRookRays{};
-    std::array<chess::bb::Bitboard, 64> wQueenBishopRays{};
-    std::array<chess::bb::Bitboard, 64> bQueenBishopRays{};
-    std::array<chess::bb::Bitboard, 64> wQueenRookRays{};
-    std::array<chess::bb::Bitboard, 64> bQueenRookRays{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> wBishopRays{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> bBishopRays{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> wRookRays{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> bRookRays{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> wQueenBishopRays{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> bQueenBishopRays{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> wQueenRookRays{};
+    std::array<chess::bb::Bitboard, chess::SQ_NB> bQueenRookRays{};
   };
 
   LILIA_ALWAYS_INLINE chess::bb::Bitboard cached_slider_attacks(const AttackMap *A, bool white, chess::magic::Slider s, int sq,
@@ -557,7 +543,7 @@ namespace lilia::engine
           egB += PASS_PIECE_SUPP;
         }
         // king boost / king block
-        if (K >= 0 && king_manhattan(K, s) <= 3)
+        if (K >= 0 && king_manhattan(K, s) <= PASS_KBOOST_DIST_MAX)
         {
           mgB += PASS_KBOOST;
           egB += PASS_KBOOST;
@@ -572,7 +558,7 @@ namespace lilia::engine
         if (oppK >= 0)
         {
           int dist = king_manhattan(oppK, s);
-          int prox = std::max(0, 4 - dist) * PASS_KPROX;
+          int prox = std::max(0, PASS_KPROX_DIST_MAX - dist) * PASS_KPROX;
           mgB -= prox;
           egB -= prox;
         }
@@ -796,12 +782,12 @@ namespace lilia::engine
     return ai;
   }
 
-  static int threats(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  static int threats(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                      const AttackMap &A, chess::bb::Bitboard occ)
   {
     int sc = 0;
 
-    auto pawn_threat_score = [&](chess::bb::Bitboard pa, const std::array<chess::bb::Bitboard, 6> &side)
+    auto pawn_threat_score = [&](chess::bb::Bitboard pa, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &side)
     {
       int s = 0;
       if (pa & side[1])
@@ -827,7 +813,7 @@ namespace lilia::engine
     chess::bb::Bitboard wHang = ((A.bAll | A.bPA) & wocc) & ~wDef;
     chess::bb::Bitboard bHang = ((A.wAll | A.wPA) & bocc) & ~bDef;
 
-    auto hang_score = [&](chess::bb::Bitboard h, const std::array<chess::bb::Bitboard, 6> &side)
+    auto hang_score = [&](chess::bb::Bitboard h, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &side)
     {
       int s = 0;
       if (h & side[1])
@@ -902,7 +888,7 @@ namespace lilia::engine
     return sc;
   }
 
-  static int king_safety_raw(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  static int king_safety_raw(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                              chess::bb::Bitboard /*occ*/, const AttackMap &A, int wK, int bK)
   {
     auto ring_attacks_fast = [&](int ksq, bool kingIsWhite) -> int
@@ -919,7 +905,11 @@ namespace lilia::engine
       int unique =
           chess::bb::popcount((kingIsWhite ? A.bN | A.bB | A.bR | A.bQ : A.wN | A.wB | A.wR | A.wQ) & ring);
 
-      int power = cN * (KS_W_N - 2) + cB * (KS_W_B - 2) + cR * KS_W_R + cQ * (KS_W_Q - 4);
+      int power =
+          cN * (KS_W_N - KS_POWER_N_OFFSET) +
+          cB * (KS_W_B - KS_POWER_B_OFFSET) +
+          cR * KS_W_R +
+          cQ * (KS_W_Q - KS_POWER_Q_OFFSET);
       int score = unique * KS_RING_BONUS +
                   (power * std::min(unique, KS_POWER_COUNT_CLAMP)) / KS_POWER_COUNT_CLAMP;
 
@@ -927,7 +917,8 @@ namespace lilia::engine
       chess::bb::Bitboard wp = W[0], bp = B[0];
       chess::bb::Bitboard shield = kingIsWhite ? M.wShield[ksq] : M.bShield[ksq];
       chess::bb::Bitboard ownP = kingIsWhite ? wp : bp;
-      int missing = 6 - std::min(6, chess::bb::popcount(ownP & shield));
+      int missing =
+          KS_SHIELD_MISSING_CAP - std::min(KS_SHIELD_MISSING_CAP, chess::bb::popcount(ownP & shield));
       score += missing * KS_MISS_SHIELD;
 
       chess::bb::Bitboard file = M.file[ksq];
@@ -936,7 +927,7 @@ namespace lilia::engine
       if (!ownOn && !oppOn)
         score += KS_OPEN_FILE;
       else if (!ownOn && oppOn)
-        score += KS_OPEN_FILE / 2;
+        score += KS_OPEN_FILE / KS_OPEN_FILE_SEMI_DEN;
 
       chess::bb::Bitboard kAtt = chess::bb::king_attacks_from((chess::Square)ksq);
       chess::bb::Bitboard oppAll = kingIsWhite ? (A.bAll | A.bPA | A.bKAtt) : (A.wAll | A.wPA | A.wKAtt);
@@ -945,7 +936,7 @@ namespace lilia::engine
           kAtt &
           ~(W[0] | W[1] | W[2] | W[3] | W[4] | W[5] | B[0] | B[1] | B[2] | B[3] | B[4] | B[5]) &
           ~oppAll);
-      score += (KS_ESCAPE_EMPTY - KS_ESCAPE_FACTOR * std::min(esc, 5));
+      score += (KS_ESCAPE_EMPTY - KS_ESCAPE_FACTOR * std::min(esc, KS_ESCAPE_SAFE_CAP));
 
       return std::min(score, KS_CLAMP);
     };
@@ -992,7 +983,7 @@ namespace lilia::engine
           int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : 8);
           int edist = clampi(nearEnemyR - kRank, 0, 7);
           int stormIdx = 7 - edist; // closer enemy pawn => bigger storm
-          total -= STORM[stormIdx] / 2;
+          total -= STORM[stormIdx] / SHELTER_STORM_DEN;
         }
         else
         {
@@ -1006,14 +997,14 @@ namespace lilia::engine
           int nearEnemyR = (nearEnemySq >= 0 ? (nearEnemySq >> 3) : -1);
           int edist = clampi(kRank - nearEnemyR, 0, 7);
           int stormIdx = 7 - edist; // closer enemy pawn => bigger storm
-          total -= STORM[stormIdx] / 2;
+          total -= STORM[stormIdx] / SHELTER_STORM_DEN;
         }
       }
       return total;
     };
 
     int sc = fileShelter(wK, true) - fileShelter(bK, false);
-    return sc / 2;
+    return sc / SHELTER_FINAL_DEN;
   }
 
   // =============================================================================
@@ -1027,22 +1018,22 @@ namespace lilia::engine
     return (pawns & LEFT) && (pawns & RIGHT);
   }
 
-  static int bishop_pair_term(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B)
+  static int bishop_pair_term(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B)
   {
     int s = 0;
     if (chess::bb::popcount(W[2]) >= 2)
-      s += BISHOP_PAIR + (pawns_on_both_wings(W[0]) ? 6 : 0);
+      s += BISHOP_PAIR + (pawns_on_both_wings(W[0]) ? BISHOP_PAIR_WINGS_BONUS : 0);
     if (chess::bb::popcount(B[2]) >= 2)
-      s -= BISHOP_PAIR + (pawns_on_both_wings(B[0]) ? 6 : 0);
+      s -= BISHOP_PAIR + (pawns_on_both_wings(B[0]) ? BISHOP_PAIR_WINGS_BONUS : 0);
     return s;
   }
 
-  static int bad_bishop(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B)
+  static int bad_bishop(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B)
   {
     auto is_light = [&](int sq)
     { return ((chess::bb::file_of(sq) + chess::bb::rank_of(sq)) & 1) != 0; };
     int sc = 0;
-    auto apply = [&](const std::array<chess::bb::Bitboard, 6> &bb, int sign)
+    auto apply = [&](const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &bb, int sign)
     {
       chess::bb::Bitboard paw = bb[0];
       bool closedCenter = ((paw & M.file[3]) && (paw & M.file[4])); // d & e File
@@ -1073,7 +1064,7 @@ namespace lilia::engine
     return sc;
   }
 
-  static int outposts_center(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  static int outposts_center(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                              chess::bb::Bitboard bPA, chess::bb::Bitboard wPA)
   {
     int s = 0;
@@ -1114,7 +1105,7 @@ namespace lilia::engine
     return s;
   }
 
-  static int rim_knights(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B)
+  static int rim_knights(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B)
   {
     chess::bb::Bitboard aF = M.file[0], hF = M.file[7];
     int s = 0;
@@ -1123,7 +1114,7 @@ namespace lilia::engine
     return s;
   }
 
-  static int rook_activity(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  static int rook_activity(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                            chess::bb::Bitboard wp, chess::bb::Bitboard bp, chess::bb::Bitboard wPass, chess::bb::Bitboard bPass, chess::bb::Bitboard wPA,
                            chess::bb::Bitboard bPA, chess::bb::Bitboard occ, int wK, int bK, const AttackMap *A)
   {
@@ -1325,7 +1316,7 @@ namespace lilia::engine
     {
       chess::bb::Bitboard rooks = white ? W[3] : B[3];
       chess::bb::Bitboard oppPA = white ? bPA : wPA;
-      int targetRank = white ? 2 : 5; // zero-based: rank 3 / rank 6
+      int targetRank = white ? ROOK_LIFT_TARGET_RANK_WHITE : ROOK_LIFT_TARGET_RANK_BLACK; // zero-based: rank 3 / rank 6
       int sc = 0;
       chess::bb::Bitboard t = rooks;
       while (t)
@@ -1349,8 +1340,8 @@ namespace lilia::engine
     return s;
   }
 
-  static int rook_endgame_extras_eg(const std::array<chess::bb::Bitboard, 6> &W,
-                                    const std::array<chess::bb::Bitboard, 6> &B, chess::bb::Bitboard wp, chess::bb::Bitboard bp,
+  static int rook_endgame_extras_eg(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W,
+                                    const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B, chess::bb::Bitboard wp, chess::bb::Bitboard bp,
                                     chess::bb::Bitboard occ, const AttackMap *A, chess::bb::Bitboard wPass_cached,
                                     chess::bb::Bitboard bPass_cached)
   {
@@ -1431,8 +1422,8 @@ namespace lilia::engine
     return eg;
   }
 
-  static int passer_blocker_quality(const std::array<chess::bb::Bitboard, 6> &W,
-                                    const std::array<chess::bb::Bitboard, 6> &B, chess::bb::Bitboard wp, chess::bb::Bitboard bp,
+  static int passer_blocker_quality(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W,
+                                    const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B, chess::bb::Bitboard wp, chess::bb::Bitboard bp,
                                     chess::bb::Bitboard occ)
   {
     int sc = 0;
@@ -1478,7 +1469,7 @@ namespace lilia::engine
   // =============================================================================
   // King tropism
   // =============================================================================
-  static int king_tropism(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B)
+  static int king_tropism(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B)
   {
     int wK = lsb_i(W[5]);
     int bK = lsb_i(B[5]);
@@ -1511,13 +1502,13 @@ namespace lilia::engine
   {
     if (sq < 0)
       return 6;
-    int d1 = king_manhattan(sq, 27); // d4
-    int d2 = king_manhattan(sq, 28); // e4
-    int d3 = king_manhattan(sq, 35); // d5
-    int d4 = king_manhattan(sq, 36); // e5
+    int d1 = king_manhattan(sq, chess::bb::D4);
+    int d2 = king_manhattan(sq, chess::bb::E4);
+    int d3 = king_manhattan(sq, chess::bb::D5);
+    int d4 = king_manhattan(sq, chess::bb::E5);
     return std::min(std::min(d1, d2), std::min(d3, d4));
   }
-  static int king_activity_eg(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B)
+  static int king_activity_eg(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B)
   {
     int wK = lsb_i(W[5]);
     int bK = lsb_i(B[5]);
@@ -1527,7 +1518,7 @@ namespace lilia::engine
   }
 
   // Passed-pawn-race EG
-  static int passed_pawn_race_eg(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  static int passed_pawn_race_eg(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                                  const chess::Position &pos)
   {
     int minorMajor = chess::bb::popcount(W[1] | W[2] | W[3] | B[1] | B[2] | B[3]);
@@ -1583,30 +1574,30 @@ namespace lilia::engine
   // =============================================================================
   // Development & piece blocking
   // =============================================================================
-  static int development(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B)
+  static int development(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B)
   {
     chess::bb::Bitboard wMin = W[1] | W[2];
     chess::bb::Bitboard bMin = B[1] | B[2];
     static constexpr chess::bb::Bitboard wInit =
-        chess::bb::sq_bb(chess::Square(1)) | chess::bb::sq_bb(chess::Square(6)) | chess::bb::sq_bb(chess::Square(2)) | chess::bb::sq_bb(chess::Square(5));
+        chess::bb::sq_bb(chess::bb::B1) | chess::bb::sq_bb(chess::bb::G1) | chess::bb::sq_bb(chess::bb::C1) | chess::bb::sq_bb(chess::bb::F1);
     static constexpr chess::bb::Bitboard bInit =
-        chess::bb::sq_bb(chess::Square(57)) | chess::bb::sq_bb(chess::Square(62)) | chess::bb::sq_bb(chess::Square(58)) | chess::bb::sq_bb(chess::Square(61));
+        chess::bb::sq_bb(chess::bb::B8) | chess::bb::sq_bb(chess::bb::G8) | chess::bb::sq_bb(chess::bb::C8) | chess::bb::sq_bb(chess::bb::F8);
     int dW = chess::bb::popcount(wMin & wInit);
     int dB = chess::bb::popcount(bMin & bInit);
     int score = (dB - dW) * DEVELOPMENT_PIECE_ON_HOME_PENALTY;
 
     chess::bb::Bitboard wRook = W[3];
     chess::bb::Bitboard bRook = B[3];
-    static constexpr chess::bb::Bitboard wRInit = chess::bb::sq_bb(chess::Square(0)) | chess::bb::sq_bb(chess::Square(7));
-    static constexpr chess::bb::Bitboard bRInit = chess::bb::sq_bb(chess::Square(56)) | chess::bb::sq_bb(chess::Square(63));
+    static constexpr chess::bb::Bitboard wRInit = chess::bb::sq_bb(chess::bb::A1) | chess::bb::sq_bb(chess::bb::H1);
+    static constexpr chess::bb::Bitboard bRInit = chess::bb::sq_bb(chess::bb::A8) | chess::bb::sq_bb(chess::bb::H8);
     int rW = chess::bb::popcount(wRook & wRInit);
     int rB = chess::bb::popcount(bRook & bRInit);
     score += (rB - rW) * DEVELOPMENT_ROOK_ON_HOME_PENALTY;
 
     chess::bb::Bitboard wQueen = W[4];
     chess::bb::Bitboard bQueen = B[4];
-    static constexpr chess::bb::Bitboard wQInit = chess::bb::sq_bb(chess::Square(3));
-    static constexpr chess::bb::Bitboard bQInit = chess::bb::sq_bb(chess::Square(59));
+    static constexpr chess::bb::Bitboard wQInit = chess::bb::sq_bb(chess::bb::D1);
+    static constexpr chess::bb::Bitboard bQInit = chess::bb::sq_bb(chess::bb::D8);
     int qW = chess::bb::popcount(wQueen & wQInit);
     int qB = chess::bb::popcount(bQueen & bQInit);
     score += (qB - qW) * DEVELOPMENT_QUEEN_ON_HOME_PENALTY;
@@ -1614,11 +1605,11 @@ namespace lilia::engine
     return score;
   }
 
-  static int piece_blocking(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B)
+  static int piece_blocking(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B)
   {
     int s = 0;
-    static constexpr chess::bb::Bitboard wBlock = chess::bb::sq_bb(chess::Square(1 * 8 + 2)) | chess::bb::sq_bb(chess::Square(1 * 8 + 3)); // c2,d2
-    static constexpr chess::bb::Bitboard bBlock = chess::bb::sq_bb(chess::Square(6 * 8 + 2)) | chess::bb::sq_bb(chess::Square(6 * 8 + 3)); // c7,d7
+    static constexpr chess::bb::Bitboard wBlock = chess::bb::sq_bb(chess::Square(1 * 8 + chess::bb::C1)) | chess::bb::sq_bb(chess::Square(1 * 8 + chess::bb::D1)); // c2,d2
+    static constexpr chess::bb::Bitboard bBlock = chess::bb::sq_bb(chess::Square(6 * 8 + chess::bb::C1)) | chess::bb::sq_bb(chess::Square(6 * 8 + chess::bb::D1)); // c7,d7
     if ((W[1] | W[2]) & wBlock)
       s -= PIECE_BLOCKING_PENALTY;
     if ((B[1] | B[2]) & bBlock)
@@ -1638,7 +1629,7 @@ namespace lilia::engine
     return std::max(df, dr);
   }
 
-  static int endgame_scale(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B)
+  static int endgame_scale(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B)
   {
     auto cnt = [&](int pt, int side)
     { return chess::bb::popcount(side ? B[pt] : W[pt]); };
@@ -1658,16 +1649,16 @@ namespace lilia::engine
     // K + Pawn position draw
     if (wP == 1 && bP == 0 && (wN | wB | wR | wQ | bN | bB | bR | bQ) == 0)
     {
-      if (on_fileA(W[0]) && bK == 56 /*a8*/)
+      if (on_fileA(W[0]) && bK == chess::bb::A8)
         return SCALE_DRAW;
-      if (on_fileH(W[0]) && bK == 63 /*h8*/)
+      if (on_fileH(W[0]) && bK == chess::bb::H8)
         return SCALE_DRAW;
     }
     if (bP == 1 && wP == 0 && (wN | wB | wR | wQ | bN | bB | bR | bQ) == 0)
     {
-      if (on_fileA(B[0]) && wK == 0 /*a1*/)
+      if (on_fileA(B[0]) && wK == chess::bb::A1)
         return SCALE_DRAW;
-      if (on_fileH(B[0]) && wK == 7 /*h1*/)
+      if (on_fileH(B[0]) && wK == chess::bb::H1)
         return SCALE_DRAW;
     }
 
@@ -1686,37 +1677,37 @@ namespace lilia::engine
     // wrong bishop + sidepawn (K+B+P(a/h) vs K)
     if (wB == 1 && wP == 1 && is_corner_pawn(W[0]) && (bP | bN | bB | bR | bQ) == 0)
     {
-      int corner = on_fileA(W[0]) ? 56 /*a8*/ : 63 /*h8*/;
+      int corner = on_fileA(W[0]) ? chess::bb::A8 : chess::bb::H8;
       int d = kdist_cheb(bK, corner);
-      if (d <= 1)
+      if (d <= KP_CORNER_DRAW_CHEB_DIST)
         return SCALE_DRAW;
-      if (d <= 2)
+      if (d <= KP_CORNER_VERY_DRAWISH_CHEB_DIST)
         return SCALE_VERY_DRAWISH;
       return SCALE_MEDIUM;
     }
     if (bB == 1 && bP == 1 && is_corner_pawn(B[0]) && (wP | wN | wB | wR | wQ) == 0)
     {
-      int corner = on_fileA(B[0]) ? 0 /*a1*/ : 7 /*h1*/;
+      int corner = on_fileA(B[0]) ? chess::bb::A1 : chess::bb::H1;
       int d = kdist_cheb(wK, corner);
-      if (d <= 1)
+      if (d <= KP_CORNER_DRAW_CHEB_DIST)
         return SCALE_DRAW;
-      if (d <= 2)
+      if (d <= KP_CORNER_VERY_DRAWISH_CHEB_DIST)
         return SCALE_VERY_DRAWISH;
       return SCALE_MEDIUM;
     }
 
     // R+side-/double pawn vs R
-    if (wR == 1 && bR == 1 && (wP <= 2) && is_corner_pawn(W[0]) && bP == 0)
+    if (wR == 1 && bR == 1 && (wP <= SIDEPAWN_ROOK_MAX_PAWNS) && is_corner_pawn(W[0]) && bP == 0)
     {
-      int corner = on_fileA(W[0]) ? 56 : 63;
+      int corner = on_fileA(W[0]) ? chess::bb::A8 : chess::bb::H8;
       int d = kdist_cheb(bK, corner);
-      return (d <= 2 ? SCALE_VERY_DRAWISH : SCALE_REDUCED);
+      return (d <= SIDEPAWN_ROOK_DRAW_CHEB_DIST ? SCALE_VERY_DRAWISH : SCALE_REDUCED);
     }
-    if (bR == 1 && wR == 1 && (bP <= 2) && is_corner_pawn(B[0]) && wP == 0)
+    if (bR == 1 && wR == 1 && (bP <= SIDEPAWN_ROOK_MAX_PAWNS) && is_corner_pawn(B[0]) && wP == 0)
     {
-      int corner = on_fileA(B[0]) ? 0 : 7;
+      int corner = on_fileA(B[0]) ? chess::bb::A1 : chess::bb::H1;
       int d = kdist_cheb(wK, corner);
-      return (d <= 2 ? SCALE_VERY_DRAWISH : SCALE_REDUCED);
+      return (d <= SIDEPAWN_ROOK_DRAW_CHEB_DIST ? SCALE_VERY_DRAWISH : SCALE_REDUCED);
     }
 
     // N+sidepawn vs K
@@ -1730,13 +1721,13 @@ namespace lilia::engine
     {
       int wMin = wN + wB, bMin = bN + bB;
       // K vs K / KN vs K / KB vs K / KN vs KN / KB vs KB
-      if (wMin <= 1 && bMin <= 1)
+      if (wMin <= NO_PAWNS_DRAW_MAX_MINORS_PER_SIDE && bMin <= NO_PAWNS_DRAW_MAX_MINORS_PER_SIDE)
         return SCALE_DRAW;
       // K  2N vs K (generally drawn with best play)
-      if ((wN == 2 && wB == 0 && bMin == 0) || (bN == 2 && bB == 0 && wMin == 0))
+      if ((wN == TWO_KNIGHTS_DRAWISH_COUNT && wB == 0 && bMin == 0) || (bN == TWO_KNIGHTS_DRAWISH_COUNT && bB == 0 && wMin == 0))
         return SCALE_VERY_DRAWISH;
       // Minor vs minor of the same type: very drawish without pawns
-      if ((wMin == 1 && bMin == 1) && ((wN == bN) || (wB == bB)))
+      if ((wMin == SAME_TYPE_MINOR_DRAWISH_COUNT && bMin == SAME_TYPE_MINOR_DRAWISH_COUNT) && ((wN == bN) || (wB == bB)))
         return SCALE_VERY_DRAWISH;
     }
 
@@ -1746,7 +1737,7 @@ namespace lilia::engine
   // =============================================================================
   // Extra: castles & center
   // =============================================================================
-  static void castling_and_center(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  static void castling_and_center(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                                   int &mg_add, int &eg_add)
   {
     int wK = lsb_i(W[5]);
@@ -1759,7 +1750,7 @@ namespace lilia::engine
 
       // Normalize to "white viewpoint" for the positional test
       int ksq_w = white ? ksq : mirror_sq_black(ksq);
-      bool centerBack = (ksq_w == 4 || ksq_w == 3 || ksq_w == 5); // e1/d1/f1 from white POV
+      bool centerBack = (ksq_w == chess::bb::E1 || ksq_w == chess::bb::D1 || ksq_w == chess::bb::F1); // e1/d1/f1 from white POV
       if (!centerBack)
         return 0;
 
@@ -1792,7 +1783,7 @@ namespace lilia::engine
     mg_add -= castle_bonus(mirror_sq_black(bK));
     mg_add += center_penalty(bK, false);
     mg_add -= center_penalty(wK, true);
-    eg_add += (castle_bonus(wK) / 2) - (castle_bonus(mirror_sq_black(bK)) / 2);
+    eg_add += (castle_bonus(wK) / CASTLE_EG_DEN) - (castle_bonus(mirror_sq_black(bK)) / CASTLE_EG_DEN);
 
     auto early_queen_malus = [&](const std::array<chess::bb::Bitboard, 6> &S, bool white)
     {
@@ -1960,12 +1951,11 @@ namespace lilia::engine
 
   inline chess::bb::Bitboard no_king_attacks(bool white, const AttackMap &A)
   {
-    // chess::squares attacked by the *defending* side excluding its king
     return white ? (A.bAll | A.bPA) : (A.wAll | A.wPA);
   }
 
-  inline int safe_checks(bool white, const std::array<chess::bb::Bitboard, 6> &W,
-                         const std::array<chess::bb::Bitboard, 6> &B, chess::bb::Bitboard occ, const AttackMap &A,
+  inline int safe_checks(bool white, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W,
+                         const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B, chess::bb::Bitboard occ, const AttackMap &A,
                          int oppK)
   {
     if (LILIA_UNLIKELY(oppK < 0))
@@ -1977,13 +1967,12 @@ namespace lilia::engine
     // knights: checking chess::squares = chess::bb::knight_attacks_from(oppK)
     chess::bb::Bitboard kn = white ? W[1] : B[1];
     // knights: safe checking moves to chess::squares that would check the king
-    chess::bb::Bitboard knChk = chess::bb::knight_attacks_from((chess::Square)oppK); // checking landing chess::squares
+    chess::bb::Bitboard knChk = chess::bb::knight_attacks_from((chess::Square)oppK);
     chess::bb::Bitboard ownOcc =
         white ? (W[0] | W[1] | W[2] | W[3] | W[4] | W[5]) : (B[0] | B[1] | B[2] | B[3] | B[4] | B[5]);
-    chess::bb::Bitboard canMove = (white ? A.wN : A.bN) & ~ownOcc; // knight move targets (no self-block)
+    chess::bb::Bitboard canMove = (white ? A.wN : A.bN) & ~ownOcc;
     sc += chess::bb::popcount(knChk & canMove & ~unsafe) * KS_SAFE_CHECK_N;
 
-    // replace the whole slider chunk in safe_checks() with this:
     auto add_slider_moves = [&](chess::bb::Bitboard attackedByUs, chess::magic::Slider sl, int w)
     {
       chess::bb::Bitboard rayFromK = cached_slider_attacks(&A, !white, sl, oppK, occAll);
@@ -2000,8 +1989,6 @@ namespace lilia::engine
     add_slider_moves(white ? A.wQ : A.bQ, chess::magic::Slider::Bishop, KS_SAFE_CHECK_QB);
     add_slider_moves(white ? A.wQ : A.bQ, chess::magic::Slider::Rook, KS_SAFE_CHECK_QR);
 
-    // bonus only if those origins are not on ‘unsafe’ chess::squares
-    // (Fast approximation: multiply result by a small factor if opp pawns cover ring)
     return sc;
   }
 
@@ -2056,8 +2043,8 @@ namespace lilia::engine
     return (centerW - centerB) * PAWN_LEVER_CENTER + (wingW - wingB) * PAWN_LEVER_WING;
   }
 
-  inline int xray_king_file_pressure(bool white, const std::array<chess::bb::Bitboard, 6> &W,
-                                     const std::array<chess::bb::Bitboard, 6> &B, chess::bb::Bitboard occ, int ksq,
+  inline int xray_king_file_pressure(bool white, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W,
+                                     const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B, chess::bb::Bitboard occ, int ksq,
                                      const AttackMap *A)
   {
     if (LILIA_UNLIKELY(ksq < 0))
@@ -2080,14 +2067,14 @@ namespace lilia::engine
       chess::bb::Bitboard kingRay = cached_slider_attacks(A, !white, chess::magic::Slider::Rook, ksq, occ);
       chess::bb::Bitboard between = rookRay & kingRay & ~chess::bb::sq_bb((chess::Square)r) & ~bbK;
 
-      if (chess::bb::popcount(between & occ) == 1)
+      if (chess::bb::popcount(between & occ) == XRAY_KFILE_BLOCKER_COUNT)
         sc += XRAY_KFILE;
     }
     return white ? sc : -sc;
   }
 
-  inline int queen_bishop_battery(bool white, const std::array<chess::bb::Bitboard, 6> &W,
-                                  const std::array<chess::bb::Bitboard, 6> &B, chess::bb::Bitboard /*occ*/, int oppK,
+  inline int queen_bishop_battery(bool white, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W,
+                                  const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B, chess::bb::Bitboard /*occ*/, int oppK,
                                   const AttackMap * /*A*/)
   {
     if (LILIA_UNLIKELY(oppK < 0))
@@ -2102,7 +2089,7 @@ namespace lilia::engine
     return (white ? +1 : -1) * (aligned ? QB_BATTERY : 0);
   }
 
-  static int central_blockers(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  static int central_blockers(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                               int phase)
   {
     auto block = [&](bool white)
@@ -2124,7 +2111,7 @@ namespace lilia::engine
     return pen * std::min(phase, CENTER_BLOCK_PHASE_MAX) / CENTER_BLOCK_PHASE_DEN;
   }
 
-  inline int weakly_defended(const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
+  inline int weakly_defended(const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W, const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                              const AttackMap &A)
   {
     auto score_set = [&](chess::bb::Bitboard pieces, chess::bb::Bitboard atk, chess::bb::Bitboard def, int val, int sign)
@@ -2159,20 +2146,28 @@ namespace lilia::engine
     return sc;
   }
 
-  // Fianchetto structure (MG only):
-  // - If king sits on g-file (short castle) or has long-castled onto the c- or b-file,
-  //   give +FIANCHETTO_OK when the "fianchetto pawn" is on rank 2/3 (white) or 7/6 (black).
-  // - If that pawn is missing OR on the same file but elsewhere (advanced/abandoned), give
-  // -FIANCHETTO_HOLE. Call: mg_add += fianchetto_structure_ksmg(W, B, wK, bK);
-  static int fianchetto_structure_ksmg(const std::array<chess::bb::Bitboard, 6> &W,
-                                       const std::array<chess::bb::Bitboard, 6> &B, int wK, int bK)
+  static int fianchetto_structure_ksmg(
+      const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W,
+      const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
+      int wK, int bK)
   {
     auto sqbb = [](int f, int r) -> chess::bb::Bitboard
-    { return chess::bb::sq_bb((chess::Square)((r << 3) | f)); };
+    {
+      return chess::bb::sq_bb((chess::Square)((r << 3) | f));
+    };
+
+    constexpr int FILE_B = 1;
+    constexpr int FILE_C = 2;
+    constexpr int FILE_G = 6;
+
+    constexpr int RANK_2 = 1;
+    constexpr int RANK_3 = 2;
+    constexpr int RANK_6 = 5;
+    constexpr int RANK_7 = 6;
 
     auto score_side = [&](bool white) -> int
     {
-      int k = white ? wK : bK;
+      const int k = white ? wK : bK;
       if (LILIA_UNLIKELY(k < 0))
         return 0;
 
@@ -2180,40 +2175,22 @@ namespace lilia::engine
       const int kRank = chess::bb::rank_of(k);
       const chess::bb::Bitboard paw = white ? W[0] : B[0];
 
-      // consider king "behind" a fianchetto if it's on g-file (6) for short castles or
-      // on the queenside files (c- or b-file) after long castling, near the home ranks
-      const bool nearHome = white ? (kRank <= 2) : (kRank >= 5);
-      const bool kingSide = (kFile == 6);
-      const bool queenSide = (kFile == 1) || (kFile == 2);
+      const bool nearHome = white ? (kRank <= RANK_3) : (kRank >= RANK_6);
+      const bool kingSide = (kFile == FILE_G);
+      const bool queenSide = (kFile == FILE_B) || (kFile == FILE_C);
+
       if (!nearHome || (!kingSide && !queenSide))
         return 0;
 
-      const int f = kingSide ? 6 : 1; // use b-file for long castles (king on b/c-file)
-      // acceptable fianchetto pawn chess::squares (OK) on the relevant file (g- or b-file):
-      const int okR1 = white ? 1 : 6; // g2/b2 or g7/b7
-      const int okR2 = white ? 2 : 5; // g3/b3 or g6/b6
-      const chess::bb::Bitboard okMask = sqbb(f, okR1) | sqbb(f, okR2);
+      const int f = kingSide ? FILE_G : FILE_B;
 
-      // any pawn on that (g- or b-) file at all? (queenside uses the b-file mask)
-      const chess::bb::Bitboard anyOnFile = paw & M.file[f];
+      const chess::bb::Bitboard okMask = white
+                                             ? (sqbb(f, RANK_2) | sqbb(f, RANK_3))
+                                             : (sqbb(f, RANK_7) | sqbb(f, RANK_6));
 
-      if (paw & okMask)
-      {
-        return FIANCHETTO_OK;
-      }
-      else if (anyOnFile)
-      {
-        // pawn exists on that file but not on OK chess::squares (advanced/abandoned shape)
-        return -FIANCHETTO_HOLE;
-      }
-      else
-      {
-        // missing g/b pawn entirely
-        return -FIANCHETTO_HOLE;
-      }
+      return (paw & okMask) ? FIANCHETTO_OK : -FIANCHETTO_HOLE;
     };
 
-    // White POV: white’s good shape is +, black’s weakness is +
     return score_side(true) - score_side(false);
   }
 
@@ -2346,13 +2323,12 @@ namespace lilia::engine
         (heavyPieces >= KS_MIX_EG_HEAVY_THRESHOLD) ? KS_MIX_EG_IF_HEAVY : KS_MIX_EG_IF_LIGHT;
     int ksMG = ksRaw * ksMulMG / 100;
     int ksEG = ksRaw * ksMulEG / 100;
-    ksMG = std::clamp(ksMG, -KS_MG_CLAMP, KS_MG_CLAMP); // e.g.  ±400
-    ksEG = std::clamp(ksEG, -KS_EG_CLAMP, KS_EG_CLAMP); // e.g.  ±200
+    ksMG = std::clamp(ksMG, -KS_MG_CLAMP, KS_MG_CLAMP);
+    ksEG = std::clamp(ksEG, -KS_EG_CLAMP, KS_EG_CLAMP);
 
     int shelterMG = shelter;
     int shelterEG = shelter / SHELTER_EG_DEN;
 
-    // ---------------------------------------------------------------------------
     // Pins
     chess::bb::Bitboard wPins = rook_pins(occ, wocc, (B[3] | B[4]), wK, true, &A) |
                                 bishop_pins(occ, wocc, (B[2] | B[4]), wK, true, &A);
@@ -2371,8 +2347,8 @@ namespace lilia::engine
     int sc = scW - scB;
 
     // Holes (knight occupation + bishop attack near enemy king ring)
-    chess::bb::Bitboard wHoles = holes_for_white(B[0]); // usable by white
-    chess::bb::Bitboard bHoles = holes_for_black(W[0]); // usable by black
+    chess::bb::Bitboard wHoles = holes_for_white(B[0]);
+    chess::bb::Bitboard bHoles = holes_for_black(W[0]);
     const chess::bb::Bitboard W_ENEMY_HALF = chess::bb::RANK_4 | chess::bb::RANK_5 | chess::bb::RANK_6 | chess::bb::RANK_7;
     const chess::bb::Bitboard B_ENEMY_HALF = chess::bb::RANK_1 | chess::bb::RANK_2 | chess::bb::RANK_3 | chess::bb::RANK_4;
 
@@ -2410,7 +2386,6 @@ namespace lilia::engine
 
     // Fianchetto structure (MG king-safety oriented)
     int fian = fianchetto_structure_ksmg(W, B, wK, bK);
-    // ---------------------------------------------------------------------------
 
     // Accumulate MG/EG
     int mg_add = 0, eg_add = 0;
@@ -2418,11 +2393,11 @@ namespace lilia::engine
     // passer blocker quality
     int blkq = passer_blocker_quality(W, B, W[0], B[0], occ);
     mg_add += blkq;
-    eg_add += blkq / 2;
+    eg_add += blkq / PASSER_BLOCKER_EG_DEN;
 
     // rook activity (EG lighter)
     mg_add += ract;
-    eg_add += ract / 3;
+    eg_add += ract / ROOK_ACTIVITY_EG_DEN;
 
     // space
     mg_add += spc;
@@ -2430,7 +2405,7 @@ namespace lilia::engine
 
     // outposts
     mg_add += outp;
-    eg_add += outp / 2;
+    eg_add += outp / OUTPOST_EG_DEN;
 
     // pawn-only (from TT)
     mg_add += pMG;
@@ -2457,7 +2432,7 @@ namespace lilia::engine
 
     // bishop pair + imbalance
     mg_add += bp + imb;
-    eg_add += bp / 2 + imb / 2;
+    eg_add += bp / BISHOP_PAIR_EG_DEN + imb / IMBALANCE_EG_DEN;
 
     // development
     mg_add += dev * std::min(curPhase, DEV_MG_PHASE_CUTOFF) / DEV_MG_PHASE_DEN;
@@ -2465,26 +2440,29 @@ namespace lilia::engine
 
     // misc style
     mg_add += rim + badB + block + trop;
-    eg_add += (rim / 2) + (badB / 3) + (block / 2) + (trop / 6);
+    eg_add += (rim / RIM_EG_DEN) +
+              (badB / BAD_BISHOP_EG_DEN) +
+              (block / BLOCK_EG_DEN) +
+              (trop / TROPISM_MISC_EG_DEN);
 
     // Pins: strong in MG, still relevant in EG (reduced)
     mg_add += pinScore;
-    eg_add += pinScore / 2;
+    eg_add += pinScore / PIN_EG_DEN;
 
     // after computing sc (safe checks), xray, qbatt
     int kingAtkMG =
-        sc + (xray / 2) + qbatt;                                                    // halve xray to reduce double-counting with rook_activity
-    kingAtkMG = std::clamp(kingAtkMG, -KS_TACTICAL_MG_CLAMP, KS_TACTICAL_MG_CLAMP); // new soft guard
+        sc + (xray / KING_ATK_XRAY_DEN) + qbatt;
+    kingAtkMG = std::clamp(kingAtkMG, -KS_TACTICAL_MG_CLAMP, KS_TACTICAL_MG_CLAMP);
     mg_add += kingAtkMG;
-    eg_add += kingAtkMG / 4;
+    eg_add += kingAtkMG / KING_ATK_EG_DEN;
 
     // Holes (mostly positional MG; tiny EG)
     mg_add += holeScore;
-    eg_add += holeScore / 4;
+    eg_add += holeScore / HOLE_EG_DEN;
 
-    // Pawn levers: mostly MG; a touch in EG (less)
+    // Pawn levers: mostly MG; a touch in EG
     mg_add += lever;
-    eg_add += lever / 3;
+    eg_add += lever / LEVER_EG_DEN;
 
     // Central blockers: opening-weighted (already scaled), MG only
     mg_add += cblock;
@@ -2501,7 +2479,7 @@ namespace lilia::engine
     eg_add += king_activity_eg(W, B);
     eg_add += passed_pawn_race_eg(W, B, pos.position());
 
-    // castles & center (existing)
+    // castles & center
     castling_and_center(W, B, mg_add, eg_add);
 
     mg += mg_add;
@@ -2509,7 +2487,7 @@ namespace lilia::engine
 
     // scale only the EG component
     {
-      const int scale = endgame_scale(W, B); // FULL_SCALE == 64 (or whatever you use)
+      const int scale = endgame_scale(W, B);
       eg = (eg * scale) / FULL_SCALE;
     }
     int score = taper(mg, eg, curPhase);
@@ -2527,4 +2505,4 @@ namespace lilia::engine
     return score;
   }
 
-} // namespace lilia::engine
+}

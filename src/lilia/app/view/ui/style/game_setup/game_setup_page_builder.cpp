@@ -48,4 +48,4 @@ namespace lilia::app::view::ui::game_setup
     return sanitize_fen_playable(raw);
   }
 
-} // namespace lilia::view::ui::game_setup
+}

@@ -25,7 +25,7 @@ namespace lilia::chess
       } b;
     };
 
-    // Bit layout constants (match the documented layout)
+    // Bit layout constants
     static constexpr std::uint32_t FROM_SHIFT = 0;
     static constexpr std::uint32_t TO_SHIFT = 6;
     static constexpr std::uint32_t PROMO_SHIFT = 12;
@@ -42,7 +42,6 @@ namespace lilia::chess
 
     static constexpr std::uint32_t PACK16_MASK = 0xFFFFu;
 
-    // Constructors
     constexpr Move() noexcept = default;
 
     constexpr Move(Square f, Square t, PieceType promo = PieceType::None,
@@ -61,7 +60,6 @@ namespace lilia::chess
 
     static constexpr Move null() noexcept { return Move{}; }
 
-    // Accessors (raw-based)
     [[nodiscard]] LILIA_ALWAYS_INLINE constexpr Square from() const noexcept
     {
       return static_cast<Square>((raw >> FROM_SHIFT) & 0x3Fu);
@@ -81,7 +79,6 @@ namespace lilia::chess
       return static_cast<CastleSide>((raw >> CASTLE_SHIFT) & 0x03u);
     }
 
-    // Mutators (raw-based; keeps union/bitfield view valid)
     constexpr void set_from(Square s) noexcept
     {
       raw = (raw & ~FROM_MASK) | ((static_cast<std::uint32_t>(s) & 0x3Fu) << FROM_SHIFT);
@@ -102,7 +99,6 @@ namespace lilia::chess
     }
     constexpr void clear_flags() noexcept { raw &= ~(CAP_MASK | EP_MASK | CASTLE_MASK); }
 
-    // Convenience helpers
     [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool isCastle() const noexcept { return (raw & CASTLE_MASK) != 0; }
     [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool isQuiet() const noexcept
     {
@@ -110,7 +106,6 @@ namespace lilia::chess
     }
     [[nodiscard]] LILIA_ALWAYS_INLINE constexpr bool isNull() const noexcept { return raw == 0; }
 
-    // 16-bit packing: low 16 bits are exactly from/to/promo
     [[nodiscard]] LILIA_ALWAYS_INLINE constexpr std::uint16_t pack16() const noexcept
     {
       return static_cast<std::uint16_t>(raw & PACK16_MASK);
@@ -123,7 +118,6 @@ namespace lilia::chess
       return m;
     }
 
-    // Equality: from/to/promotion only
     friend constexpr bool operator==(const Move &a, const Move &b) noexcept
     {
       return (a.raw & PACK16_MASK) == (b.raw & PACK16_MASK);

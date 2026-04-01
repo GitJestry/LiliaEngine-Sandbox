@@ -8,7 +8,6 @@
 namespace lilia::protocol::uci
 {
 
-  // Fast ASCII helpers
   inline char tolower_ascii(char c) noexcept
   {
     return (c >= 'A' && c <= 'Z') ? static_cast<char>(c | 32) : c;
@@ -16,7 +15,6 @@ namespace lilia::protocol::uci
 
   inline int squareFromUCI(const char *sq) noexcept
   {
-    // expects "e2", returns 0..63 or -1
     if (!sq)
       return -1;
     const int file = sq[0] - 'a';

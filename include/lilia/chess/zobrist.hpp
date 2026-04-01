@@ -30,13 +30,14 @@ namespace lilia::chess
       return v;
     }
 
+    // Compile-time container for all precomputed Zobrist hash tables.
     struct Tables
     {
-      bb::Bitboard piece[2][6][64];
+      bb::Bitboard piece[2][PIECE_TYPE_NB][SQ_NB];
       bb::Bitboard castling[16];
       bb::Bitboard epFile[8];
       bb::Bitboard side;
-      bb::Bitboard epCaptureMask[2][64];
+      bb::Bitboard epCaptureMask[2][SQ_NB];
     };
 
     consteval Tables generate()
@@ -45,8 +46,8 @@ namespace lilia::chess
       std::uint64_t seed = 0xC0FFEE123456789ULL;
 
       for (int c = 0; c < 2; ++c)
-        for (int p = 0; p < 6; ++p)
-          for (int s = 0; s < 64; ++s)
+        for (int p = 0; p < PIECE_TYPE_NB; ++p)
+          for (int s = 0; s < SQ_NB; ++s)
             t.piece[c][p][s] = next(seed);
 
       for (int i = 0; i < 16; ++i)
@@ -55,7 +56,7 @@ namespace lilia::chess
         t.epFile[f] = next(seed);
       t.side = next(seed);
 
-      for (int s = 0; s < 64; ++s)
+      for (int s = 0; s < SQ_NB; ++s)
       {
         const bb::Bitboard sq = bb::sq_bb(static_cast<Square>(s));
         t.epCaptureMask[bb::ci(Color::White)][s] = bb::sw(sq) | bb::se(sq);
@@ -65,13 +66,13 @@ namespace lilia::chess
       return t;
     }
 
-  } // namespace detail
+  }
 
+  // Provides compile-time generated Zobrist keys and helpers for full and incremental hashing.
   struct Zobrist
   {
     using Tables = detail::Tables;
 
-    // Compile-time generated, ODR-safe in a header.
     static inline constexpr Tables tables = detail::generate();
 
     // Convenience refs (remain constant expressions).
@@ -107,12 +108,10 @@ namespace lilia::chess
     {
       bb::Bitboard h = 0ULL;
 
-      // Assumes PieceType values for Pawn..King map to 0..5 (your Board + Move code already relies on
-      // this).
       for (int c = 0; c < 2; ++c)
       {
         const Color color = static_cast<Color>(c);
-        for (int p = 0; p < 6; ++p)
+        for (int p = 0; p < PIECE_TYPE_NB; ++p)
         {
           const PieceType pt = static_cast<PieceType>(p);
           bb::Bitboard bbp = b.getPieces(color, pt);
@@ -145,7 +144,7 @@ namespace lilia::chess
     static LILIA_ALWAYS_INLINE bb::Bitboard computePawnKey(const Board &b) noexcept
     {
       bb::Bitboard h = 0ULL;
-      constexpr int pawnIdx = 0; // Pawn == 0
+      constexpr int pawnIdx = 0;
 
       for (int c = 0; c < 2; ++c)
       {

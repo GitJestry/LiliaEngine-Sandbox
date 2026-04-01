@@ -478,4 +478,4 @@ namespace lilia::app::view::ui
       reload(piece);
   }
 
-} // namespace lilia::view
+}

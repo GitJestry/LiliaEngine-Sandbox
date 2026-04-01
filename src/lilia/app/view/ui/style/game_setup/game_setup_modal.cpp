@@ -320,4 +320,4 @@ namespace lilia::app::view::ui::game_setup
     draw_status_pill(rt, m_font, m_theme, m_usingPill, txt, kind);
   }
 
-} // namespace lilia::view::ui
+}

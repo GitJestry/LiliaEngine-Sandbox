@@ -82,4 +82,4 @@ namespace lilia::app::view::ui::platform
     return path;
 #endif
   }
-} // namespace lilia::view::ui::platform
+}

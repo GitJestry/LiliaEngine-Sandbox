@@ -38,4 +38,4 @@ namespace lilia::app::view::ui
     m_window.setMouseCursor(m_cursor_hand_closed);
   }
 
-} // namespace lilia::view
+}

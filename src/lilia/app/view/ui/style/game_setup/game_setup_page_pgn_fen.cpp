@@ -536,4 +536,4 @@ namespace lilia::app::view::ui::game_setup
       m_resolvedFen.setText(rf);
   }
 
-} // namespace lilia::view::game_setup
+}

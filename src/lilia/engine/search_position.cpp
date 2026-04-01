@@ -43,7 +43,7 @@ namespace lilia::engine
 
       return !pos.getBoard().getPiece(m.to()).has_value();
     }
-  } // namespace
+  }
 
   void SearchPosition::applyEvalDelta(const chess::Position &posBefore,
                                       const chess::Move &m,
@@ -173,4 +173,4 @@ namespace lilia::engine
     assert(m_evalTop > 0);
     m_eval = m_evalStack[--m_evalTop];
   }
-} // namespace lilia::engine
+}

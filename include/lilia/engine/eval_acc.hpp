@@ -10,13 +10,55 @@
 namespace lilia::engine
 {
 
+  namespace
+  {
+    LILIA_ALWAYS_INLINE int pst_mg(chess::PieceType pt, int sq)
+    {
+      switch (pt)
+      {
+      case chess::PieceType::Pawn:
+        return PST_P_MG[sq];
+      case chess::PieceType::Knight:
+        return PST_N_MG[sq];
+      case chess::PieceType::Bishop:
+        return PST_B_MG[sq];
+      case chess::PieceType::Rook:
+        return PST_R_MG[sq];
+      case chess::PieceType::Queen:
+        return PST_Q_MG[sq];
+      case chess::PieceType::King:
+        return PST_K_MG[sq];
+      default:
+        return 0;
+      }
+    }
+    LILIA_ALWAYS_INLINE int pst_eg(chess::PieceType pt, int sq)
+    {
+      switch (pt)
+      {
+      case chess::PieceType::Pawn:
+        return PST_P_EG[sq];
+      case chess::PieceType::Knight:
+        return PST_N_EG[sq];
+      case chess::PieceType::Bishop:
+        return PST_B_EG[sq];
+      case chess::PieceType::Rook:
+        return PST_R_EG[sq];
+      case chess::PieceType::Queen:
+        return PST_Q_EG[sq];
+      case chess::PieceType::King:
+        return PST_K_EG[sq];
+      default:
+        return 0;
+      }
+    }
+  }
+
   struct EvalAcc
   {
-    // White-POV buckets
     int mg = 0, eg = 0, phase = 0;
-    // pieces 2 colors
     int P[2]{}, N[2]{}, B[2]{}, R[2]{}, Q[2]{};
-    int kingSq[2]{-1, -1}; // [0]=W, [1]=B
+    int kingSq[2]{-1, -1};
 
     void clear()
     {
@@ -195,7 +237,7 @@ namespace lilia::engine
       break;
     case chess::PieceType::King:
       kingSq[s] = -1;
-      break; // optional, for safety
+      break;
     default:
       break;
     }

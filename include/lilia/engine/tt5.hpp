@@ -14,9 +14,6 @@
 namespace lilia::engine
 {
 
-  // -----------------------------------------------------------------------------
-  // Public entry (for callers)
-  // -----------------------------------------------------------------------------
   enum class Bound : std::uint8_t
   {
     Exact = 0,
@@ -75,9 +72,6 @@ namespace lilia::engine
     Cluster &operator=(const Cluster &) = delete;
   };
 
-  // -----------------------------------------------------------------------------
-  // TT5
-  // -----------------------------------------------------------------------------
   class TT5
   {
   public:
@@ -119,7 +113,6 @@ namespace lilia::engine
 
     LILIA_ALWAYS_INLINE void prefetch(std::uint64_t key) const noexcept { LILIA_PREFETCH_L1(&table_[index(key)]); }
 
-    // --- Probe into user entry ---
     LILIA_ALWAYS_INLINE bool probe_into(std::uint64_t key, TTEntry5 &out) const noexcept
     {
       const Cluster &c = table_[index(key)];
@@ -193,7 +186,6 @@ namespace lilia::engine
     }
 
 #ifndef TT_DETERMINISTIC
-    // --- LIGHT DETERMINISTIC, LOW-OVERHEAD STORE ---
     void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound, const chess::Move &best,
                int16_t staticEval = std::numeric_limits<int16_t>::min()) noexcept
     {
@@ -207,7 +199,6 @@ namespace lilia::engine
       const std::uint8_t depth8 =
           static_cast<std::uint8_t>(depth < 0 ? 0 : (depth > 255 ? 255 : depth));
 
-      // Manual clamp (faster/clearer than std::clamp in hot code)
       const int32_t vClamped = value<(int32_t)std::numeric_limits<int16_t>::min()
                                          ? (int32_t)std::numeric_limits<int16_t>::min()
                                          : value>(int32_t) std::numeric_limits<int16_t>::max()
@@ -354,7 +345,6 @@ namespace lilia::engine
     }
 
 #else
-    // Deterministic store: apply the same BUSY protocol (still best-effort under contention)
     void store(std::uint64_t key, int32_t value, int16_t depth, Bound bound, const Move &best,
                int16_t staticEval = std::numeric_limits<int16_t>::min()) noexcept
     {
@@ -500,7 +490,6 @@ namespace lilia::engine
 #endif
 
   private:
-    // --- bitfield constants ---
     static constexpr std::uint64_t INFO_KEYLO_MASK = 0xFFFFull;
     static constexpr unsigned INFO_AGE_SHIFT = 16;
     static constexpr unsigned INFO_DEPTH_SHIFT = 24;
@@ -509,7 +498,6 @@ namespace lilia::engine
     static constexpr std::uint64_t INFO_BUSY_MASK = (1ull << 62);
     static constexpr std::uint64_t INFO_VALID_MASK = (1ull << 63);
 
-    // --- move packing (16 bit) ---
     static LILIA_ALWAYS_INLINE std::uint16_t promo_to3(chess::PieceType p) noexcept
     {
       switch (p)
@@ -562,19 +550,17 @@ namespace lilia::engine
       return m;
     }
 
-    // --- replacement score: lower is worse (chosen as victim) ---
     static LILIA_ALWAYS_INLINE int repl_score(const TTEntryPacked &ent, std::uint8_t curAge) noexcept
     {
       const std::uint64_t info = ent.info.load(std::memory_order_relaxed);
 
       if (info & INFO_BUSY_MASK)
       {
-        // In-progress: avoid selecting as victim (prevents writer-writer thrash)
         return std::numeric_limits<int>::max();
       }
       if ((info & INFO_VALID_MASK) == 0ull)
       {
-        return std::numeric_limits<int>::min(); // empty → best victim
+        return std::numeric_limits<int>::min();
       }
 
       const std::uint8_t age = static_cast<std::uint8_t>((info >> INFO_AGE_SHIFT) & 0xFFu);
@@ -589,7 +575,6 @@ namespace lilia::engine
     LILIA_ALWAYS_INLINE std::size_t index(std::uint64_t key) const noexcept
     {
 #if TT5_INDEX_MIX
-      // Cheap mix (Zobrist is already random; this is just insurance)
       std::uint64_t h = key;
       h ^= h >> 32;
       h ^= h >> 16;
@@ -603,7 +588,6 @@ namespace lilia::engine
     {
       if (x == 0)
         return 1;
-      // round down to power of two
       const std::size_t p = std::bit_floor(x);
       return p ? p : 1;
     }

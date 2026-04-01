@@ -914,4 +914,4 @@ namespace lilia::app::view::ui
     window.setView(oldView);
   }
 
-} // namespace lilia::view
+}

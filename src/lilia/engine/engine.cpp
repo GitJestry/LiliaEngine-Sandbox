@@ -36,7 +36,6 @@ namespace lilia::engine
         cfg.threads = std::clamp(cfg.threads, 1, logical);
       }
 
-      // Initialize thread pool once using the configured thread count
       ThreadPool::instance(cfg.threads);
 
       eval = std::make_shared<Evaluator>();
@@ -105,7 +104,6 @@ namespace lilia::engine
     if (stats.bestMove.has_value())
       return stats.bestMove;
 
-    // TT fallback
     try
     {
       auto &tt = pimpl->search->ttRef();
@@ -179,4 +177,4 @@ namespace lilia::engine
     return pimpl->cfg;
   }
 
-} // namespace lilia::engine
+}

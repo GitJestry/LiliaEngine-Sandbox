@@ -10,7 +10,7 @@ namespace lilia::engine
     Evaluator() noexcept;
     ~Evaluator() noexcept;
 
-    // evaluation in cp in the view of the one who's turn it is
+    // evaluation in cp in the view of white
     int evaluate(const SearchPosition &pos) const;
 
     // Eval- & Pawn-Caches clearing

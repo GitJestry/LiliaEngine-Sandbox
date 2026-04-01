@@ -82,4 +82,4 @@ namespace lilia::app::view::ui
     window.draw(m_sprite);
   }
 
-} // namespace lilia::view
+}

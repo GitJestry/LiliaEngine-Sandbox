@@ -9,6 +9,7 @@ namespace lilia::chess
 
   constexpr int MAX_MOVES = 256;
 
+  // Lightweight fixed-capacity append buffer used by move generation hot paths.
   struct MoveBuffer
   {
     Move *LILIA_RESTRICT out;

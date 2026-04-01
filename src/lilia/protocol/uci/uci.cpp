@@ -24,9 +24,6 @@ namespace lilia::protocol::uci
 
   namespace
   {
-
-    // ---------------- Small, allocation-free utilities ----------------
-
     static inline bool is_space(char c) noexcept
     {
       return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
@@ -145,13 +142,12 @@ namespace lilia::protocol::uci
       return out;
     }
 
-  } // namespace
+  }
 
   void UCI::showOptions()
   {
     const auto &c = m_options.cfg;
 
-    // Buffering reduces iostream overhead and ensures fewer syscalls.
     std::ostringstream oss;
     oss << "option name Hash type spin default " << c.ttSizeMb << " min 1 max 131072\n";
     oss << "option name Threads type spin default " << c.threads << " min 0 max 64\n";
@@ -210,7 +206,6 @@ namespace lilia::protocol::uci
     while (nameStart < s.size() && is_space(s[nameStart]))
       ++nameStart;
 
-    // Optional "value"
     // We look for " value " (with spaces) to reduce false matches inside names.
     size_t valuePos = s.find(" value ", nameStart);
 
@@ -614,7 +609,7 @@ namespace lilia::protocol::uci
         }
         else
         {
-          const auto gs = m_game.getGameState(); // snapshot for consistent use
+          const auto gs = m_game.getGameState();
           const bool whiteToMove = (gs.sideToMove == chess::Color::White);
 
           const int timeLeft = whiteToMove ? wtime : btime;
@@ -654,7 +649,6 @@ namespace lilia::protocol::uci
 
       if (cmd == "ponderhit")
       {
-        // Optional: implement if you support true pondering.
         continue;
       }
 

@@ -31,7 +31,7 @@ namespace lilia::engine
     const int vVictim = base_value[static_cast<int>(victimType)];
     const int vAttacker = base_value[static_cast<int>(attackerType)];
 
-    int score = (vVictim << 5) - vAttacker; // *32 Spreizung
+    int score = (vVictim << 5) - vAttacker;
     if (m.promotion() != chess::PieceType::None)
     {
       static constexpr int promo_order[7] = {0, 40, 40, 60, 120, 0, 0};

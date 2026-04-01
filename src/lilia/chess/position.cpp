@@ -14,19 +14,10 @@ namespace lilia::chess
   namespace
   {
 
-    constexpr std::array<int, 6> SEE_VALUES = {
-        100,  // Pawn
-        320,  // Knight
-        330,  // Bishop
-        500,  // Rook
-        900,  // Queen
-        20000 // King
-    };
-
-    // --------- Castling-Right Clear-Masken (FROM/TO) ----------
-    constexpr std::array<std::uint8_t, 64> CR_CLEAR_FROM = []
+    // --------- Castling-Right Clear-Mask (FROM/TO) ----------
+    constexpr std::array<std::uint8_t, SQ_NB> CR_CLEAR_FROM = []
     {
-      std::array<std::uint8_t, 64> a{};
+      std::array<std::uint8_t, SQ_NB> a{};
       a[bb::E1] |= CastlingRights::WhiteKingSide | CastlingRights::WhiteQueenSide;
       a[bb::E8] |= CastlingRights::BlackKingSide | CastlingRights::BlackQueenSide;
       a[bb::H1] |= CastlingRights::WhiteKingSide;
@@ -36,23 +27,14 @@ namespace lilia::chess
       return a;
     }();
 
-    constexpr std::array<std::uint8_t, 64> CR_CLEAR_TO = CR_CLEAR_FROM; // identisch
-
-    LILIA_ALWAYS_INLINE bb::Bitboard pawn_attackers_to(Square sq, Color by, bb::Bitboard pawns)
-    {
-      const bb::Bitboard t = bb::sq_bb(sq);
-      return by == Color::White ? ((bb::sw(t) | bb::se(t)) & pawns)
-                                : ((bb::nw(t) | bb::ne(t)) & pawns);
-    }
+    constexpr std::array<std::uint8_t, SQ_NB> CR_CLEAR_TO = CR_CLEAR_FROM; // identisch
 
     LILIA_ALWAYS_INLINE bool on_board_0_63(int s)
     {
       return (unsigned)s < 64u;
     }
 
-  } // namespace
-
-  // ---------------------- Utility Checks ----------------------
+  }
 
   bool Position::checkInsufficientMaterial()
   {
@@ -91,8 +73,6 @@ namespace lilia::chess
 
     auto is_dark = [](Square s) -> bool
     {
-      // Uses your existing square-color convention; "dark" vs "light" naming doesn't matter
-      // as long as it's consistent.
       return ((int(s) ^ (int(s) >> 3)) & 1) != 0;
     };
 
@@ -143,9 +123,6 @@ namespace lilia::chess
     return attackedBy(m_board, ksq, ~m_state.sideToMove, m_board.getAllPieces());
   }
 
-  // ---------------------- isPseudoLegal (for search) ----------------------
-  // Checks basic move shape, occupancy and board consistency (but NOT self-check).
-  // For castling we also check path emptiness and (cheap) “no-through-check” to be safe.
   bool Position::isPseudoLegal(const Move &m) const
   {
     if (LILIA_UNLIKELY(!on_board_0_63(m.from()) || !on_board_0_63(m.to()) || m.from() == m.to()))
@@ -261,44 +238,44 @@ namespace lilia::chess
       if (us == Color::White)
       {
         if ((m_state.castlingRights & CastlingRights::WhiteKingSide) && m.from() == bb::E1 &&
-            m.to() == Square{6})
+            m.to() == bb::G1)
         {
-          if ((occ & (bb::sq_bb(Square{5}) | bb::sq_bb(Square{6}))) == 0 &&
-              !attackedBy(m_board, Square{4}, them, occ) &&
-              !attackedBy(m_board, Square{5}, them, occ) &&
-              !attackedBy(m_board, Square{6}, them, occ))
+          if ((occ & (bb::sq_bb(bb::F1) | bb::sq_bb(bb::G1))) == 0 &&
+              !attackedBy(m_board, bb::E1, them, occ) &&
+              !attackedBy(m_board, bb::F1, them, occ) &&
+              !attackedBy(m_board, bb::G1, them, occ))
             return true;
         }
         if ((m_state.castlingRights & CastlingRights::WhiteQueenSide) && m.from() == bb::E1 &&
-            m.to() == Square{2})
+            m.to() == bb::C1)
         {
-          if ((occ & (bb::sq_bb(Square{1}) | bb::sq_bb(Square{2}) |
-                      bb::sq_bb(Square{3}))) == 0 &&
-              !attackedBy(m_board, Square{4}, them, occ) &&
-              !attackedBy(m_board, Square{3}, them, occ) &&
-              !attackedBy(m_board, Square{2}, them, occ))
+          if ((occ & (bb::sq_bb(bb::B1) | bb::sq_bb(bb::C1) |
+                      bb::sq_bb(bb::D1))) == 0 &&
+              !attackedBy(m_board, bb::E1, them, occ) &&
+              !attackedBy(m_board, bb::D1, them, occ) &&
+              !attackedBy(m_board, bb::C1, them, occ))
             return true;
         }
       }
       else
       {
         if ((m_state.castlingRights & CastlingRights::BlackKingSide) && m.from() == bb::E8 &&
-            m.to() == Square{62})
+            m.to() == bb::G8)
         {
-          if ((occ & (bb::sq_bb(Square{61}) | bb::sq_bb(Square{62}))) == 0 &&
-              !attackedBy(m_board, Square{60}, them, occ) &&
-              !attackedBy(m_board, Square{61}, them, occ) &&
-              !attackedBy(m_board, Square{62}, them, occ))
+          if ((occ & (bb::sq_bb(bb::F8) | bb::sq_bb(bb::G8))) == 0 &&
+              !attackedBy(m_board, bb::E8, them, occ) &&
+              !attackedBy(m_board, bb::F8, them, occ) &&
+              !attackedBy(m_board, bb::G8, them, occ))
             return true;
         }
         if ((m_state.castlingRights & CastlingRights::BlackQueenSide) && m.from() == bb::E8 &&
-            m.to() == Square{58})
+            m.to() == bb::C8)
         {
-          if ((occ & (bb::sq_bb(Square{57}) | bb::sq_bb(Square{58}) |
-                      bb::sq_bb(Square{59}))) == 0 &&
-              !attackedBy(m_board, Square{60}, them, occ) &&
-              !attackedBy(m_board, Square{59}, them, occ) &&
-              !attackedBy(m_board, Square{58}, them, occ))
+          if ((occ & (bb::sq_bb(bb::B8) | bb::sq_bb(bb::C8) |
+                      bb::sq_bb(bb::D8))) == 0 &&
+              !attackedBy(m_board, bb::E8, them, occ) &&
+              !attackedBy(m_board, bb::D8, them, occ) &&
+              !attackedBy(m_board, bb::C8, them, occ))
             return true;
         }
       }
@@ -310,243 +287,6 @@ namespace lilia::chess
     }
     return false;
   }
-  // ------- SEE (Static Exchange Evaluation) -------
-  // Returns true if material result of playing 'm' on square 'to' is >= 0.
-  bool Position::see(const Move &m) const
-  {
-
-    // Trivial non-captures: SEE is used for captures; be permissive for quiets.
-    if (!m.isCapture() && !m.isEnPassant())
-      return true;
-
-    const auto fromP = m_board.getPiece(m.from());
-    if (!fromP)
-      return true;
-
-    const Color us = fromP->color;
-    const Color them = Color(~us);
-    const Square to = m.to();
-
-    // Snapshot occupancy and piece sets
-    bb::Bitboard occ = m_board.getAllPieces();
-
-    bb::Bitboard pcs[2][6];
-    for (int c = 0; c < 2; ++c)
-      for (int pt = 0; pt < 6; ++pt)
-        pcs[c][pt] = m_board.getPieces((Color)c, (PieceType)pt);
-
-    auto alive = [&](Color c, PieceType pt) -> bb::Bitboard
-    { return pcs[(int)c][(int)pt] & occ; };
-    auto val = [&](PieceType pt) -> int
-    { return SEE_VALUES[(int)pt]; };
-
-    auto king_sq = [&](Color c) -> Square
-    {
-      bb::Bitboard kbb = pcs[(int)c][(int)PieceType::King];
-      return (Square)bb::ctz64(kbb);
-    };
-
-    // Helpers to get all attackers of side 'c' to 'to' given current 'occ'
-    auto diag_rays = [&](bb::Bitboard o)
-    {
-      return magic::sliding_attacks(magic::Slider::Bishop, to, o);
-    };
-    auto ortho_rays = [&](bb::Bitboard o)
-    {
-      return magic::sliding_attacks(magic::Slider::Rook, to, o);
-    };
-
-    auto pawn_atk = [&](Color c)
-    { return pawn_attackers_to(to, c, alive(c, PieceType::Pawn)); };
-    auto knight_atk = [&](Color c)
-    {
-      return bb::knight_attacks_from(to) & alive(c, PieceType::Knight);
-    };
-    auto bishop_atk = [&](Color c, bb::Bitboard o)
-    {
-      return diag_rays(o) & alive(c, PieceType::Bishop);
-    };
-    auto rook_atk = [&](Color c, bb::Bitboard o)
-    {
-      return ortho_rays(o) & alive(c, PieceType::Rook);
-    };
-    auto queen_atk = [&](Color c, bb::Bitboard o)
-    {
-      const bb::Bitboard rays = diag_rays(o) | ortho_rays(o);
-      return rays & alive(c, PieceType::Queen);
-    };
-
-    // Pin/legal guard: only check when we actually consider that specific attacker
-    auto illegal_due_to_pin = [&](Color c, Square fromSq, bb::Bitboard oNow) -> bool
-    {
-      // Move piece from 'fromSq' to 'to' and see if own king becomes attacked.
-      bb::Bitboard kbb = pcs[(int)c][(int)PieceType::King] & oNow;
-      if (!kbb)
-        return false;
-      const Square ksq = (Square)bb::ctz64(kbb);
-
-      // Remove from, add on 'to' (square 'to' remains occupied after a capture)
-      bb::Bitboard occTest = (oNow & ~bb::sq_bb(fromSq)) | bb::sq_bb(to);
-      return attackedBy(m_board, ksq, Color(~c), occTest);
-    };
-
-    // Pick the least valuable legal attacker for side 'c'. Returns false if none.
-    auto pick_lva = [&](Color c, Square &fromSq, PieceType &pt, bb::Bitboard oNow) -> bool
-    {
-      // Compute rays once for current occupancy
-      const bb::Bitboard diag = diag_rays(oNow);
-      const bb::Bitboard ortho = ortho_rays(oNow);
-
-      // Order: Pawn, Knight, Bishop, Rook, Queen, King
-      bb::Bitboard cand;
-
-      // Pawns
-      cand = pawn_atk(c) & alive(c, PieceType::Pawn);
-      while (cand)
-      {
-        Square f = bb::pop_lsb(cand);
-        if (!illegal_due_to_pin(c, f, oNow))
-        {
-          fromSq = f;
-          pt = PieceType::Pawn;
-          return true;
-        }
-      }
-
-      // Knights
-      cand = knight_atk(c) & alive(c, PieceType::Knight);
-      while (cand)
-      {
-        Square f = bb::pop_lsb(cand);
-        if (!illegal_due_to_pin(c, f, oNow))
-        {
-          fromSq = f;
-          pt = PieceType::Knight;
-          return true;
-        }
-      }
-
-      // Bishops
-      cand = (diag & alive(c, PieceType::Bishop));
-      while (cand)
-      {
-        Square f = bb::pop_lsb(cand);
-        if (!illegal_due_to_pin(c, f, oNow))
-        {
-          fromSq = f;
-          pt = PieceType::Bishop;
-          return true;
-        }
-      }
-
-      // Rooks
-      cand = (ortho & alive(c, PieceType::Rook));
-      while (cand)
-      {
-        Square f = bb::pop_lsb(cand);
-        if (!illegal_due_to_pin(c, f, oNow))
-        {
-          fromSq = f;
-          pt = PieceType::Rook;
-          return true;
-        }
-      }
-
-      // Queens
-      cand = ((diag | ortho) & alive(c, PieceType::Queen));
-      while (cand)
-      {
-        Square f = bb::pop_lsb(cand);
-        if (!illegal_due_to_pin(c, f, oNow))
-        {
-          fromSq = f;
-          pt = PieceType::Queen;
-          return true;
-        }
-      }
-
-      // King (check target not covered after king moves there)
-      bb::Bitboard kbb = alive(c, PieceType::King);
-      if (kbb)
-      {
-        const Square kf = (Square)bb::ctz64(kbb);
-        if (bb::king_attacks_from(kf) & bb::sq_bb(to))
-        {
-          bb::Bitboard occK = (oNow & ~bb::sq_bb(kf)) | bb::sq_bb(to);
-          if (!attackedBy(m_board, to, Color(~c), occK))
-          {
-            fromSq = kf;
-            pt = PieceType::King;
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    // Identify captured piece and adjust occupancy for initial position at the node
-    PieceType captured = PieceType::None;
-    if (m.isEnPassant())
-    {
-      captured = PieceType::Pawn;
-      const Square capSq = (us == Color::White) ? Square(int(to) - 8) : Square(int(to) + 8);
-      occ &= ~bb::sq_bb(capSq); // remove the pawn that will be taken EP
-    }
-    else if (auto cap = m_board.getPiece(to))
-    {
-      captured = cap->type;
-      occ &= ~bb::sq_bb(to); // square 'to' becomes temporarily empty before we land on it
-    }
-
-    // Move our piece to 'to' (occupancy stays with 'to' occupied from this point on)
-    occ &= ~bb::sq_bb(m.from());
-    PieceType pieceOnTo = (m.promotion() != PieceType::None) ? m.promotion() : fromP->type;
-    occ |= bb::sq_bb(to);
-
-    // Swap list
-    int gain[32];
-    int d = 0;
-    gain[d++] = val(captured);
-
-    // Alternate sides starting with the opponent
-    Color side = them;
-
-    // Iteratively “exchange” on 'to'
-    for (;;)
-    {
-      Square from2 = NO_SQUARE;
-      PieceType pt2 = PieceType::None;
-
-      if (!pick_lva(side, from2, pt2, occ))
-        break;
-
-      // They take what's on 'to'
-      gain[d] = val(pieceOnTo) - gain[d - 1];
-      ++d;
-
-      // Prune: if this side is failing already, no need to go deeper
-      if (gain[d - 1] < 0)
-        break;
-
-      // Move attacker onto 'to' (remove it from its square; 'to' stays occupied)
-      occ &= ~bb::sq_bb(from2);
-
-      // New piece now sits on 'to'
-      pieceOnTo = pt2;
-      side = Color(~side);
-
-      if (d >= 31)
-        break; // sanity guard
-    }
-
-    // Negamax backpropagation
-    while (--d)
-      gain[d - 1] = std::max(-gain[d], gain[d - 1]);
-
-    return gain[0] >= 0;
-  }
-
-  // ================== Make/Unmake (fast paths kept) ==================
 
   bool Position::doMove(const Move &m)
   {
@@ -558,7 +298,6 @@ namespace lilia::chess
     if (LILIA_UNLIKELY(!fromPiece || fromPiece->color != us))
       return false;
 
-    // Promotions robust validieren
     if (m.promotion() != PieceType::None)
     {
       if (fromPiece->type != PieceType::Pawn)
@@ -666,7 +405,6 @@ namespace lilia::chess
     m_hash = st.zobristKey;
   }
 
-  // ===== Position::applyMove (optimized) =====
   void Position::applyMove(const Move &m, StateInfo &st)
   {
     Color us = m_state.sideToMove;
@@ -687,10 +425,10 @@ namespace lilia::chess
     if (LILIA_UNLIKELY(!isCastleMove && fromPiece->type == PieceType::King))
     {
       if (us == Color::White && m.from() == bb::E1 &&
-          (m.to() == Square{6} || m.to() == Square{2}))
+          (m.to() == bb::G1 || m.to() == bb::C1))
         isCastleMove = true;
       if (us == Color::Black && m.from() == bb::E8 &&
-          (m.to() == Square{62} || m.to() == Square{58}))
+          (m.to() == bb::G8 || m.to() == bb::C8))
         isCastleMove = true;
     }
 
@@ -735,7 +473,6 @@ namespace lilia::chess
       st.captured = Piece{PieceType::None, them};
     }
 
-    // ===== fast paths =====
     Piece placed = *fromPiece;
     const bool fastQuiet =
         (!isCap && !isEP && !isCastleMove && m.promotion() == PieceType::None);
@@ -768,7 +505,6 @@ namespace lilia::chess
     }
     else
     {
-      // general slow path (promotions and mixed cases)
       hashXorPiece(us, placed.type, m.from());
       m_board.removePiece(m.from());
 
@@ -791,42 +527,42 @@ namespace lilia::chess
       m_board.setPiece(m.to(), placed);
     }
 
-    // Castle rook move (fast)
+    // Castle rook move
     if (isCastleMove)
     {
       if (us == Color::White)
       {
-        if (m.to() == Square{6} || m.castle() == CastleSide::KingSide)
+        if (m.to() == bb::G1 || m.castle() == CastleSide::KingSide)
         {
           hashXorPiece(us, PieceType::Rook, bb::H1);
-          m_board.movePiece_noCapture(bb::H1, Square{5});
-          hashXorPiece(us, PieceType::Rook, Square{5});
+          m_board.movePiece_noCapture(bb::H1, bb::F1);
+          hashXorPiece(us, PieceType::Rook, bb::F1);
         }
         else
         {
           hashXorPiece(us, PieceType::Rook, bb::A1);
-          m_board.movePiece_noCapture(bb::A1, Square{3});
-          hashXorPiece(us, PieceType::Rook, Square{3});
+          m_board.movePiece_noCapture(bb::A1, bb::D1);
+          hashXorPiece(us, PieceType::Rook, bb::D1);
         }
       }
       else
       {
-        if (m.to() == Square{62} || m.castle() == CastleSide::KingSide)
+        if (m.to() == bb::G8 || m.castle() == CastleSide::KingSide)
         {
           hashXorPiece(us, PieceType::Rook, bb::H8);
-          m_board.movePiece_noCapture(bb::H8, Square{61});
-          hashXorPiece(us, PieceType::Rook, Square{61});
+          m_board.movePiece_noCapture(bb::H8, bb::F8);
+          hashXorPiece(us, PieceType::Rook, bb::F8);
         }
         else
         {
           hashXorPiece(us, PieceType::Rook, bb::A8);
-          m_board.movePiece_noCapture(bb::A8, Square{59});
-          hashXorPiece(us, PieceType::Rook, Square{59});
+          m_board.movePiece_noCapture(bb::A8, bb::D8);
+          hashXorPiece(us, PieceType::Rook, bb::D8);
         }
       }
     }
 
-    // gaveCheck (compute before side flip)
+    // gaveCheck
     const bb::Bitboard kThem = m_board.getPieces(them, PieceType::King);
     std::uint8_t gc = 0;
     if (kThem)
@@ -868,45 +604,40 @@ namespace lilia::chess
     xorEPRelevant();
   }
 
-  // ===== Position::unapplyMove (optimized) =====
   void Position::unapplyMove(const StateInfo &st)
   {
-    // Flip side back
     m_state.sideToMove = ~m_state.sideToMove;
     hashXorSide();
     if (m_state.sideToMove == Color::Black)
       --m_state.fullmoveNumber;
 
-    // Restore castling rights (+hash)
     hashSetCastling(m_state.castlingRights, st.prevCastlingRights);
     m_state.castlingRights = st.prevCastlingRights;
 
-    // Restore EP (+hash)
     m_state.enPassantSquare = st.prevEnPassantSquare;
     xorEPRelevant();
 
-    // Restore 50-move clock
     m_state.halfmoveClock = st.prevHalfmoveClock;
 
     const Move &m = st.move;
     const Color us = m_state.sideToMove; // the side that made 'm'
     const Color them = ~us;
 
-    // Undo castle rook (fast)
+    // Undo castle rook
     if (m.castle() != CastleSide::None)
     {
       if (us == Color::White)
       {
         if (m.castle() == CastleSide::KingSide)
         {
-          hashXorPiece(us, PieceType::Rook, Square{5});
-          m_board.movePiece_noCapture(Square{5}, bb::H1);
+          hashXorPiece(us, PieceType::Rook, bb::F1);
+          m_board.movePiece_noCapture(bb::F1, bb::H1);
           hashXorPiece(us, PieceType::Rook, bb::H1);
         }
         else
         {
-          hashXorPiece(us, PieceType::Rook, Square{3});
-          m_board.movePiece_noCapture(Square{3}, bb::A1);
+          hashXorPiece(us, PieceType::Rook, bb::D1);
+          m_board.movePiece_noCapture(bb::D1, bb::A1);
           hashXorPiece(us, PieceType::Rook, bb::A1);
         }
       }
@@ -914,20 +645,20 @@ namespace lilia::chess
       {
         if (m.castle() == CastleSide::KingSide)
         {
-          hashXorPiece(us, PieceType::Rook, Square{61});
-          m_board.movePiece_noCapture(Square{61}, bb::H8);
+          hashXorPiece(us, PieceType::Rook, bb::F8);
+          m_board.movePiece_noCapture(bb::F8, bb::H8);
           hashXorPiece(us, PieceType::Rook, bb::H8);
         }
         else
         {
-          hashXorPiece(us, PieceType::Rook, Square{59});
-          m_board.movePiece_noCapture(Square{59}, bb::A8);
+          hashXorPiece(us, PieceType::Rook, bb::D8);
+          m_board.movePiece_noCapture(bb::D8, bb::A8);
           hashXorPiece(us, PieceType::Rook, bb::A8);
         }
       }
     }
 
-    // Fast: no capture & no promotion
+    // no capture & no promotion
     if (LILIA_LIKELY(m.promotion() == PieceType::None && st.captured.type == PieceType::None))
     {
       if (auto moving = m_board.getPiece(m.to()))
@@ -939,7 +670,7 @@ namespace lilia::chess
       return;
     }
 
-    // Fast: non-promotion capture
+    // non-promotion capture
     if (m.promotion() == PieceType::None && st.captured.type != PieceType::None)
     {
       if (auto moving = m_board.getPiece(m.to()))
@@ -963,7 +694,7 @@ namespace lilia::chess
       return;
     }
 
-    // Slow: promotions / mixed cases
+    // promotions / mixed cases
     if (auto moving = m_board.getPiece(m.to()))
     {
       m_board.removePiece(m.to());
@@ -997,4 +728,4 @@ namespace lilia::chess
     }
   }
 
-} // namespace lilia::model
+}
