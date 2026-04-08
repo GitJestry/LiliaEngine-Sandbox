@@ -823,8 +823,8 @@ namespace lilia::engine
 
   }
 
-  Search::Search(TT5 &tt_, std::shared_ptr<const Evaluator> eval_, const EngineConfig &cfg_)
-      : tt(tt_), mg(), cfg(cfg_), eval_(std::move(eval_))
+  Search::Search(TT5 &tt_, const EngineConfig &cfg_)
+      : tt(tt_), mg(), cfg(cfg_), eval_()
   {
     for (auto &kk : killers)
     {
@@ -852,7 +852,7 @@ namespace lilia::engine
 
   int Search::signed_eval(SearchPosition &pos)
   {
-    int v = eval_->evaluate(pos);
+    int v = eval_.evaluate(pos);
     if (pos.getState().sideToMove == chess::Color::Black)
       v = -v;
     return std::clamp(v, -MATE + 1, MATE - 1);
@@ -2753,7 +2753,7 @@ namespace lilia::engine
     workers.reserve(threads);
     for (int t = 0; t < threads; ++t)
     {
-      auto w = std::make_unique<Search>(tt, eval_, cfg);
+      auto w = std::make_unique<Search>(tt, cfg);
       w->set_thread_id(t);
       w->stopFlag = stop;
       w->set_node_limit(sharedCounter, maxNodes);

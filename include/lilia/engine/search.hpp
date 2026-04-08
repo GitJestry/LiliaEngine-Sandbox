@@ -37,13 +37,10 @@ namespace lilia::engine
     std::vector<chess::Move> bestPV;
   };
 
-  // Forwarddecleration
-  class Evaluator;
-
   class Search
   {
   public:
-    Search(TT5 &tt, std::shared_ptr<const Evaluator> eval, const EngineConfig &cfg);
+    Search(TT5 &tt, const EngineConfig &cfg);
     ~Search() = default;
 
     // Non-copyable / non-movable
@@ -140,7 +137,7 @@ namespace lilia::engine
     TT5 &tt;
     chess::MoveGenerator mg;
     const EngineConfig &cfg;
-    std::shared_ptr<const Evaluator> eval_;
+    Evaluator eval_;
 
     std::array<chess::Move, MAX_PLY> prevMove{};
 

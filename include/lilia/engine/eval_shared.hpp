@@ -41,7 +41,7 @@ namespace lilia::engine
   std::vector<int> get_default_eval_param_values();
   void set_eval_param_values(std::span<const int> values);
 
-  constexpr int MAX_PHASE = 16;
+  constexpr int MAX_PHASE = 24;
   LILIA_ALWAYS_INLINE int taper(int mg, int eg, int phase)
   {
     // mg when phase=MAX_PHASE, eg when phase=0

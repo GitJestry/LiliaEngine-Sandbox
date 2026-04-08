@@ -18,8 +18,6 @@ namespace lilia::engine
     EngineConfig cfg;
     TT5 tt;
 
-    // collectively Evaluator-Instance, for all Searches/Threads used
-    std::shared_ptr<const Evaluator> eval;
     std::unique_ptr<Search> search;
 
     explicit Impl(const EngineConfig &c) : cfg(c), tt(c.ttSizeMb)
@@ -38,8 +36,7 @@ namespace lilia::engine
 
       ThreadPool::instance(cfg.threads);
 
-      eval = std::make_shared<Evaluator>();
-      search = std::make_unique<Search>(tt, eval, cfg);
+      search = std::make_unique<Search>(tt, cfg);
     }
   };
 
@@ -53,14 +50,6 @@ namespace lilia::engine
     try
     {
       pimpl->tt.clear();
-    }
-    catch (...)
-    {
-    }
-    try
-    {
-      if (pimpl->eval)
-        pimpl->eval->clearCaches();
     }
     catch (...)
     {

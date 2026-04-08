@@ -105,7 +105,7 @@ namespace lilia::app::controller
     m_view.setPlayersInfo(view::ui::makePlayerInfo(cfg.white, chess::Color::White),
                           view::ui::makePlayerInfo(cfg.black, chess::Color::Black));
 
-    // New: hand full StartConfig to GameManager (which creates UCI players)
+    // hand full StartConfig to GameManager (which creates UCI players)
     m_game_manager->startGame(cfg);
 
     m_premove->clearAll();

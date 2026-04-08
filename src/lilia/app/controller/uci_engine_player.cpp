@@ -77,18 +77,15 @@ namespace lilia::app::controller
       if (!m_ok)
         return noMove();
 
-      // You need a FEN getter. Use your existing API or add it.
-      const std::string fen = game.getFen(); // ADAPT if your method name differs
+      const std::string fen = game.getFen();
 
       m_proc.position(fen, {});
 
       // Search control policy:
-      // - If you later wire clock times: use goTime(...)
-      // - For now: movetime or depth fallback
-      if (m_cfg.limits.movetimeMs)
-        m_proc.goFixedMovetime(*m_cfg.limits.movetimeMs);
-      else if (m_cfg.limits.depth)
+      if (m_cfg.limits.depth)
         m_proc.goFixedDepth(*m_cfg.limits.depth);
+      else if (m_cfg.limits.movetimeMs)
+        m_proc.goFixedMovetime(*m_cfg.limits.movetimeMs);
       else
         m_proc.goFixedMovetime(500);
 

@@ -734,8 +734,8 @@ namespace lilia::app::engines
       return bot;
 
     bot.engine = entry->ref;
-    bot.limits.movetimeMs = 500;
-    bot.limits.depth.reset();
+    bot.limits.movetimeMs = 1000;
+    bot.limits.depth = 14;
 
     for (const auto &opt : entry->options)
     {

@@ -22,6 +22,7 @@ namespace lilia::chess::magic
 
   void init_magics();
 
+  // including the first blocker square
   bb::Bitboard sliding_attacks(Slider s, Square sq, bb::Bitboard occ) noexcept;
 
   const std::array<bb::Bitboard, 64> &rook_masks();
