@@ -621,18 +621,35 @@ namespace lilia::engine
 
   struct AttackMap
   {
+    // non-pawn / non-king attacks
     chess::bb::Bitboard wAll = 0, bAll = 0;
+
+    // squares attacked at least twice
+    chess::bb::Bitboard w2 = 0, b2 = 0;
+
     chess::bb::Bitboard wPA = 0, bPA = 0;
     chess::bb::Bitboard wKAtt = 0, bKAtt = 0;
 
     chess::bb::Bitboard wN = 0, wB = 0, wR = 0, wQ = 0;
     chess::bb::Bitboard bN = 0, bB = 0, bR = 0, bQ = 0;
 
-    int wKingAttackers = 0; // white pieces attacking black king zone
-    int bKingAttackers = 0; // black pieces attacking white king zone
-    int wKingRingUnits = 0; // weighted white pressure against black king
-    int bKingRingUnits = 0; // weighted black pressure against white king
+    int wKingAttackers = 0;
+    int bKingAttackers = 0;
+    int wKingRingUnits = 0;
+    int bKingRingUnits = 0;
   };
+
+  LILIA_ALWAYS_INLINE chess::bb::Bitboard white_double_pawn_attacks(chess::bb::Bitboard wp) noexcept
+  {
+    return ((wp & ~chess::bb::FILE_A) << 7) &
+           ((wp & ~chess::bb::FILE_H) << 9);
+  }
+
+  LILIA_ALWAYS_INLINE chess::bb::Bitboard black_double_pawn_attacks(chess::bb::Bitboard bp) noexcept
+  {
+    return ((bp & ~chess::bb::FILE_A) >> 9) &
+           ((bp & ~chess::bb::FILE_H) >> 7);
+  }
 
   static PasserDyn passer_dynamic_bonus(
       chess::bb::Bitboard occ,
@@ -715,15 +732,29 @@ namespace lilia::engine
                           const std::array<chess::bb::Bitboard, 6> &W, const std::array<chess::bb::Bitboard, 6> &B,
                           chess::bb::Bitboard wPA, chess::bb::Bitboard bPA,
                           int wK, int bK,
+                          chess::bb::Bitboard wPinned,
+                          chess::bb::Bitboard bPinned,
                           AttackMap &A)
   {
     AttInfo ai{};
 
     A.wAll = A.bAll = 0ULL;
+    A.w2 = A.b2 = 0ULL;
+    A.wPA = wPA;
+    A.bPA = bPA;
+    A.wKAtt = (wK >= 0) ? chess::bb::king_attacks_from((chess::Square)wK) : 0ULL;
+    A.bKAtt = (bK >= 0) ? chess::bb::king_attacks_from((chess::Square)bK) : 0ULL;
     A.wN = A.wB = A.wR = A.wQ = 0ULL;
     A.bN = A.bB = A.bR = A.bQ = 0ULL;
     A.wKingAttackers = A.bKingAttackers = 0;
     A.wKingRingUnits = A.bKingRingUnits = 0;
+
+    // Start attackedBy2 with king/pawn overlaps, including double pawn attacks
+    A.w2 = white_double_pawn_attacks(W[(int)chess::PieceType::Pawn]) | (A.wPA & A.wKAtt);
+    A.b2 = black_double_pawn_attacks(B[(int)chess::PieceType::Pawn]) | (A.bPA & A.bKAtt);
+
+    chess::bb::Bitboard wAllAgg = A.wPA | A.wKAtt;
+    chess::bb::Bitboard bAllAgg = A.bPA | A.bKAtt;
 
     const chess::bb::Bitboard bKingBB =
         (bK >= 0) ? chess::bb::sq_bb(static_cast<chess::Square>(bK)) : 0ULL;
@@ -754,16 +785,54 @@ namespace lilia::engine
       }
     };
 
-    // --- Knights ---
+    auto add_white_attacks = [&](chess::bb::Bitboard a, chess::bb::Bitboard &slot, int unit)
+    {
+      A.w2 |= wAllAgg & a;
+      slot |= a;
+      A.wAll |= a;
+      wAllAgg |= a;
+      add_white_pressure(a, unit);
+    };
+
+    auto add_black_attacks = [&](chess::bb::Bitboard a, chess::bb::Bitboard &slot, int unit)
+    {
+      A.b2 |= bAllAgg & a;
+      slot |= a;
+      A.bAll |= a;
+      bAllAgg |= a;
+      add_black_pressure(a, unit);
+    };
+
+    const chess::bb::Bitboard allQueens =
+        W[(int)chess::PieceType::Queen] | B[(int)chess::PieceType::Queen];
+
+    const chess::bb::Bitboard wBishopOcc = occ ^ allQueens;
+    const chess::bb::Bitboard bBishopOcc = occ ^ allQueens;
+
+    const chess::bb::Bitboard wRookOcc =
+        occ ^ allQueens ^ W[(int)chess::PieceType::Rook];
+
+    const chess::bb::Bitboard bRookOcc =
+        occ ^ allQueens ^ B[(int)chess::PieceType::Rook];
+
+    // --- White knights ---
     {
       chess::bb::Bitboard bb = W[(int)chess::PieceType::Knight];
       while (bb)
       {
         const int s = pop_lsb_i(bb);
-        const chess::bb::Bitboard a = chess::bb::knight_attacks_from((chess::Square)s);
-        A.wN |= a;
-        A.wAll |= a;
-        add_white_pressure(a, KS_UNIT_N);
+        const chess::bb::Bitboard fromBB = chess::bb::sq_bb((chess::Square)s);
+
+        chess::bb::Bitboard a = chess::bb::knight_attacks_from((chess::Square)s);
+
+        if (wPinned & fromBB)
+          a &= LINE_MASK[wK][s]; // becomes 0 for a pinned knight
+
+        if (!a)
+          continue;
+
+        add_white_attacks(a, A.wN, KS_UNIT_N);
+
         int c = chess::bb::popcount(a & safeMaskW);
         if (c > 8)
           c = 8;
@@ -771,15 +840,25 @@ namespace lilia::engine
         ai.eg += KN_MOB_EG[c];
       }
     }
+
+    // --- Black knights ---
     {
       chess::bb::Bitboard bb = B[(int)chess::PieceType::Knight];
       while (bb)
       {
         const int s = pop_lsb_i(bb);
-        const chess::bb::Bitboard a = chess::bb::knight_attacks_from((chess::Square)s);
-        A.bN |= a;
-        A.bAll |= a;
-        add_black_pressure(a, KS_UNIT_N);
+        const chess::bb::Bitboard fromBB = chess::bb::sq_bb((chess::Square)s);
+
+        chess::bb::Bitboard a = chess::bb::knight_attacks_from((chess::Square)s);
+
+        if (bPinned & fromBB)
+          a &= LINE_MASK[bK][s];
+
+        if (!a)
+          continue;
+
+        add_black_attacks(a, A.bN, KS_UNIT_N);
+
         int c = chess::bb::popcount(a & safeMaskB);
         if (c > 8)
           c = 8;
@@ -788,16 +867,24 @@ namespace lilia::engine
       }
     }
 
-    // --- Bishops ---
+    // --- White bishops ---
     {
       chess::bb::Bitboard bb = W[(int)chess::PieceType::Bishop];
       while (bb)
       {
         const int s = pop_lsb_i(bb);
-        const chess::bb::Bitboard a = chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)s, occ);
-        A.wB |= a;
-        A.wAll |= a;
-        add_white_pressure(a, KS_UNIT_B);
+        const chess::bb::Bitboard fromBB = chess::bb::sq_bb((chess::Square)s);
+
+        chess::bb::Bitboard a =
+            chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)s, wBishopOcc);
+
+        if (wPinned & fromBB)
+          a &= LINE_MASK[wK][s];
+
+        if (!a)
+          continue;
+
+        add_white_attacks(a, A.wB, KS_UNIT_B);
 
         int c = chess::bb::popcount(a & safeMaskW);
         if (c > 13)
@@ -806,15 +893,25 @@ namespace lilia::engine
         ai.eg += BI_MOB_EG[c];
       }
     }
+
+    // --- Black bishops ---
     {
       chess::bb::Bitboard bb = B[(int)chess::PieceType::Bishop];
       while (bb)
       {
         const int s = pop_lsb_i(bb);
-        const chess::bb::Bitboard a = chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)s, occ);
-        A.bB |= a;
-        A.bAll |= a;
-        add_black_pressure(a, KS_UNIT_B);
+        const chess::bb::Bitboard fromBB = chess::bb::sq_bb((chess::Square)s);
+
+        chess::bb::Bitboard a =
+            chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)s, bBishopOcc);
+
+        if (bPinned & fromBB)
+          a &= LINE_MASK[bK][s];
+
+        if (!a)
+          continue;
+
+        add_black_attacks(a, A.bB, KS_UNIT_B);
 
         int c = chess::bb::popcount(a & safeMaskB);
         if (c > 13)
@@ -824,16 +921,24 @@ namespace lilia::engine
       }
     }
 
-    // --- Rooks ---
+    // --- White rooks ---
     {
       chess::bb::Bitboard bb = W[(int)chess::PieceType::Rook];
       while (bb)
       {
         const int s = pop_lsb_i(bb);
-        const chess::bb::Bitboard a = chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)s, occ);
-        A.wR |= a;
-        A.wAll |= a;
-        add_white_pressure(a, KS_UNIT_R);
+        const chess::bb::Bitboard fromBB = chess::bb::sq_bb((chess::Square)s);
+
+        chess::bb::Bitboard a =
+            chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)s, wRookOcc);
+
+        if (wPinned & fromBB)
+          a &= LINE_MASK[wK][s];
+
+        if (!a)
+          continue;
+
+        add_white_attacks(a, A.wR, KS_UNIT_R);
 
         int c = chess::bb::popcount(a & safeMaskW);
         if (c > 14)
@@ -842,15 +947,25 @@ namespace lilia::engine
         ai.eg += RO_MOB_EG[c];
       }
     }
+
+    // --- Black rooks ---
     {
       chess::bb::Bitboard bb = B[(int)chess::PieceType::Rook];
       while (bb)
       {
         const int s = pop_lsb_i(bb);
-        const chess::bb::Bitboard a = chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)s, occ);
-        A.bR |= a;
-        A.bAll |= a;
-        add_black_pressure(a, KS_UNIT_R);
+        const chess::bb::Bitboard fromBB = chess::bb::sq_bb((chess::Square)s);
+
+        chess::bb::Bitboard a =
+            chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)s, bRookOcc);
+
+        if (bPinned & fromBB)
+          a &= LINE_MASK[bK][s];
+
+        if (!a)
+          continue;
+
+        add_black_attacks(a, A.bR, KS_UNIT_R);
 
         int c = chess::bb::popcount(a & safeMaskB);
         if (c > 14)
@@ -860,18 +975,25 @@ namespace lilia::engine
       }
     }
 
-    // --- Queens ---
+    // --- White queens ---
     {
       chess::bb::Bitboard bb = W[(int)chess::PieceType::Queen];
       while (bb)
       {
         const int s = pop_lsb_i(bb);
-        const chess::bb::Bitboard r = chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)s, occ);
-        const chess::bb::Bitboard b = chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)s, occ);
-        const chess::bb::Bitboard a = r | b;
-        A.wQ |= a;
-        A.wAll |= a;
-        add_white_pressure(a, KS_UNIT_Q);
+        const chess::bb::Bitboard fromBB = chess::bb::sq_bb((chess::Square)s);
+
+        chess::bb::Bitboard a =
+            chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)s, occ) |
+            chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)s, occ);
+
+        if (wPinned & fromBB)
+          a &= LINE_MASK[wK][s];
+
+        if (!a)
+          continue;
+
+        add_white_attacks(a, A.wQ, KS_UNIT_Q);
 
         int c = chess::bb::popcount(a & safeMaskW);
         if (c > 27)
@@ -880,17 +1002,26 @@ namespace lilia::engine
         ai.eg += QU_MOB_EG[c];
       }
     }
+
+    // --- Black queens ---
     {
       chess::bb::Bitboard bb = B[(int)chess::PieceType::Queen];
       while (bb)
       {
         const int s = pop_lsb_i(bb);
-        const chess::bb::Bitboard r = chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)s, occ);
-        const chess::bb::Bitboard b = chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)s, occ);
-        const chess::bb::Bitboard a = r | b;
-        A.bQ |= a;
-        A.bAll |= a;
-        add_black_pressure(a, KS_UNIT_Q);
+        const chess::bb::Bitboard fromBB = chess::bb::sq_bb((chess::Square)s);
+
+        chess::bb::Bitboard a =
+            chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)s, occ) |
+            chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)s, occ);
+
+        if (bPinned & fromBB)
+          a &= LINE_MASK[bK][s];
+
+        if (!a)
+          continue;
+
+        add_black_attacks(a, A.bQ, KS_UNIT_Q);
 
         int c = chess::bb::popcount(a & safeMaskB);
         if (c > 27)
@@ -900,7 +1031,6 @@ namespace lilia::engine
       }
     }
 
-    // final clamp
     if (ai.mg > MOBILITY_CLAMP)
       ai.mg = MOBILITY_CLAMP;
     if (ai.mg < -MOBILITY_CLAMP)
@@ -1496,18 +1626,18 @@ namespace lilia::engine
     {
       const int ownP = white ? wP : bP;
       const int oppP = white ? bP : wP;
-      const int ownN = white ? wN : bN;
+      const int atkN = white ? wN : bN;
       const int oppN = white ? bN : wN;
-      const int ownB = white ? wB : bB;
+      const int atkB = white ? wB : bB;
       const int oppB = white ? bB : wB;
-      const int ownR = white ? wR : bR;
+      const int atkR = white ? wR : bR;
       const int oppR = white ? bR : wR;
-      const int ownQ = white ? wQ : bQ;
+      const int atkQ = white ? wQ : bQ;
       const int oppQ = white ? bQ : wQ;
 
       if (ownP != 1 || oppP != 0)
         return FULL_SCALE;
-      if ((ownN + ownB + ownR + ownQ + oppN + oppB + oppR + oppQ) != 0)
+      if ((atkN + atkB + atkR + atkQ + oppN + oppB + oppR + oppQ) != 0)
         return FULL_SCALE;
 
       const chess::bb::Bitboard paw = white ? W[0] : B[0];
@@ -1539,10 +1669,10 @@ namespace lilia::engine
 
     auto wrong_bishop_scale = [&](bool white) -> int
     {
-      const int ownN = white ? wN : bN;
-      const int ownB = white ? wB : bB;
-      const int ownR = white ? wR : bR;
-      const int ownQ = white ? wQ : bQ;
+      const int atkN = white ? wN : bN;
+      const int atkB = white ? wB : bB;
+      const int atkR = white ? wR : bR;
+      const int atkQ = white ? wQ : bQ;
       const int ownP = white ? wP : bP;
 
       const int oppP = white ? bP : wP;
@@ -1551,9 +1681,9 @@ namespace lilia::engine
       const int oppR = white ? bR : wR;
       const int oppQ = white ? bQ : wQ;
 
-      if (ownB != 1 || ownP != 1)
+      if (atkB != 1 || ownP != 1)
         return FULL_SCALE;
-      if ((ownN + ownR + ownQ) != 0)
+      if ((atkN + atkR + atkQ) != 0)
         return FULL_SCALE;
       if ((oppP + oppN + oppB + oppR + oppQ) != 0)
         return FULL_SCALE;
@@ -1677,6 +1807,44 @@ namespace lilia::engine
 
     // Never flips the endgame sign.
     return sgn(eg) * std::min(std::abs(eg), complexity);
+  }
+
+  LILIA_ALWAYS_INLINE chess::bb::Bitboard pinned_blockers(
+      chess::bb::Bitboard occ,
+      chess::bb::Bitboard own,
+      chess::bb::Bitboard oppBQ,
+      chess::bb::Bitboard oppRQ,
+      int ksq)
+  {
+    if (ksq < 0)
+      return 0ULL;
+
+    const chess::Square kingSq = static_cast<chess::Square>(ksq);
+    chess::bb::Bitboard pinned = 0ULL;
+
+    chess::bb::Bitboard pinners =
+        chess::magic::sliding_attacks(chess::magic::Slider::Rook, kingSq, occ ^ own) & oppRQ;
+
+    while (pinners)
+    {
+      const int s = pop_lsb_i(pinners);
+      const chess::bb::Bitboard b = BETWEEN_EXCLUSIVE[ksq][s] & own;
+      if (b && !(b & (b - 1)))
+        pinned |= b;
+    }
+
+    pinners =
+        chess::magic::sliding_attacks(chess::magic::Slider::Bishop, kingSq, occ ^ own) & oppBQ;
+
+    while (pinners)
+    {
+      const int s = pop_lsb_i(pinners);
+      const chess::bb::Bitboard b = BETWEEN_EXCLUSIVE[ksq][s] & own;
+      if (b && !(b & (b - 1)))
+        pinned |= b;
+    }
+
+    return pinned;
   }
 
   // =============================================================================
@@ -1837,114 +2005,79 @@ namespace lilia::engine
     return pins;
   }
 
-  inline chess::bb::Bitboard enemy_attacks(bool white, const AttackMap &A)
+  LILIA_ALWAYS_INLINE int safe_checks(bool white,
+                                      chess::bb::Bitboard occ,
+                                      chess::bb::Bitboard wocc,
+                                      chess::bb::Bitboard bocc,
+                                      chess::bb::Bitboard wQueens,
+                                      chess::bb::Bitboard bQueens,
+                                      const AttackMap &A,
+                                      int oppK) noexcept
   {
-    return white ? (A.bAll | A.bPA | A.bKAtt)
-                 : (A.wAll | A.wPA | A.wKAtt);
-  }
-
-  inline int safe_checks(bool white,
-                         chess::bb::Bitboard occ,
-                         chess::bb::Bitboard ownOcc,
-                         int ownK,
-                         chess::bb::Bitboard rookPinned,
-                         chess::bb::Bitboard bishopPinned,
-                         chess::bb::Bitboard ownKnights,
-                         chess::bb::Bitboard ownBishops,
-                         chess::bb::Bitboard ownRooks,
-                         chess::bb::Bitboard ownQueens,
-                         const AttackMap &A,
-                         int oppK)
-  {
-    if (LILIA_UNLIKELY(ownK < 0 || oppK < 0))
+    if (LILIA_UNLIKELY(oppK < 0))
       return 0;
 
-    const chess::bb::Bitboard unsafe = enemy_attacks(white, A);
-    const chess::bb::Bitboard allPinned = rookPinned | bishopPinned;
+    const chess::bb::Bitboard atkOcc = white ? wocc : bocc;
+    const chess::bb::Bitboard defQOcc = white ? bQueens : wQueens;
+
+    const chess::bb::Bitboard atkAll = white ? (A.wAll | A.wPA | A.wKAtt)
+                                             : (A.bAll | A.bPA | A.bKAtt);
+    const chess::bb::Bitboard defAll = white ? (A.bAll | A.bPA | A.bKAtt)
+                                             : (A.wAll | A.wPA | A.wKAtt);
+
+    const chess::bb::Bitboard atk2 = white ? A.w2 : A.b2;
+    const chess::bb::Bitboard def2 = white ? A.b2 : A.w2;
+
+    const chess::bb::Bitboard atkN = white ? A.wN : A.bN;
+    const chess::bb::Bitboard atkB = white ? A.wB : A.bB;
+    const chess::bb::Bitboard atkR = white ? A.wR : A.bR;
+    const chess::bb::Bitboard atkQ = white ? A.wQ : A.bQ;
+
+    const chess::bb::Bitboard defQAtt = white ? A.bQ : A.wQ;
+    const chess::bb::Bitboard defKAtt = white ? A.bKAtt : A.wKAtt;
+
+    const chess::Square ksq = static_cast<chess::Square>(oppK);
+
+    // attacked by attacker, not defended twice, and either undefended or
+    // only queen/king-defended.
+    const chess::bb::Bitboard weak =
+        atkAll & ~def2 & (~defAll | defKAtt | defQAtt);
+
+    // Safe checking squares:
+    // not occupied by attacker, and either undefended by defender or weak+attacked twice.
+    chess::bb::Bitboard safe = ~atkOcc;
+    safe &= (~defAll) | (weak & atk2);
+
+    chess::bb::Bitboard rookMask = 0ULL;
+    chess::bb::Bitboard bishopMask = 0ULL;
+
+    // Remove defender queen from occupancy
+    if ((atkR | atkQ) != 0ULL)
+      rookMask = chess::magic::sliding_attacks(
+          chess::magic::Slider::Rook, ksq, occ ^ defQOcc);
+
+    if ((atkB | atkQ) != 0ULL)
+      bishopMask = chess::magic::sliding_attacks(
+          chess::magic::Slider::Bishop, ksq, occ ^ defQOcc);
+
+    const chess::bb::Bitboard rookChecks =
+        rookMask & atkR & safe;
+
+    const chess::bb::Bitboard queenChecks =
+        (rookMask | bishopMask) & atkQ & safe & ~defQAtt & ~rookChecks;
+
+    const chess::bb::Bitboard bishopChecks =
+        bishopMask & atkB & safe & ~queenChecks;
+
+    const chess::bb::Bitboard knightChecks =
+        chess::bb::knight_attacks_from(ksq) & atkN & safe;
 
     int sc = 0;
-
-    // Knights: absolutely pinned knight has no legal moves.
-    const chess::bb::Bitboard unpinnedKnights = ownKnights & ~allPinned;
-    if (unpinnedKnights)
-    {
-      chess::bb::Bitboard knAtt = 0ULL;
-      chess::bb::Bitboard knights = unpinnedKnights;
-
-      while (knights)
-      {
-        const int s = pop_lsb_i(knights);
-        knAtt |= chess::bb::knight_attacks_from(static_cast<chess::Square>(s));
-      }
-
-      const chess::bb::Bitboard knCheckSquares =
-          chess::bb::knight_attacks_from(static_cast<chess::Square>(oppK)) &
-          ~ownOcc & ~unsafe;
-
-      if (knAtt & knCheckSquares)
-        sc += KS_SAFE_CHECK_N;
-    }
-
-    auto has_safe_slider_check =
-        [&](chess::bb::Bitboard pieces, chess::magic::Slider mode) -> bool
-    {
-      chess::bb::Bitboard bb = pieces;
-
-      while (bb)
-      {
-        const int s = pop_lsb_i(bb);
-        const auto from = static_cast<chess::Square>(s);
-        const chess::bb::Bitboard fromBB = chess::bb::sq_bb(from);
-
-        chess::bb::Bitboard moves =
-            chess::magic::sliding_attacks(mode, from, occ) & ~ownOcc;
-
-        if (rookPinned & fromBB)
-        {
-          if (mode != chess::magic::Slider::Rook)
-            continue;
-          moves &= LINE_MASK[ownK][s];
-        }
-        else if (bishopPinned & fromBB)
-        {
-          if (mode != chess::magic::Slider::Bishop)
-            continue;
-          moves &= LINE_MASK[ownK][s];
-        }
-
-        if (!moves)
-          continue;
-
-        // remove the moving piece before asking which squares
-        // would check the enemy king.
-        const chess::bb::Bitboard occWithoutFrom = occ & ~fromBB;
-
-        const chess::bb::Bitboard checkSquares =
-            chess::magic::sliding_attacks(mode,
-                                          static_cast<chess::Square>(oppK),
-                                          occWithoutFrom);
-
-        moves &= ~unsafe;
-
-        if (moves & checkSquares)
-          return true;
-      }
-
-      return false;
-    };
-
-    if (ownBishops && has_safe_slider_check(ownBishops, chess::magic::Slider::Bishop))
-      sc += KS_SAFE_CHECK_B;
-
-    if (ownRooks && has_safe_slider_check(ownRooks, chess::magic::Slider::Rook))
-      sc += KS_SAFE_CHECK_R;
-
-    if (ownQueens && has_safe_slider_check(ownQueens, chess::magic::Slider::Bishop))
-      sc += KS_SAFE_CHECK_QB;
-
-    if (ownQueens && has_safe_slider_check(ownQueens, chess::magic::Slider::Rook))
-      sc += KS_SAFE_CHECK_QR;
-
+    sc += KS_SAFE_CHECK_R * chess::bb::popcount(rookChecks);
+    sc += KS_SAFE_CHECK_QR * chess::bb::popcount(queenChecks & rookMask);
+    sc += KS_SAFE_CHECK_QB * chess::bb::popcount(queenChecks & bishopMask);
+    sc += KS_SAFE_CHECK_B * chess::bb::popcount(bishopChecks);
+    sc += KS_SAFE_CHECK_N * chess::bb::popcount(knightChecks);
     return sc;
   }
 
@@ -1954,10 +2087,6 @@ namespace lilia::engine
                                 const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &W,
                                 const std::array<chess::bb::Bitboard, chess::PIECE_TYPE_NB> &B,
                                 const AttackMap &A,
-                                chess::bb::Bitboard wRookPins,
-                                chess::bb::Bitboard wBishopPins,
-                                chess::bb::Bitboard bRookPins,
-                                chess::bb::Bitboard bBishopPins,
                                 int wK, int bK)
   {
     const bool whiteHasAttackPieces = (W[1] | W[2] | W[3] | W[4]) != 0ULL;
@@ -1968,24 +2097,12 @@ namespace lilia::engine
 
     const int safeW =
         (whiteHasAttackPieces && bK >= 0)
-            ? safe_checks(true, occ, wocc, wK,
-                          wRookPins, wBishopPins,
-                          W[(int)chess::PieceType::Knight],
-                          W[(int)chess::PieceType::Bishop],
-                          W[(int)chess::PieceType::Rook],
-                          W[(int)chess::PieceType::Queen],
-                          A, bK)
+            ? safe_checks(true, occ, wocc, bocc, W[4], B[4], A, bK)
             : 0;
 
     const int safeB =
         (blackHasAttackPieces && wK >= 0)
-            ? safe_checks(false, occ, bocc, bK,
-                          bRookPins, bBishopPins,
-                          B[(int)chess::PieceType::Knight],
-                          B[(int)chess::PieceType::Bishop],
-                          B[(int)chess::PieceType::Rook],
-                          B[(int)chess::PieceType::Queen],
-                          A, wK)
+            ? safe_checks(false, occ, wocc, bocc, W[4], B[4], A, wK)
             : 0;
 
     const bool whiteKingUnderPressure =
@@ -2142,63 +2259,38 @@ namespace lilia::engine
       }
     }
 
-    // Build attack map (occ-dependent) and mobility
-    AttackMap A{};
-    A.wPA = wPA;
-    A.bPA = bPA;
-    A.wKAtt = (wK >= 0) ? chess::bb::king_attacks_from((chess::Square)wK) : 0ULL;
-    A.bKAtt = (bK >= 0) ? chess::bb::king_attacks_from((chess::Square)bK) : 0ULL;
-
-    AttInfo att = mobility(occ, wocc, bocc, W, B, wPA, bPA, wK, bK, A);
+    // material-dependent gates
+    const bool queensOn = anyQueens;
 
     const bool whiteHasAttackPieces = (W[1] | W[2] | W[3] | W[4]) != 0ULL;
     const bool blackHasAttackPieces = (B[1] | B[2] | B[3] | B[4]) != 0ULL;
 
+    // Pins must be ready before attack generation, because attack generation
+    // is where legality gets enforced now.
     const bool needWhitePins =
-        whiteHasAttackPieces && wK >= 0 && (B[2] | B[3] | B[4]);
+        wK >= 0 && whiteHasAttackPieces && (B[2] | B[3] | B[4]);
 
     const bool needBlackPins =
-        blackHasAttackPieces && bK >= 0 && (W[2] | W[3] | W[4]);
+        bK >= 0 && blackHasAttackPieces && (W[2] | W[3] | W[4]);
 
-    // material-dependent gates
-    const bool queensOn = anyQueens;
-
-    // Pins
-    chess::bb::Bitboard wRookPins = 0ULL, wBishopPins = 0ULL;
-    chess::bb::Bitboard bRookPins = 0ULL, bBishopPins = 0ULL;
+    chess::bb::Bitboard wPinned = 0ULL, bPinned = 0ULL;
 
     if (needWhitePins)
-    {
-      const chess::bb::Bitboard wKRookRay =
-          chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)wK, occ);
-      const chess::bb::Bitboard wKBishopRay =
-          chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)wK, occ);
-
-      wRookPins = rook_pins_from_kingray(occ, wocc, (B[3] | B[4]), wK, wKRookRay);
-      wBishopPins = bishop_pins_from_kingray(occ, wocc, (B[2] | B[4]), wK, wKBishopRay);
-    }
+      wPinned = pinned_blockers(occ, wocc, (B[2] | B[4]), (B[3] | B[4]), wK);
 
     if (needBlackPins)
-    {
-      const chess::bb::Bitboard bKRookRay =
-          chess::magic::sliding_attacks(chess::magic::Slider::Rook, (chess::Square)bK, occ);
-      const chess::bb::Bitboard bKBishopRay =
-          chess::magic::sliding_attacks(chess::magic::Slider::Bishop, (chess::Square)bK, occ);
+      bPinned = pinned_blockers(occ, bocc, (W[2] | W[4]), (W[3] | W[4]), bK);
 
-      bRookPins = rook_pins_from_kingray(occ, bocc, (W[3] | W[4]), bK, bKRookRay);
-      bBishopPins = bishop_pins_from_kingray(occ, bocc, (W[2] | W[4]), bK, bKBishopRay);
-    }
+    AttackMap A{};
+    AttInfo att = mobility(occ, wocc, bocc, W, B, wPA, bPA, wK, bK,
+                           wPinned, bPinned, A);
 
     // threats
     int thr = threats(W, B, A, wocc, bocc);
 
     const KingStructureScore kingStruct = king_structure(W, B, wK, bK);
 
-    int kDanger =
-        king_attack_danger(occ, wocc, bocc, W, B, A,
-                           wRookPins, wBishopPins,
-                           bRookPins, bBishopPins,
-                           wK, bK);
+    int kDanger = king_attack_danger(occ, wocc, bocc, W, B, A, wK, bK);
 
     // style & structure
     int bp = bishop_pair_term(mc);
