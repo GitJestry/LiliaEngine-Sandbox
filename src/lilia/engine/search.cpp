@@ -361,7 +361,7 @@ namespace lilia::engine
                                             int cap)
     {
       chess::MoveBuffer buf(out, cap);
-      return mg.generateCapturesOnly(pos.getBoard(), pos.getState(), buf);
+      return mg.generateTacticalMoves(pos.getBoard(), pos.getState(), buf);
     }
     static LILIA_ALWAYS_INLINE int gen_evasions(chess::MoveGenerator &mg, SearchPosition &pos, chess::Move *out,
                                                 int cap)

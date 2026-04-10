@@ -20,7 +20,7 @@ namespace lilia::chess
     void generatePseudoLegalMoves(const Board &b, const GameState &st, std::vector<Move> &out) const;
 
     // Captures + promotions (including en passant and quiet promotions)
-    void generateCapturesOnly(const Board &b, const GameState &st, std::vector<Move> &out) const;
+    void generateTacticalMoves(const Board &b, const GameState &st, std::vector<Move> &out) const;
 
     // Check evasions: safe king moves plus (in single-check) capturing the checker and/or blocking
     // the check Pseudo-legal — final legality is verified via doMove()
@@ -32,7 +32,7 @@ namespace lilia::chess
 
     // Return: num generated moves
     int generatePseudoLegalMoves(const Board &, const GameState &, MoveBuffer &buf);
-    int generateCapturesOnly(const Board &, const GameState &, MoveBuffer &buf);
+    int generateTacticalMoves(const Board &, const GameState &, MoveBuffer &buf);
     int generateEvasions(const Board &, const GameState &, MoveBuffer &buf);
     int generateNonCapturePromotions(const Board &b, const GameState &st, MoveBuffer &buf);
   };

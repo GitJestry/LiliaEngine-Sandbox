@@ -84,18 +84,6 @@ namespace lilia::chess
       return Between[(int)a][(int)b];
     }
 
-    LILIA_ALWAYS_INLINE bool aligned_diag(Square a, Square b) noexcept
-    {
-      const int af = (int)a & bb::H1, bf = (int)b & bb::H1;
-      const int ar = (int)a >> bb::D1, br = (int)b >> bb::D1;
-      const int df = af - bf, dr = ar - br;
-      return (df == dr) || (df == -dr);
-    }
-    LILIA_ALWAYS_INLINE bool aligned_ortho(Square a, Square b) noexcept
-    {
-      return (((int)a ^ (int)b) & bb::H1) == 0 || (((int)a ^ (int)b) & bb::A8) == 0;
-    }
-
     struct PinInfo
     {
       bb::Bitboard pinned = 0ULL;
@@ -113,6 +101,44 @@ namespace lilia::chess
       LILIA_ALWAYS_INLINE bb::Bitboard allow_mask(Square s) const noexcept { return allow[(int)s]; }
     };
 
+    LILIA_ALWAYS_INLINE bb::Bitboard xray_attacks(magic::Slider slider, Square from,
+                                                  bb::Bitboard occ, bb::Bitboard blockers) noexcept
+    {
+      const bb::Bitboard attacks = magic::sliding_attacks(slider, from, occ);
+      blockers &= attacks;
+      return attacks ^ magic::sliding_attacks(slider, from, occ ^ blockers);
+    }
+
+    LILIA_ALWAYS_INLINE bb::Bitboard compute_checkers(const Board &b, Color us,
+                                                      bb::Bitboard occ) noexcept
+    {
+      const bb::Bitboard kbb = b.getPieces(us, PT::King);
+      if (!kbb)
+        return 0ULL;
+
+      const Square ksq = static_cast<Square>(bb::ctz64(kbb));
+      const Color them = ~us;
+
+      bb::Bitboard checkers = 0ULL;
+
+      {
+        const bb::Bitboard target = bb::sq_bb(ksq);
+        const bb::Bitboard pawnFrom =
+            (them == Color::White) ? (bb::sw(target) | bb::se(target))
+                                   : (bb::nw(target) | bb::ne(target));
+        checkers |= pawnFrom & b.getPieces(them, PT::Pawn);
+      }
+
+      checkers |= bb::knight_attacks_from(ksq) & b.getPieces(them, PT::Knight);
+      checkers |= bb::king_attacks_from(ksq) & b.getPieces(them, PT::King);
+      checkers |= magic::sliding_attacks(magic::Slider::Bishop, ksq, occ) &
+                  (b.getPieces(them, PT::Bishop) | b.getPieces(them, PT::Queen));
+      checkers |= magic::sliding_attacks(magic::Slider::Rook, ksq, occ) &
+                  (b.getPieces(them, PT::Rook) | b.getPieces(them, PT::Queen));
+
+      return checkers;
+    }
+
     LILIA_ALWAYS_INLINE void compute_pins(const Board &b, Color us, const bb::Bitboard occ,
                                           PinInfo &out) noexcept
     {
@@ -121,87 +147,145 @@ namespace lilia::chess
       const bb::Bitboard kbb = b.getPieces(us, PT::King);
       if (!kbb)
         return;
+
       const Square ksq = static_cast<Square>(bb::ctz64(kbb));
+      const bb::Bitboard ourNoK = b.getPieces(us) & ~kbb;
 
-      const bb::Bitboard ourPieces = b.getPieces(us);
-
-      // Early out avoids building lambdas and loops in positions with no candidate pinners.
       const bb::Bitboard oppBQ = b.getPieces(~us, PT::Bishop) | b.getPieces(~us, PT::Queen);
       const bb::Bitboard oppRQ = b.getPieces(~us, PT::Rook) | b.getPieces(~us, PT::Queen);
-      if ((oppBQ | oppRQ) == 0ULL)
+      if (!(oppBQ | oppRQ))
         return;
 
-      auto try_pinner = [&](Square pinnerSq, bool isDiag) noexcept
+      for (bb::Bitboard p = xray_attacks(magic::Slider::Bishop, ksq, occ, ourNoK) & oppBQ; p;)
       {
-        if (isDiag ? !aligned_diag(ksq, pinnerSq) : !aligned_ortho(ksq, pinnerSq))
-          return;
+        const Square pinnerSq = bb::pop_lsb_unchecked(p);
         const bb::Bitboard between = squares_between(ksq, pinnerSq);
-        if (!between)
-          return;
-        const bb::Bitboard blockers = between & occ;
-        if (!blockers || (blockers & (blockers - 1)))
-          return; // not exactly one
-        if ((blockers & ourPieces) == 0ULL)
-          return; // blocker not ours
-        const Square pinnedSq = static_cast<Square>(bb::ctz64(blockers));
-        out.add(pinnedSq, between | bb::sq_bb(pinnerSq));
-      };
+        const bb::Bitboard pinned = between & ourNoK;
+        if (LILIA_LIKELY(pinned && !(pinned & (pinned - 1))))
+          out.add(static_cast<Square>(bb::ctz64(pinned)), between | bb::sq_bb(pinnerSq));
+      }
 
-      for (bb::Bitboard s = oppBQ; s;)
-        try_pinner(bb::pop_lsb_unchecked(s), true);
-      for (bb::Bitboard s = oppRQ; s;)
-        try_pinner(bb::pop_lsb_unchecked(s), false);
+      for (bb::Bitboard p = xray_attacks(magic::Slider::Rook, ksq, occ, ourNoK) & oppRQ; p;)
+      {
+        const Square pinnerSq = bb::pop_lsb_unchecked(p);
+        const bb::Bitboard between = squares_between(ksq, pinnerSq);
+        const bb::Bitboard pinned = between & ourNoK;
+        if (LILIA_LIKELY(pinned && !(pinned & (pinned - 1))))
+          out.add(static_cast<Square>(bb::ctz64(pinned)), between | bb::sq_bb(pinnerSq));
+      }
     }
 
-    LILIA_ALWAYS_INLINE bool ep_is_legal_fast(const Board &b, Color side, Square from,
-                                              Square to) noexcept
+    LILIA_ALWAYS_INLINE bool attacked_by_after_ep(const Board &b, Square sq, Color by,
+                                                  bb::Bitboard occAfter,
+                                                  Square removedPawnSq) noexcept
+    {
+      const bb::Bitboard target = bb::sq_bb(sq);
+
+      const bb::Bitboard theirPawns =
+          b.getPieces(by, PT::Pawn) & ~bb::sq_bb(removedPawnSq);
+
+      const bb::Bitboard pawnFrom =
+          (by == Color::White) ? (bb::sw(target) | bb::se(target))
+                               : (bb::nw(target) | bb::ne(target));
+
+      if (pawnFrom & theirPawns)
+        return true;
+
+      if (bb::knight_attacks_from(sq) & b.getPieces(by, PT::Knight))
+        return true;
+
+      if (bb::king_attacks_from(sq) & b.getPieces(by, PT::King))
+        return true;
+
+      const bb::Bitboard bishopsQueens =
+          b.getPieces(by, PT::Bishop) | b.getPieces(by, PT::Queen);
+      const bb::Bitboard rooksQueens =
+          b.getPieces(by, PT::Rook) | b.getPieces(by, PT::Queen);
+
+      if (magic::sliding_attacks(magic::Slider::Bishop, sq, occAfter) & bishopsQueens)
+        return true;
+
+      if (magic::sliding_attacks(magic::Slider::Rook, sq, occAfter) & rooksQueens)
+        return true;
+
+      return false;
+    }
+
+    LILIA_ALWAYS_INLINE bool ep_is_legal(const Board &b, Color side, Square from,
+                                         Square to) noexcept
     {
       const bb::Bitboard kbb = b.getPieces(side, PT::King);
       if (LILIA_UNLIKELY(!kbb))
         return true;
 
       const Square ksq = static_cast<Square>(bb::ctz64(kbb));
+      const Square capSq =
+          static_cast<Square>((int)to + (side == Color::White ? -8 : +8));
 
-      if (LILIA_LIKELY(bb::rank_of(ksq) != bb::rank_of(from)))
-        return true;
+      bb::Bitboard occAfter = b.getAllPieces();
+      occAfter &= ~bb::sq_bb(from);
+      occAfter &= ~bb::sq_bb(capSq);
+      occAfter |= bb::sq_bb(to);
 
-      const int to_i = (int)to;
-      const int cap_i = (side == Color::White) ? (to_i - 8) : (to_i + 8);
-      const Square capSq = static_cast<Square>(cap_i);
-
-      bb::Bitboard occ = b.getAllPieces();
-      occ &= ~bb::sq_bb(from);
-      occ &= ~bb::sq_bb(capSq);
-      occ |= bb::sq_bb(to);
-
-      const bb::Bitboard sliders = b.getPieces(~side, PT::Rook) | b.getPieces(~side, PT::Queen);
-      if (LILIA_LIKELY(!sliders))
-        return true;
-
-      const bb::Bitboard rays = magic::sliding_attacks(magic::Slider::Rook, ksq, occ);
-      return (rays & sliders) == 0ULL;
+      return !attacked_by_after_ep(b, ksq, ~side, occAfter, capSq);
     }
 
-    template <Color Side, GenMode Mode, class Emit>
-    LILIA_ALWAYS_INLINE void genPawnMoves_T(const Board &board, const GameState &st, bb::Bitboard occ,
-                                            const SideSets &our, const SideSets &opp,
-                                            const PinInfo &pins, Emit &&emit,
-                                            bb::Bitboard targetMask = ~0ULL) noexcept
+    LILIA_ALWAYS_INLINE bb::Bitboard queen_attacks_from(Square from, bb::Bitboard occ) noexcept
+    {
+      return magic::sliding_attacks(magic::Slider::Bishop, from, occ) |
+             magic::sliding_attacks(magic::Slider::Rook, from, occ);
+    }
+
+    template <bool Capture, bool EnPassant = false, CastleSide Castle = CastleSide::None>
+    LILIA_ALWAYS_INLINE Move *emit_move(Move *LILIA_RESTRICT out,
+                                        Square from, Square to,
+                                        PT promo = PT::None) noexcept
+    {
+      *out++ = Move{from, to, promo, Capture, EnPassant, Castle};
+      return out;
+    }
+
+    template <bool Capture>
+    LILIA_ALWAYS_INLINE Move *emit_targets(Move *LILIA_RESTRICT out,
+                                           Square from,
+                                           bb::Bitboard targets) noexcept
+    {
+      while (targets)
+        out = emit_move<Capture>(out, from, bb::pop_lsb_unchecked(targets));
+      return out;
+    }
+
+    template <bool Capture>
+    LILIA_ALWAYS_INLINE Move *emit_promotions(Move *LILIA_RESTRICT out,
+                                              Square from, Square to) noexcept
+    {
+      out[0] = Move{from, to, PT::Queen, Capture, false, CastleSide::None};
+      out[1] = Move{from, to, PT::Rook, Capture, false, CastleSide::None};
+      out[2] = Move{from, to, PT::Bishop, Capture, false, CastleSide::None};
+      out[3] = Move{from, to, PT::Knight, Capture, false, CastleSide::None};
+      return out + 4;
+    }
+
+    template <Color Side, GenMode Mode, bool IncludeEP>
+    LILIA_ALWAYS_INLINE Move *genPawnMoves_T(Move *LILIA_RESTRICT out,
+                                             const Board &board, const GameState &st,
+                                             bb::Bitboard occ,
+                                             const SideSets &our, const SideSets &opp,
+                                             const PinInfo &pins,
+                                             bb::Bitboard targetMask = ~0ULL) noexcept
     {
       if (!our.pawns)
-        return;
+        return out;
 
       constexpr bool W = (Side == Color::White);
-      constexpr PT promoOrder[4] = {PT::Queen, PT::Rook, PT::Bishop, PT::Knight};
-
       const bb::Bitboard empty = ~occ;
       const bb::Bitboard them = opp.noKing;
+      const bb::Bitboard pinned = pins.pinned;
 
       if constexpr (W)
       {
         const bb::Bitboard one = bb::north(our.pawns) & empty;
 
-        // Quiet pushes (non-promotions) and double pushes only in All.
         if constexpr (Mode == GenMode::All)
         {
           const bb::Bitboard quietPush = (one & ~bb::RANK_8) & targetMask;
@@ -212,28 +296,28 @@ namespace lilia::chess
             const Square to = bb::pop_lsb_unchecked(q);
             const Square from = static_cast<Square>((int)to - 8);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            emit(Move{from, to, PT::None, false, false, CastleSide::None});
+            out = emit_move<false>(out, from, to);
           }
+
           for (bb::Bitboard d = dbl; d;)
           {
             const Square to = bb::pop_lsb_unchecked(d);
             const Square from = static_cast<Square>((int)to - 16);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            emit(Move{from, to, PT::None, false, false, CastleSide::None});
+            out = emit_move<false>(out, from, to);
           }
         }
 
-        // Non-promotion captures (both modes)
         {
           const bb::Bitboard capL = ((bb::nw(our.pawns) & them) & ~bb::RANK_8) & targetMask;
           const bb::Bitboard capR = ((bb::ne(our.pawns) & them) & ~bb::RANK_8) & targetMask;
@@ -243,28 +327,28 @@ namespace lilia::chess
             const Square to = bb::pop_lsb_unchecked(c);
             const Square from = static_cast<Square>((int)to - 7);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            emit(Move{from, to, PT::None, true, false, CastleSide::None});
+            out = emit_move<true>(out, from, to);
           }
+
           for (bb::Bitboard c = capR; c;)
           {
             const Square to = bb::pop_lsb_unchecked(c);
             const Square from = static_cast<Square>((int)to - 9);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            emit(Move{from, to, PT::None, true, false, CastleSide::None});
+            out = emit_move<true>(out, from, to);
           }
         }
 
-        // Promotions: always generated in both modes (quiet promos are required in CapturesPlusPromos)
         {
           const bb::Bitboard promoPush = (one & bb::RANK_8) & targetMask;
           for (bb::Bitboard pp = promoPush; pp;)
@@ -272,42 +356,41 @@ namespace lilia::chess
             const Square to = bb::pop_lsb_unchecked(pp);
             const Square from = static_cast<Square>((int)to - 8);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            for (int i = 0; i < 4; ++i)
-              emit(Move{from, to, promoOrder[i], false, false, CastleSide::None});
+            out = emit_promotions<false>(out, from, to);
           }
 
           const bb::Bitboard capLP = ((bb::nw(our.pawns) & them) & bb::RANK_8) & targetMask;
           const bb::Bitboard capRP = ((bb::ne(our.pawns) & them) & bb::RANK_8) & targetMask;
+
           for (bb::Bitboard c = capLP; c;)
           {
             const Square to = bb::pop_lsb_unchecked(c);
             const Square from = static_cast<Square>((int)to - 7);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            for (int i = 0; i < 4; ++i)
-              emit(Move{from, to, promoOrder[i], true, false, CastleSide::None});
+            out = emit_promotions<true>(out, from, to);
           }
+
           for (bb::Bitboard c = capRP; c;)
           {
             const Square to = bb::pop_lsb_unchecked(c);
             const Square from = static_cast<Square>((int)to - 9);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            for (int i = 0; i < 4; ++i)
-              emit(Move{from, to, promoOrder[i], true, false, CastleSide::None});
+            out = emit_promotions<true>(out, from, to);
           }
         }
       }
@@ -325,24 +408,25 @@ namespace lilia::chess
             const Square to = bb::pop_lsb_unchecked(q);
             const Square from = static_cast<Square>((int)to + 8);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            emit(Move{from, to, PT::None, false, false, CastleSide::None});
+            out = emit_move<false>(out, from, to);
           }
+
           for (bb::Bitboard d = dbl; d;)
           {
             const Square to = bb::pop_lsb_unchecked(d);
             const Square from = static_cast<Square>((int)to + 16);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            emit(Move{from, to, PT::None, false, false, CastleSide::None});
+            out = emit_move<false>(out, from, to);
           }
         }
 
@@ -355,24 +439,25 @@ namespace lilia::chess
             const Square to = bb::pop_lsb_unchecked(c);
             const Square from = static_cast<Square>((int)to + 7);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            emit(Move{from, to, PT::None, true, false, CastleSide::None});
+            out = emit_move<true>(out, from, to);
           }
+
           for (bb::Bitboard c = capR; c;)
           {
             const Square to = bb::pop_lsb_unchecked(c);
             const Square from = static_cast<Square>((int)to + 9);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            emit(Move{from, to, PT::None, true, false, CastleSide::None});
+            out = emit_move<true>(out, from, to);
           }
         }
 
@@ -383,243 +468,252 @@ namespace lilia::chess
             const Square to = bb::pop_lsb_unchecked(pp);
             const Square from = static_cast<Square>((int)to + 8);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            for (int i = 0; i < 4; ++i)
-              emit(Move{from, to, promoOrder[i], false, false, CastleSide::None});
+            out = emit_promotions<false>(out, from, to);
           }
 
           const bb::Bitboard capLP = ((bb::se(our.pawns) & them) & bb::RANK_1) & targetMask;
           const bb::Bitboard capRP = ((bb::sw(our.pawns) & them) & bb::RANK_1) & targetMask;
+
           for (bb::Bitboard c = capLP; c;)
           {
             const Square to = bb::pop_lsb_unchecked(c);
             const Square from = static_cast<Square>((int)to + 7);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            for (int i = 0; i < 4; ++i)
-              emit(Move{from, to, promoOrder[i], true, false, CastleSide::None});
+            out = emit_promotions<true>(out, from, to);
           }
+
           for (bb::Bitboard c = capRP; c;)
           {
             const Square to = bb::pop_lsb_unchecked(c);
             const Square from = static_cast<Square>((int)to + 9);
             const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            if (LILIA_UNLIKELY(pinned & fromBB))
             {
               if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
                 continue;
             }
-            for (int i = 0; i < 4; ++i)
-              emit(Move{from, to, promoOrder[i], true, false, CastleSide::None});
+            out = emit_promotions<true>(out, from, to);
           }
         }
       }
 
-      if (st.enPassantSquare != NO_SQUARE)
+      if constexpr (IncludeEP)
       {
-        const Square epSq = st.enPassantSquare;
-        const bb::Bitboard epBB = bb::sq_bb(epSq);
-        if constexpr (W)
+        if (st.enPassantSquare != NO_SQUARE)
         {
-          bb::Bitboard froms = (bb::sw(epBB) | bb::se(epBB)) & our.pawns;
-          for (bb::Bitboard f = froms; f;)
+          const Square epSq = st.enPassantSquare;
+          const bb::Bitboard epBB = bb::sq_bb(epSq);
+
+          if constexpr (W)
           {
-            const Square from = bb::pop_lsb_unchecked(f);
-            const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            bb::Bitboard froms = (bb::sw(epBB) | bb::se(epBB)) & our.pawns;
+            while (froms)
             {
-              if ((bb::sq_bb(epSq) & pins.allow_mask(from)) == 0ULL)
-                continue;
+              const Square from = bb::pop_lsb_unchecked(froms);
+              const bb::Bitboard fromBB = bb::sq_bb(from);
+              if (LILIA_UNLIKELY(pinned & fromBB))
+              {
+                if ((epBB & pins.allow_mask(from)) == 0ULL)
+                  continue;
+              }
+              if (ep_is_legal(board, Side, from, epSq))
+                out = emit_move<true, true>(out, from, epSq);
             }
-            if (ep_is_legal_fast(board, Side, from, epSq))
-              emit(Move{from, epSq, PT::None, true, true, CastleSide::None});
           }
-        }
-        else
-        {
-          bb::Bitboard froms = (bb::nw(epBB) | bb::ne(epBB)) & our.pawns;
-          for (bb::Bitboard f = froms; f;)
+          else
           {
-            const Square from = bb::pop_lsb_unchecked(f);
-            const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
+            bb::Bitboard froms = (bb::nw(epBB) | bb::ne(epBB)) & our.pawns;
+            while (froms)
             {
-              if ((bb::sq_bb(epSq) & pins.allow_mask(from)) == 0ULL)
-                continue;
+              const Square from = bb::pop_lsb_unchecked(froms);
+              const bb::Bitboard fromBB = bb::sq_bb(from);
+              if (LILIA_UNLIKELY(pinned & fromBB))
+              {
+                if ((epBB & pins.allow_mask(from)) == 0ULL)
+                  continue;
+              }
+              if (ep_is_legal(board, Side, from, epSq))
+                out = emit_move<true, true>(out, from, epSq);
             }
-            if (ep_is_legal_fast(board, Side, from, epSq))
-              emit(Move{from, epSq, PT::None, true, true, CastleSide::None});
           }
         }
       }
+
+      return out;
     }
 
-    template <GenMode Mode, class Emit>
-    LILIA_ALWAYS_INLINE void genKnightMoves_T(const SideSets &our, const SideSets &opp,
-                                              bb::Bitboard occ, const PinInfo &pins, Emit &&emit,
-                                              bb::Bitboard targetMask = ~0ULL) noexcept
+    template <GenMode Mode>
+    LILIA_ALWAYS_INLINE Move *genKnightMoves_T(Move *LILIA_RESTRICT out,
+                                               const SideSets &our, const SideSets &opp,
+                                               bb::Bitboard occ, const PinInfo &pins,
+                                               bb::Bitboard targetMask = ~0ULL) noexcept
     {
-      if (!our.knights)
-        return;
+      bb::Bitboard knights = our.knights & ~pins.pinned;
+      if (!knights)
+        return out;
 
       const bb::Bitboard enemyNoK = opp.noKing;
+      const bb::Bitboard quietMask = (~occ) & targetMask;
 
-      for (bb::Bitboard n = our.knights; n;)
+      while (knights)
       {
-        const Square from = bb::pop_lsb_unchecked(n);
-        const bb::Bitboard fromBB = bb::sq_bb(from);
-        const bb::Bitboard pinMask = (pins.pinned & fromBB) ? pins.allow_mask(from) : ~0ULL;
-
-        const bb::Bitboard atk = (bb::knight_attacks_from(from) & targetMask) & pinMask;
-
-        for (bb::Bitboard caps = atk & enemyNoK; caps;)
-        {
-          emit(Move{from, bb::pop_lsb_unchecked(caps), PT::None, true, false, CastleSide::None});
-        }
-
+        const Square from = bb::pop_lsb_unchecked(knights);
+        const bb::Bitboard atk = bb::knight_attacks_from(from) & targetMask;
+        out = emit_targets<true>(out, from, atk & enemyNoK);
         if constexpr (Mode == GenMode::All)
-        {
-          for (bb::Bitboard quiet = atk & ~occ; quiet;)
-          {
-            emit(Move{from, bb::pop_lsb_unchecked(quiet), PT::None, false, false, CastleSide::None});
-          }
-        }
+          out = emit_targets<false>(out, from, atk & quietMask);
       }
+
+      return out;
     }
 
-    template <GenMode Mode, class Emit>
-    LILIA_ALWAYS_INLINE void genBishopMoves_T(const SideSets &our, const SideSets &opp,
-                                              bb::Bitboard occ, const PinInfo &pins, Emit &&emit,
-                                              bb::Bitboard targetMask = ~0ULL) noexcept
+    template <GenMode Mode>
+    LILIA_ALWAYS_INLINE Move *genBishopMoves_T(Move *LILIA_RESTRICT out,
+                                               const SideSets &our, const SideSets &opp,
+                                               bb::Bitboard occ, const PinInfo &pins,
+                                               bb::Bitboard targetMask = ~0ULL) noexcept
     {
       if (!our.bishops)
-        return;
+        return out;
 
       const bb::Bitboard enemyNoK = opp.noKing;
+      const bb::Bitboard quietMask = ~occ;
 
-      for (bb::Bitboard bbs = our.bishops; bbs;)
+      bb::Bitboard freeBishops = our.bishops & ~pins.pinned;
+      while (freeBishops)
       {
-        const Square from = bb::pop_lsb_unchecked(bbs);
-        const bb::Bitboard fromBB = bb::sq_bb(from);
-        const bb::Bitboard pinMask = (pins.pinned & fromBB) ? pins.allow_mask(from) : ~0ULL;
-
-        const bb::Bitboard atk =
-            (magic::sliding_attacks(magic::Slider::Bishop, from, occ) & targetMask) & pinMask;
-
-        for (bb::Bitboard caps = atk & enemyNoK; caps;)
-        {
-          emit(Move{from, bb::pop_lsb_unchecked(caps), PT::None, true, false, CastleSide::None});
-        }
-
+        const Square from = bb::pop_lsb_unchecked(freeBishops);
+        const bb::Bitboard atk = magic::sliding_attacks(magic::Slider::Bishop, from, occ) & targetMask;
+        out = emit_targets<true>(out, from, atk & enemyNoK);
         if constexpr (Mode == GenMode::All)
-        {
-          for (bb::Bitboard quiet = atk & ~occ; quiet;)
-          {
-            emit(Move{from, bb::pop_lsb_unchecked(quiet), PT::None, false, false, CastleSide::None});
-          }
-        }
+          out = emit_targets<false>(out, from, atk & quietMask);
       }
+
+      bb::Bitboard pinnedBishops = our.bishops & pins.pinned;
+      while (pinnedBishops)
+      {
+        const Square from = bb::pop_lsb_unchecked(pinnedBishops);
+        const bb::Bitboard atk =
+            magic::sliding_attacks(magic::Slider::Bishop, from, occ) &
+            targetMask &
+            pins.allow_mask(from);
+        out = emit_targets<true>(out, from, atk & enemyNoK);
+        if constexpr (Mode == GenMode::All)
+          out = emit_targets<false>(out, from, atk & quietMask);
+      }
+
+      return out;
     }
 
-    template <GenMode Mode, class Emit>
-    LILIA_ALWAYS_INLINE void genRookMoves_T(const SideSets &our, const SideSets &opp, bb::Bitboard occ,
-                                            const PinInfo &pins, Emit &&emit,
-                                            bb::Bitboard targetMask = ~0ULL) noexcept
-    {
-      if (!our.rooks)
-        return;
-
-      const bb::Bitboard enemyNoK = opp.noKing;
-
-      for (bb::Bitboard r = our.rooks; r;)
-      {
-        const Square from = bb::pop_lsb_unchecked(r);
-        const bb::Bitboard fromBB = bb::sq_bb(from);
-        const bb::Bitboard pinMask = (pins.pinned & fromBB) ? pins.allow_mask(from) : ~0ULL;
-
-        const bb::Bitboard atk =
-            (magic::sliding_attacks(magic::Slider::Rook, from, occ) & targetMask) & pinMask;
-
-        for (bb::Bitboard caps = atk & enemyNoK; caps;)
-        {
-          emit(Move{from, bb::pop_lsb_unchecked(caps), PT::None, true, false, CastleSide::None});
-        }
-
-        if constexpr (Mode == GenMode::All)
-        {
-          for (bb::Bitboard quiet = atk & ~occ; quiet;)
-          {
-            emit(Move{from, bb::pop_lsb_unchecked(quiet), PT::None, false, false, CastleSide::None});
-          }
-        }
-      }
-    }
-
-    template <GenMode Mode, class Emit>
-    LILIA_ALWAYS_INLINE void genQueenMoves_T(const SideSets &our, const SideSets &opp, bb::Bitboard occ,
-                                             const PinInfo &pins, Emit &&emit,
+    template <GenMode Mode>
+    LILIA_ALWAYS_INLINE Move *genRookMoves_T(Move *LILIA_RESTRICT out,
+                                             const SideSets &our, const SideSets &opp,
+                                             bb::Bitboard occ, const PinInfo &pins,
                                              bb::Bitboard targetMask = ~0ULL) noexcept
     {
-      if (!our.queens)
-        return;
+      if (!our.rooks)
+        return out;
 
       const bb::Bitboard enemyNoK = opp.noKing;
+      const bb::Bitboard quietMask = ~occ;
 
-      for (bb::Bitboard q = our.queens; q;)
+      bb::Bitboard freeRooks = our.rooks & ~pins.pinned;
+      while (freeRooks)
       {
-        const Square from = bb::pop_lsb_unchecked(q);
-        const bb::Bitboard fromBB = bb::sq_bb(from);
-        const bb::Bitboard pinMask = (pins.pinned & fromBB) ? pins.allow_mask(from) : ~0ULL;
-
-        const bb::Bitboard atk = ((magic::sliding_attacks(magic::Slider::Bishop, from, occ) |
-                                   magic::sliding_attacks(magic::Slider::Rook, from, occ)) &
-                                  targetMask) &
-                                 pinMask;
-
-        for (bb::Bitboard caps = atk & enemyNoK; caps;)
-        {
-          emit(Move{from, bb::pop_lsb_unchecked(caps), PT::None, true, false, CastleSide::None});
-        }
-
+        const Square from = bb::pop_lsb_unchecked(freeRooks);
+        const bb::Bitboard atk = magic::sliding_attacks(magic::Slider::Rook, from, occ) & targetMask;
+        out = emit_targets<true>(out, from, atk & enemyNoK);
         if constexpr (Mode == GenMode::All)
-        {
-          for (bb::Bitboard quiet = atk & ~occ; quiet;)
-          {
-            emit(Move{from, bb::pop_lsb_unchecked(quiet), PT::None, false, false, CastleSide::None});
-          }
-        }
+          out = emit_targets<false>(out, from, atk & quietMask);
       }
+
+      bb::Bitboard pinnedRooks = our.rooks & pins.pinned;
+      while (pinnedRooks)
+      {
+        const Square from = bb::pop_lsb_unchecked(pinnedRooks);
+        const bb::Bitboard atk =
+            magic::sliding_attacks(magic::Slider::Rook, from, occ) &
+            targetMask &
+            pins.allow_mask(from);
+        out = emit_targets<true>(out, from, atk & enemyNoK);
+        if constexpr (Mode == GenMode::All)
+          out = emit_targets<false>(out, from, atk & quietMask);
+      }
+
+      return out;
     }
 
-    template <GenMode Mode, class Emit>
-    LILIA_ALWAYS_INLINE void genKingMoves_T(const Board &board, const GameState &st, Color side,
-                                            const SideSets &our, const SideSets &opp, bb::Bitboard occ,
-                                            Emit &&emit) noexcept
+    template <GenMode Mode>
+    LILIA_ALWAYS_INLINE Move *genQueenMoves_T(Move *LILIA_RESTRICT out,
+                                              const SideSets &our, const SideSets &opp,
+                                              bb::Bitboard occ, const PinInfo &pins,
+                                              bb::Bitboard targetMask = ~0ULL) noexcept
+    {
+      if (!our.queens)
+        return out;
+
+      const bb::Bitboard enemyNoK = opp.noKing;
+      const bb::Bitboard quietMask = ~occ;
+
+      bb::Bitboard freeQueens = our.queens & ~pins.pinned;
+      while (freeQueens)
+      {
+        const Square from = bb::pop_lsb_unchecked(freeQueens);
+        const bb::Bitboard atk = queen_attacks_from(from, occ) & targetMask;
+        out = emit_targets<true>(out, from, atk & enemyNoK);
+        if constexpr (Mode == GenMode::All)
+          out = emit_targets<false>(out, from, atk & quietMask);
+      }
+
+      bb::Bitboard pinnedQueens = our.queens & pins.pinned;
+      while (pinnedQueens)
+      {
+        const Square from = bb::pop_lsb_unchecked(pinnedQueens);
+        const bb::Bitboard atk =
+            queen_attacks_from(from, occ) &
+            targetMask &
+            pins.allow_mask(from);
+        out = emit_targets<true>(out, from, atk & enemyNoK);
+        if constexpr (Mode == GenMode::All)
+          out = emit_targets<false>(out, from, atk & quietMask);
+      }
+
+      return out;
+    }
+
+    template <Color Side, GenMode Mode>
+    LILIA_ALWAYS_INLINE Move *genKingMoves_T(Move *LILIA_RESTRICT out,
+                                             const Board &board, const GameState &st,
+                                             const SideSets &our, const SideSets &opp,
+                                             bb::Bitboard occ) noexcept
     {
       const bb::Bitboard king = our.king;
       if (!king)
-        return;
-      const Square from = static_cast<Square>(bb::ctz64(king));
+        return out;
 
+      const Square from = static_cast<Square>(bb::ctz64(king));
       const bb::Bitboard enemyNoK = opp.noKing;
       const bb::Bitboard atk = bb::king_attacks_from(from);
       const bb::Bitboard fromBB = bb::sq_bb(from);
       const bb::Bitboard occ_no_king = occ & ~fromBB;
+      const Color them = ~Side;
 
       for (bb::Bitboard caps = atk & enemyNoK; caps;)
       {
         const Square to = bb::pop_lsb_unchecked(caps);
         const bb::Bitboard occ2 = occ_no_king & ~bb::sq_bb(to);
-        if (!attackedBy(board, to, ~side, occ2))
-          emit(Move{from, to, PT::None, true, false, CastleSide::None});
+        if (!attackedBy(board, to, them, occ2))
+          out = emit_move<true>(out, from, to);
       }
 
       if constexpr (Mode == GenMode::All)
@@ -627,89 +721,86 @@ namespace lilia::chess
         for (bb::Bitboard quiet = atk & ~occ; quiet;)
         {
           const Square to = bb::pop_lsb_unchecked(quiet);
-          if (!attackedBy(board, to, ~side, occ_no_king))
-            emit(Move{from, to, PT::None, false, false, CastleSide::None});
+          if (!attackedBy(board, to, them, occ_no_king))
+            out = emit_move<false>(out, from, to);
         }
-        const Color enemySide = ~side;
-        if (side == Color::White)
+
+        if constexpr (Side == Color::White)
         {
-          if ((st.castlingRights & CastlingRights::WhiteKingSide) && (our.rooks & bb::sq_bb(bb::H1)) &&
-              !(occ & (bb::sq_bb(bb::F1) | bb::sq_bb(bb::G1))))
+          if (from == bb::E1)
           {
-            if (!attackedBy(board, bb::E1, enemySide, occ) &&
-                !attackedBy(board, bb::F1, enemySide, occ) &&
-                !attackedBy(board, bb::G1, enemySide, occ))
+            const bool e1Safe = !attackedBy(board, from, them, occ);
+
+            if (e1Safe &&
+                (st.castlingRights & CastlingRights::WhiteKingSide) &&
+                (our.rooks & bb::sq_bb(bb::H1)) &&
+                !(occ & (bb::sq_bb(bb::F1) | bb::sq_bb(bb::G1))) &&
+                !attackedBy(board, bb::F1, them, occ) &&
+                !attackedBy(board, bb::G1, them, occ))
             {
-              emit(Move{bb::E1, bb::G1, PT::None, false, false, CastleSide::KingSide});
+              out = emit_move<false, false, CastleSide::KingSide>(out, from, bb::G1);
             }
-          }
-          if ((st.castlingRights & CastlingRights::WhiteQueenSide) && (our.rooks & bb::sq_bb(bb::A1)) &&
-              !(occ & (bb::sq_bb(bb::D1) | bb::sq_bb(bb::C1) | bb::sq_bb(bb::B1))))
-          {
-            if (!attackedBy(board, bb::E1, enemySide, occ) &&
-                !attackedBy(board, bb::D1, enemySide, occ) &&
-                !attackedBy(board, bb::C1, enemySide, occ))
+
+            if (e1Safe &&
+                (st.castlingRights & CastlingRights::WhiteQueenSide) &&
+                (our.rooks & bb::sq_bb(bb::A1)) &&
+                !(occ & (bb::sq_bb(bb::D1) | bb::sq_bb(bb::C1) | bb::sq_bb(bb::B1))) &&
+                !attackedBy(board, bb::D1, them, occ) &&
+                !attackedBy(board, bb::C1, them, occ))
             {
-              emit(Move{bb::E1, bb::C1, PT::None, false, false, CastleSide::QueenSide});
+              out = emit_move<false, false, CastleSide::QueenSide>(out, from, bb::C1);
             }
           }
         }
         else
         {
-          if ((st.castlingRights & CastlingRights::BlackKingSide) && (our.rooks & bb::sq_bb(bb::H8)) &&
-              !(occ & (bb::sq_bb(bb::F8) | bb::sq_bb(bb::G8))))
+          if (from == bb::E8)
           {
-            if (!attackedBy(board, bb::E8, enemySide, occ) &&
-                !attackedBy(board, bb::F8, enemySide, occ) &&
-                !attackedBy(board, bb::G8, enemySide, occ))
+            const bool e8Safe = !attackedBy(board, from, them, occ);
+
+            if (e8Safe &&
+                (st.castlingRights & CastlingRights::BlackKingSide) &&
+                (our.rooks & bb::sq_bb(bb::H8)) &&
+                !(occ & (bb::sq_bb(bb::F8) | bb::sq_bb(bb::G8))) &&
+                !attackedBy(board, bb::F8, them, occ) &&
+                !attackedBy(board, bb::G8, them, occ))
             {
-              emit(Move{bb::E8, bb::G8, PT::None, false, false, CastleSide::KingSide});
+              out = emit_move<false, false, CastleSide::KingSide>(out, from, bb::G8);
             }
-          }
-          if ((st.castlingRights & CastlingRights::BlackQueenSide) && (our.rooks & bb::sq_bb(bb::A8)) &&
-              !(occ & (bb::sq_bb(bb::D8) | bb::sq_bb(bb::C8) | bb::sq_bb(bb::B8))))
-          {
-            if (!attackedBy(board, bb::E8, enemySide, occ) &&
-                !attackedBy(board, bb::D8, enemySide, occ) &&
-                !attackedBy(board, bb::C8, enemySide, occ))
+
+            if (e8Safe &&
+                (st.castlingRights & CastlingRights::BlackQueenSide) &&
+                (our.rooks & bb::sq_bb(bb::A8)) &&
+                !(occ & (bb::sq_bb(bb::D8) | bb::sq_bb(bb::C8) | bb::sq_bb(bb::B8))) &&
+                !attackedBy(board, bb::D8, them, occ) &&
+                !attackedBy(board, bb::C8, them, occ))
             {
-              emit(Move{bb::E8, bb::C8, PT::None, false, false, CastleSide::QueenSide});
+              out = emit_move<false, false, CastleSide::QueenSide>(out, from, bb::C8);
             }
           }
         }
       }
+
+      return out;
     }
 
-    template <class Emit>
-    LILIA_ALWAYS_INLINE void generateEvasions_T(const Board &b, const GameState &st,
-                                                const PinInfo &pins, Emit &&emit) noexcept
+    template <Color Side>
+    LILIA_ALWAYS_INLINE Move *generateEvasions_T(Move *LILIA_RESTRICT out,
+                                                 const Board &b, const GameState &st,
+                                                 bb::Bitboard occ,
+                                                 bb::Bitboard checkers) noexcept
     {
-      const Color us = st.sideToMove;
-      const Color them = ~us;
+      if (LILIA_UNLIKELY(!checkers))
+        return out;
 
-      const bb::Bitboard kbb = b.getPieces(us, PT::King);
+      const Color them = ~Side;
+      const bb::Bitboard kbb = b.getPieces(Side, PT::King);
       if (!kbb)
-        return;
+        return out;
+
       const Square ksq = static_cast<Square>(bb::ctz64(kbb));
+      const bool doubleCheck = (checkers & (checkers - 1)) != 0ULL;
 
-      const bb::Bitboard occ = b.getAllPieces();
-
-      bb::Bitboard checkers = 0ULL;
-      {
-        const bb::Bitboard target = bb::sq_bb(ksq);
-        const bb::Bitboard pawnFrom = (them == Color::White) ? (bb::sw(target) | bb::se(target))
-                                                             : (bb::nw(target) | bb::ne(target));
-        checkers |= pawnFrom & b.getPieces(them, PT::Pawn);
-      }
-      checkers |= bb::knight_attacks_from(ksq) & b.getPieces(them, PT::Knight);
-      checkers |= magic::sliding_attacks(magic::Slider::Bishop, ksq, occ) &
-                  (b.getPieces(them, PT::Bishop) | b.getPieces(them, PT::Queen));
-      checkers |= magic::sliding_attacks(magic::Slider::Rook, ksq, occ) &
-                  (b.getPieces(them, PT::Rook) | b.getPieces(them, PT::Queen));
-
-      const int numCheckers = bb::popcount(checkers);
-
-      // King moves first (legal only)
       {
         const bb::Bitboard enemyNoK = b.getPieces(them) & ~b.getPieces(them, PT::King);
         const bb::Bitboard atk = bb::king_attacks_from(ksq);
@@ -721,295 +812,341 @@ namespace lilia::chess
           const Square to = bb::pop_lsb_unchecked(caps);
           const bb::Bitboard occ2 = occ_no_king & ~bb::sq_bb(to);
           if (!attackedBy(b, to, them, occ2))
-            emit(Move{ksq, to, PT::None, true, false, CastleSide::None});
+            out = emit_move<true>(out, ksq, to);
         }
+
         for (bb::Bitboard quiet = atk & ~occ; quiet;)
         {
           const Square to = bb::pop_lsb_unchecked(quiet);
           if (!attackedBy(b, to, them, occ_no_king))
-            emit(Move{ksq, to, PT::None, false, false, CastleSide::None});
+            out = emit_move<false>(out, ksq, to);
         }
       }
 
-      if (LILIA_UNLIKELY(numCheckers >= 2))
-        return; // only king moves allowed
+      if (LILIA_UNLIKELY(doubleCheck))
+        return out;
 
-      // Block/capture single checker
-      bb::Bitboard blockMask = 0ULL;
-      if (numCheckers == 1)
-      {
-        const Square checkerSq = static_cast<Square>(bb::ctz64(checkers));
-        blockMask = squares_between(ksq, checkerSq);
-      }
-      const bb::Bitboard evasionTargets = checkers | blockMask;
+      const Square checkerSq = static_cast<Square>(bb::ctz64(checkers));
+      const bb::Bitboard evasionTargets = checkers | squares_between(ksq, checkerSq);
 
-      const SideSets our = side_sets(b, us);
+      PinInfo pins;
+      compute_pins(b, Side, occ, pins);
+
+      const SideSets our = side_sets(b, Side);
       const SideSets opp = side_sets(b, them);
 
-      if (us == Color::White)
-        genPawnMoves_T<Color::White, GenMode::All>(b, st, occ, our, opp, pins, emit, evasionTargets);
-      else
-        genPawnMoves_T<Color::Black, GenMode::All>(b, st, occ, our, opp, pins, emit, evasionTargets);
+      out = genPawnMoves_T<Side, GenMode::All, false>(out, b, st, occ, our, opp, pins, evasionTargets);
+      out = genKnightMoves_T<GenMode::All>(out, our, opp, occ, pins, evasionTargets);
+      out = genBishopMoves_T<GenMode::All>(out, our, opp, occ, pins, evasionTargets);
+      out = genRookMoves_T<GenMode::All>(out, our, opp, occ, pins, evasionTargets);
+      out = genQueenMoves_T<GenMode::All>(out, our, opp, occ, pins, evasionTargets);
 
-      genKnightMoves_T<GenMode::All>(our, opp, occ, pins, emit, evasionTargets);
-      genBishopMoves_T<GenMode::All>(our, opp, occ, pins, emit, evasionTargets);
-      genRookMoves_T<GenMode::All>(our, opp, occ, pins, emit, evasionTargets);
-      genQueenMoves_T<GenMode::All>(our, opp, occ, pins, emit, evasionTargets);
-
-      // the EP capture must resolve the check.
       if (st.enPassantSquare != NO_SQUARE)
       {
         const Square epSq = st.enPassantSquare;
         const bb::Bitboard epBB = bb::sq_bb(epSq);
+        const Square capSq = static_cast<Square>((int)epSq + (Side == Color::White ? -8 : +8));
 
-        // EP only helps if capturing on epSq is part of evasionTargets.
-        if ((evasionTargets & epBB) == 0ULL)
-          return;
+        bb::Bitboard froms =
+            ((Side == Color::White)
+                 ? (bb::sw(epBB) | bb::se(epBB))
+                 : (bb::nw(epBB) | bb::ne(epBB))) &
+            our.pawns;
 
-        if (us == Color::White)
+        while (froms)
         {
-          for (bb::Bitboard f = ((bb::sw(epBB) | bb::se(epBB)) & our.pawns); f;)
-          {
-            const Square from = bb::pop_lsb_unchecked(f);
-            const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
-            {
-              if ((epBB & pins.allow_mask(from)) == 0ULL)
-                continue;
-            }
-            const Square capSq = static_cast<Square>((int)epSq - 8);
-            const bb::Bitboard occAfter = (occ & ~fromBB & ~bb::sq_bb(capSq)) | epBB;
-            if (!attackedBy(b, ksq, them, occAfter))
-              emit(Move{from, epSq, PT::None, true, true, CastleSide::None});
-          }
-        }
-        else
-        {
-          for (bb::Bitboard f = ((bb::nw(epBB) | bb::ne(epBB)) & our.pawns); f;)
-          {
-            const Square from = bb::pop_lsb_unchecked(f);
-            const bb::Bitboard fromBB = bb::sq_bb(from);
-            if (LILIA_UNLIKELY(pins.pinned & fromBB))
-            {
-              if ((epBB & pins.allow_mask(from)) == 0ULL)
-                continue;
-            }
-            const Square capSq = static_cast<Square>((int)epSq + 8);
-            const bb::Bitboard occAfter = (occ & ~fromBB & ~bb::sq_bb(capSq)) | epBB;
-            if (!attackedBy(b, ksq, them, occAfter))
-              emit(Move{from, epSq, PT::None, true, true, CastleSide::None});
-          }
+          const Square from = bb::pop_lsb_unchecked(froms);
+          const bb::Bitboard fromBB = bb::sq_bb(from);
+
+          if ((pins.pinned & fromBB) && ((epBB & pins.allow_mask(from)) == 0ULL))
+            continue;
+
+          const bb::Bitboard occAfter = (occ & ~fromBB & ~bb::sq_bb(capSq)) | epBB;
+          if (!attacked_by_after_ep(b, ksq, them, occAfter, capSq))
+            out = emit_move<true, true>(out, from, epSq);
         }
       }
+
+      return out;
     }
 
-    template <GenMode Mode, class Emit>
-    LILIA_ALWAYS_INLINE void generate_all_regular(const Board &b, const GameState &st,
-                                                  Emit &&emit) noexcept
+    template <Color Side>
+    LILIA_ALWAYS_INLINE Move *genNonCapturePromotions_T(Move *LILIA_RESTRICT out,
+                                                        const Board &b,
+                                                        bb::Bitboard targetMask = ~0ULL) noexcept
     {
-      const Color side = st.sideToMove;
-
       const bb::Bitboard occ = b.getAllPieces();
-      const SideSets our = side_sets(b, side);
-      const SideSets opp = side_sets(b, ~side);
+      const bb::Bitboard pawns = b.getPieces(Side, PT::Pawn);
+      if (!pawns)
+        return out;
+
+      const bb::Bitboard empty = ~occ;
 
       PinInfo pins;
-      compute_pins(b, side, occ, pins);
+      compute_pins(b, Side, occ, pins);
 
-      if (side == Color::White)
-        genPawnMoves_T<Color::White, Mode>(b, st, occ, our, opp, pins, emit);
+      if constexpr (Side == Color::White)
+      {
+        bb::Bitboard promoPush = bb::north(pawns) & empty & bb::RANK_8 & targetMask;
+        while (promoPush)
+        {
+          const Square to = bb::pop_lsb_unchecked(promoPush);
+          const Square from = static_cast<Square>((int)to - 8);
+          const bb::Bitboard fromBB = bb::sq_bb(from);
+          if (LILIA_UNLIKELY(pins.pinned & fromBB))
+          {
+            if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
+              continue;
+          }
+          out = emit_promotions<false>(out, from, to);
+        }
+      }
       else
-        genPawnMoves_T<Color::Black, Mode>(b, st, occ, our, opp, pins, emit);
+      {
+        bb::Bitboard promoPush = bb::south(pawns) & empty & bb::RANK_1 & targetMask;
+        while (promoPush)
+        {
+          const Square to = bb::pop_lsb_unchecked(promoPush);
+          const Square from = static_cast<Square>((int)to + 8);
+          const bb::Bitboard fromBB = bb::sq_bb(from);
+          if (LILIA_UNLIKELY(pins.pinned & fromBB))
+          {
+            if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
+              continue;
+          }
+          out = emit_promotions<false>(out, from, to);
+        }
+      }
 
-      genKnightMoves_T<Mode>(our, opp, occ, pins, emit);
-      genBishopMoves_T<Mode>(our, opp, occ, pins, emit);
-      genRookMoves_T<Mode>(our, opp, occ, pins, emit);
-      genQueenMoves_T<Mode>(our, opp, occ, pins, emit);
-      genKingMoves_T<Mode>(b, st, side, our, opp, occ, emit);
+      return out;
     }
 
+    template <Color Side, GenMode Mode>
+    LILIA_ALWAYS_INLINE Move *generate_all_regular_T(Move *LILIA_RESTRICT out,
+                                                     const Board &b, const GameState &st,
+                                                     bb::Bitboard occ) noexcept
+    {
+      const SideSets our = side_sets(b, Side);
+      const SideSets opp = side_sets(b, ~Side);
+
+      PinInfo pins;
+      compute_pins(b, Side, occ, pins);
+
+      out = genPawnMoves_T<Side, Mode, true>(out, b, st, occ, our, opp, pins);
+      out = genKnightMoves_T<Mode>(out, our, opp, occ, pins);
+      out = genBishopMoves_T<Mode>(out, our, opp, occ, pins);
+      out = genRookMoves_T<Mode>(out, our, opp, occ, pins);
+      out = genQueenMoves_T<Mode>(out, our, opp, occ, pins);
+      out = genKingMoves_T<Side, Mode>(out, b, st, our, opp, occ);
+
+      return out;
+    }
   }
 
   void MoveGenerator::generateNonCapturePromotions(const Board &b, const GameState &st,
                                                    std::vector<Move> &out) const
   {
-    if (out.capacity() < 16)
-      out.reserve(16);
-    out.clear();
+    std::array<Move, 32> tmp{};
+    MoveBuffer buf(tmp.data(), static_cast<int>(tmp.size()));
 
-    using PT = PieceType;
-    constexpr PT promoOrder[4] = {PT::Queen, PT::Rook, PT::Bishop, PT::Knight};
-
-    const Color side = st.sideToMove;
     const bb::Bitboard occ = b.getAllPieces();
-    const bb::Bitboard pawns = b.getPieces(side, PT::Pawn);
-    const bb::Bitboard empty = ~occ;
+    const bb::Bitboard checkers = compute_checkers(b, st.sideToMove, occ);
 
-    PinInfo pins;
-    compute_pins(b, side, occ, pins);
+    Move *ptr = buf.current();
 
-    if (side == Color::White)
+    bb::Bitboard targetMask = ~0ULL;
+
+    if (checkers)
     {
-      const bb::Bitboard one = bb::north(pawns) & empty;
-      bb::Bitboard promoPush = one & bb::RANK_8;
-      while (promoPush)
+      // Quiet promotions can never evade double check.
+      if (checkers & (checkers - 1))
       {
-        const Square to = bb::pop_lsb_unchecked(promoPush);
-        const Square from = static_cast<Square>((int)to - 8);
-        const bb::Bitboard fromBB = bb::sq_bb(from);
-        if (LILIA_UNLIKELY(pins.pinned & fromBB))
-        {
-          if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
-            continue;
-        }
-        for (int i = 0; i < 4; ++i)
-          out.push_back(Move{from, to, promoOrder[i], false, false, CastleSide::None});
+        out.clear();
+        return;
       }
+
+      const bb::Bitboard kbb = b.getPieces(st.sideToMove, PT::King);
+      if (!kbb)
+      {
+        out.clear();
+        return;
+      }
+
+      const Square ksq = static_cast<Square>(bb::ctz64(kbb));
+      const Square checkerSq = static_cast<Square>(bb::ctz64(checkers));
+
+      // Non-capture promotions can only evade by interposing.
+      targetMask = squares_between(ksq, checkerSq);
     }
+
+    if (st.sideToMove == Color::White)
+      ptr = genNonCapturePromotions_T<Color::White>(ptr, b, targetMask);
     else
-    {
-      const bb::Bitboard one = bb::south(pawns) & empty;
-      bb::Bitboard promoPush = one & bb::RANK_1;
-      while (promoPush)
-      {
-        const Square to = bb::pop_lsb_unchecked(promoPush);
-        const Square from = static_cast<Square>((int)to + 8);
-        const bb::Bitboard fromBB = bb::sq_bb(from);
-        if (LILIA_UNLIKELY(pins.pinned & fromBB))
-        {
-          if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
-            continue;
-        }
-        for (int i = 0; i < 4; ++i)
-          out.push_back(Move{from, to, promoOrder[i], false, false, CastleSide::None});
-      }
-    }
+      ptr = genNonCapturePromotions_T<Color::Black>(ptr, b, targetMask);
+
+    buf.advance_to(ptr);
+    out.assign(tmp.data(), tmp.data() + buf.size());
   }
 
   int MoveGenerator::generateNonCapturePromotions(const Board &b, const GameState &st,
                                                   MoveBuffer &buf)
   {
-    using PT = PieceType;
-    constexpr PT promoOrder[4] = {PT::Queen, PT::Rook, PT::Bishop, PT::Knight};
-
-    const int before = buf.n;
-
-    const Color side = st.sideToMove;
+    const int before = buf.size();
     const bb::Bitboard occ = b.getAllPieces();
-    const bb::Bitboard pawns = b.getPieces(side, PT::Pawn);
-    const bb::Bitboard empty = ~occ;
+    const bb::Bitboard checkers = compute_checkers(b, st.sideToMove, occ);
 
-    PinInfo pins;
-    compute_pins(b, side, occ, pins);
+    Move *ptr = buf.current();
 
-    if (side == Color::White)
+    bb::Bitboard targetMask = ~0ULL;
+
+    if (checkers)
     {
-      const bb::Bitboard one = bb::north(pawns) & empty;
-      bb::Bitboard promoPush = one & bb::RANK_8;
-      while (promoPush)
-      {
-        const Square to = bb::pop_lsb_unchecked(promoPush);
-        const Square from = static_cast<Square>((int)to - 8);
-        const bb::Bitboard fromBB = bb::sq_bb(from);
-        if (LILIA_UNLIKELY(pins.pinned & fromBB))
-        {
-          if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
-            continue;
-        }
-        for (int i = 0; i < 4; ++i)
-          buf.push_unchecked(Move{from, to, promoOrder[i], false, false, CastleSide::None});
-      }
+      // Quiet promotions can never evade double check.
+      if (checkers & (checkers - 1))
+        return 0;
+
+      const bb::Bitboard kbb = b.getPieces(st.sideToMove, PT::King);
+      if (!kbb)
+        return 0;
+
+      const Square ksq = static_cast<Square>(bb::ctz64(kbb));
+      const Square checkerSq = static_cast<Square>(bb::ctz64(checkers));
+
+      // Non-capture promotions can only evade by interposing.
+      targetMask = squares_between(ksq, checkerSq);
     }
+
+    if (st.sideToMove == Color::White)
+      ptr = genNonCapturePromotions_T<Color::White>(ptr, b, targetMask);
     else
-    {
-      const bb::Bitboard one = bb::south(pawns) & empty;
-      bb::Bitboard promoPush = one & bb::RANK_1;
-      while (promoPush)
-      {
-        const Square to = bb::pop_lsb_unchecked(promoPush);
-        const Square from = static_cast<Square>((int)to + 8);
-        const bb::Bitboard fromBB = bb::sq_bb(from);
-        if (LILIA_UNLIKELY(pins.pinned & fromBB))
-        {
-          if ((bb::sq_bb(to) & pins.allow_mask(from)) == 0ULL)
-            continue;
-        }
-        for (int i = 0; i < 4; ++i)
-          buf.push_unchecked(Move{from, to, promoOrder[i], false, false, CastleSide::None});
-      }
-    }
+      ptr = genNonCapturePromotions_T<Color::Black>(ptr, b, targetMask);
 
-    return buf.n - before;
+    buf.advance_to(ptr);
+    return buf.size() - before;
   }
 
   void MoveGenerator::generatePseudoLegalMoves(const Board &b, const GameState &st,
                                                std::vector<Move> &out) const
   {
-    if (out.capacity() < 128)
-      out.reserve(128);
-    out.clear();
-    auto sink = [&](const Move &m)
-    { out.push_back(m); };
-    generate_all_regular<GenMode::All>(b, st, sink);
+    std::array<Move, MAX_MOVES> tmp{};
+    MoveBuffer buf(tmp.data(), MAX_MOVES);
+
+    const bb::Bitboard occ = b.getAllPieces();
+    const bb::Bitboard checkers = compute_checkers(b, st.sideToMove, occ);
+
+    Move *ptr = buf.current();
+    if (st.sideToMove == Color::White)
+      ptr = checkers ? generateEvasions_T<Color::White>(ptr, b, st, occ, checkers)
+                     : generate_all_regular_T<Color::White, GenMode::All>(ptr, b, st, occ);
+    else
+      ptr = checkers ? generateEvasions_T<Color::Black>(ptr, b, st, occ, checkers)
+                     : generate_all_regular_T<Color::Black, GenMode::All>(ptr, b, st, occ);
+
+    buf.advance_to(ptr);
+    out.assign(tmp.data(), tmp.data() + buf.size());
   }
 
   int MoveGenerator::generatePseudoLegalMoves(const Board &b, const GameState &st,
                                               MoveBuffer &buf)
   {
-    auto sink = [&](const Move &m)
-    { buf.push_unchecked(m); };
-    generate_all_regular<GenMode::All>(b, st, sink);
-    return buf.n;
+    const int before = buf.size();
+    const bb::Bitboard occ = b.getAllPieces();
+    const bb::Bitboard checkers = compute_checkers(b, st.sideToMove, occ);
+
+    Move *ptr = buf.current();
+    if (st.sideToMove == Color::White)
+      ptr = checkers ? generateEvasions_T<Color::White>(ptr, b, st, occ, checkers)
+                     : generate_all_regular_T<Color::White, GenMode::All>(ptr, b, st, occ);
+    else
+      ptr = checkers ? generateEvasions_T<Color::Black>(ptr, b, st, occ, checkers)
+                     : generate_all_regular_T<Color::Black, GenMode::All>(ptr, b, st, occ);
+
+    buf.advance_to(ptr);
+    return buf.size() - before;
   }
 
-  void MoveGenerator::generateCapturesOnly(const Board &b, const GameState &st,
-                                           std::vector<Move> &out) const
+  void MoveGenerator::generateTacticalMoves(const Board &b, const GameState &st,
+                                            std::vector<Move> &out) const
   {
-    if (out.capacity() < SQ_NB)
-      out.reserve(SQ_NB);
-    out.clear();
-    auto sink = [&](const Move &m)
-    { out.push_back(m); };
-    generate_all_regular<GenMode::CapturesPlusPromos>(b, st, sink);
+    std::array<Move, MAX_MOVES> tmp{};
+    MoveBuffer buf(tmp.data(), MAX_MOVES);
+
+    const bb::Bitboard occ = b.getAllPieces();
+    const bb::Bitboard checkers = compute_checkers(b, st.sideToMove, occ);
+
+    Move *ptr = buf.current();
+    if (st.sideToMove == Color::White)
+      ptr = checkers ? generateEvasions_T<Color::White>(ptr, b, st, occ, checkers)
+                     : generate_all_regular_T<Color::White, GenMode::CapturesPlusPromos>(ptr, b, st, occ);
+    else
+      ptr = checkers ? generateEvasions_T<Color::Black>(ptr, b, st, occ, checkers)
+                     : generate_all_regular_T<Color::Black, GenMode::CapturesPlusPromos>(ptr, b, st, occ);
+
+    buf.advance_to(ptr);
+    out.assign(tmp.data(), tmp.data() + buf.size());
   }
 
-  int MoveGenerator::generateCapturesOnly(const Board &b, const GameState &st,
-                                          MoveBuffer &buf)
+  int MoveGenerator::generateTacticalMoves(const Board &b, const GameState &st,
+                                           MoveBuffer &buf)
   {
-    auto sink = [&](const Move &m)
-    { buf.push_unchecked(m); };
-    generate_all_regular<GenMode::CapturesPlusPromos>(b, st, sink);
-    return buf.n;
+    const int before = buf.size();
+    const bb::Bitboard occ = b.getAllPieces();
+    const bb::Bitboard checkers = compute_checkers(b, st.sideToMove, occ);
+
+    Move *ptr = buf.current();
+    if (st.sideToMove == Color::White)
+      ptr = checkers ? generateEvasions_T<Color::White>(ptr, b, st, occ, checkers)
+                     : generate_all_regular_T<Color::White, GenMode::CapturesPlusPromos>(ptr, b, st, occ);
+    else
+      ptr = checkers ? generateEvasions_T<Color::Black>(ptr, b, st, occ, checkers)
+                     : generate_all_regular_T<Color::Black, GenMode::CapturesPlusPromos>(ptr, b, st, occ);
+
+    buf.advance_to(ptr);
+    return buf.size() - before;
   }
 
   void MoveGenerator::generateEvasions(const Board &b, const GameState &st,
                                        std::vector<Move> &out) const
   {
-    if (out.capacity() < 48)
-      out.reserve(48);
-    out.clear();
+    std::array<Move, MAX_MOVES> tmp{};
+    MoveBuffer buf(tmp.data(), MAX_MOVES);
 
-    const Color side = st.sideToMove;
     const bb::Bitboard occ = b.getAllPieces();
-    PinInfo pins;
-    compute_pins(b, side, occ, pins);
+    const bb::Bitboard checkers = compute_checkers(b, st.sideToMove, occ);
 
-    auto emitV = [&](const Move &m) noexcept
-    { out.push_back(m); };
-    generateEvasions_T(b, st, pins, emitV);
+    if (!checkers)
+    {
+      out.clear();
+      return;
+    }
+
+    Move *ptr = buf.current();
+    if (st.sideToMove == Color::White)
+      ptr = generateEvasions_T<Color::White>(ptr, b, st, occ, checkers);
+    else
+      ptr = generateEvasions_T<Color::Black>(ptr, b, st, occ, checkers);
+
+    buf.advance_to(ptr);
+    out.assign(tmp.data(), tmp.data() + buf.size());
   }
 
   int MoveGenerator::generateEvasions(const Board &b, const GameState &st, MoveBuffer &buf)
   {
-    const Color side = st.sideToMove;
+    const int before = buf.size();
     const bb::Bitboard occ = b.getAllPieces();
-    PinInfo pins;
-    compute_pins(b, side, occ, pins);
+    const bb::Bitboard checkers = compute_checkers(b, st.sideToMove, occ);
 
-    auto emitB = [&](const Move &m) noexcept
-    { buf.push_unchecked(m); };
-    generateEvasions_T(b, st, pins, emitB);
-    return buf.n;
+    if (!checkers)
+      return 0;
+
+    Move *ptr = buf.current();
+    if (st.sideToMove == Color::White)
+      ptr = generateEvasions_T<Color::White>(ptr, b, st, occ, checkers);
+    else
+      ptr = generateEvasions_T<Color::Black>(ptr, b, st, occ, checkers);
+
+    buf.advance_to(ptr);
+    return buf.size() - before;
   }
 
 }

@@ -9,41 +9,62 @@ namespace lilia::chess
 
   constexpr int MAX_MOVES = 256;
 
-  // Lightweight fixed-capacity append buffer used by move generation hot paths.
   struct MoveBuffer
   {
     Move *LILIA_RESTRICT out;
+    Move *LILIA_RESTRICT cur;
+    Move *LILIA_RESTRICT end;
     int cap;
     int n;
 
-    LILIA_ALWAYS_INLINE MoveBuffer(Move *ptr, int capacity) noexcept : out(ptr), cap(capacity), n(0) {}
+    LILIA_ALWAYS_INLINE MoveBuffer(Move *ptr, int capacity) noexcept
+        : out(ptr), cur(ptr), end(ptr + capacity), cap(capacity), n(0) {}
 
-    [[nodiscard]] LILIA_ALWAYS_INLINE bool can_push() const noexcept { return n < cap; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE bool can_push() const noexcept { return cur < end; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE int size() const noexcept { return n; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE int remaining() const noexcept
+    {
+      return static_cast<int>(end - cur);
+    }
 
-    // Kept for hot paths where caller guarantees capacity.
+    [[nodiscard]] LILIA_ALWAYS_INLINE Move *data() noexcept { return out; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE const Move *data() const noexcept { return out; }
+
+    [[nodiscard]] LILIA_ALWAYS_INLINE Move *current() noexcept { return cur; }
+    [[nodiscard]] LILIA_ALWAYS_INLINE const Move *current() const noexcept { return cur; }
+
+    LILIA_ALWAYS_INLINE void advance_to(Move *p) noexcept
+    {
+      LILIA_ASSUME(p >= out && p <= end);
+      cur = p;
+      n = static_cast<int>(cur - out);
+    }
+
     LILIA_ALWAYS_INLINE void push_unchecked(const Move &m) noexcept
     {
-      LILIA_ASSUME(n < cap);
-      out[n] = m;
+      LILIA_ASSUME(cur < end);
+      *cur++ = m;
       ++n;
     }
 
     LILIA_ALWAYS_INLINE void push(const Move &m) noexcept
     {
 #ifndef NDEBUG
-      if (LILIA_UNLIKELY(n >= cap))
+      if (LILIA_UNLIKELY(cur >= end))
       {
         LILIA_DEBUGBREAK();
-        return; // avoid UB if user continues after breaking in a debugger
+        return;
       }
 #endif
-      out[n] = m;
+      *cur++ = m;
       ++n;
     }
 
-    // Additive helpers (do not affect existing call sites)
-    [[nodiscard]] LILIA_ALWAYS_INLINE int size() const noexcept { return n; }
-    LILIA_ALWAYS_INLINE void reset() noexcept { n = 0; }
+    LILIA_ALWAYS_INLINE void reset() noexcept
+    {
+      cur = out;
+      n = 0;
+    }
   };
 
 }
