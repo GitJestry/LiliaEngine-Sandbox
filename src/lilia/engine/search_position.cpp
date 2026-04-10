@@ -49,67 +49,71 @@ namespace lilia::engine
                                       const chess::Move &m,
                                       EvalAcc &eval)
   {
-    const auto fromPieceOpt = posBefore.getBoard().getPiece(m.from());
+    const auto &board = posBefore.getBoard();
+    const auto &st = posBefore.getState();
+
+    const auto fromPieceOpt = board.getPiece(m.from());
     if (!fromPieceOpt)
       return;
 
     const chess::Piece fromPiece = *fromPieceOpt;
-    const chess::Color us = posBefore.getState().sideToMove;
+    const chess::Color us = st.sideToMove;
     const chess::Color them = ~us;
 
-    const bool isCastle = isCastleMove(posBefore, m, fromPiece);
-    const bool isEP = isEnPassantMove(posBefore, m, fromPiece);
+    const auto toPieceOpt = board.getPiece(m.to());
 
-    bool isCap = m.isCapture();
-    if (!isCap && !isEP)
+    const bool isCastle = m.isCastle() || isCastleMove(posBefore, m, fromPiece);
+
+    bool isEP = m.isEnPassant();
+    if (!isEP && fromPiece.type == chess::PieceType::Pawn)
     {
-      auto cap = posBefore.getBoard().getPiece(m.to());
-      if (cap && cap->color == them)
-        isCap = true;
+      const auto prevEP = st.enPassantSquare;
+      if (prevEP != chess::NO_SQUARE && m.to() == prevEP && !toPieceOpt)
+      {
+        const int df = int(m.to()) - int(m.from());
+        isEP = (df == 7 || df == 9 || df == -7 || df == -9);
+      }
     }
 
-    // Promotion path
-    if (m.promotion() != chess::PieceType::None)
+    const bool isCap = isEP || (toPieceOpt && toPieceOpt->color == them);
+    const chess::PieceType promo = m.promotion();
+
+    if (promo != chess::PieceType::None)
     {
       eval.remove_piece(us, fromPiece.type, int(m.from()));
 
       if (isEP)
       {
-        const chess::Square capSq = (us == chess::Color::White)
-                                        ? chess::Square(int(m.to()) - 8)
+        const chess::Square capSq =
+            (us == chess::Color::White) ? chess::Square(int(m.to()) - 8)
                                         : chess::Square(int(m.to()) + 8);
         eval.remove_piece(them, chess::PieceType::Pawn, int(capSq));
       }
       else if (isCap)
       {
-        if (auto cap = posBefore.getBoard().getPiece(m.to()))
-          eval.remove_piece(them, cap->type, int(m.to()));
+        eval.remove_piece(them, toPieceOpt->type, int(m.to()));
       }
 
-      eval.add_piece(us, m.promotion(), int(m.to()));
+      eval.add_piece(us, promo, int(m.to()));
     }
     else if (isEP)
     {
-      const chess::Square capSq = (us == chess::Color::White)
-                                      ? chess::Square(int(m.to()) - 8)
+      const chess::Square capSq =
+          (us == chess::Color::White) ? chess::Square(int(m.to()) - 8)
                                       : chess::Square(int(m.to()) + 8);
 
       eval.remove_piece(them, chess::PieceType::Pawn, int(capSq));
       eval.move_piece(us, chess::PieceType::Pawn, int(m.from()), int(m.to()));
     }
-    else if (isCap)
-    {
-      if (auto cap = posBefore.getBoard().getPiece(m.to()))
-        eval.remove_piece(them, cap->type, int(m.to()));
-
-      eval.move_piece(us, fromPiece.type, int(m.from()), int(m.to()));
-    }
     else
     {
+      if (isCap)
+        eval.remove_piece(them, toPieceOpt->type, int(m.to()));
+
       eval.move_piece(us, fromPiece.type, int(m.from()), int(m.to()));
     }
 
-    // Castle rook move
+    // Standard chess castling rook move.
     if (isCastle)
     {
       if (us == chess::Color::White)

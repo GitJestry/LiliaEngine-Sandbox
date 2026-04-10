@@ -144,7 +144,7 @@ namespace lilia::chess
     static LILIA_ALWAYS_INLINE bb::Bitboard computePawnKey(const Board &b) noexcept
     {
       bb::Bitboard h = 0ULL;
-      constexpr int pawnIdx = 0;
+      constexpr int pawnIdx = static_cast<int>(PieceType::Pawn);
 
       for (int c = 0; c < 2; ++c)
       {

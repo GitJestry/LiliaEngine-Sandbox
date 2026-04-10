@@ -27,7 +27,7 @@ namespace lilia::chess
       return a;
     }();
 
-    constexpr std::array<std::uint8_t, SQ_NB> CR_CLEAR_TO = CR_CLEAR_FROM; // identisch
+    constexpr std::array<std::uint8_t, SQ_NB> CR_CLEAR_TO = CR_CLEAR_FROM;
 
     LILIA_ALWAYS_INLINE bool on_board_0_63(int s)
     {
@@ -38,7 +38,7 @@ namespace lilia::chess
 
   bool Position::checkInsufficientMaterial()
   {
-    // If any pawn/rook/queen exists, mate is possible in principle.
+    // Any pawn, rook, or queen means mating material exists in principle.
     const bb::Bitboard nonMinors =
         m_board.getPieces(Color::White, PieceType::Pawn) |
         m_board.getPieces(Color::Black, PieceType::Pawn) |
@@ -55,42 +55,58 @@ namespace lilia::chess
     const bb::Bitboard whiteN = m_board.getPieces(Color::White, PieceType::Knight);
     const bb::Bitboard blackN = m_board.getPieces(Color::Black, PieceType::Knight);
 
-    const int totalB = bb::popcount(whiteB) + bb::popcount(blackB);
-    const int totalN = bb::popcount(whiteN) + bb::popcount(blackN);
+    const int wB = bb::popcount(whiteB);
+    const int bB = bb::popcount(blackB);
+    const int wN = bb::popcount(whiteN);
+    const int bN = bb::popcount(blackN);
+
+    const int totalB = wB + bB;
+    const int totalN = wN + bN;
     const int totalMinors = totalB + totalN;
 
-    // KK, KBK, KNK are dead positions.
+    // KK, KBK, KNK
     if (totalMinors <= 1)
       return true;
 
-    // If there are any knights at all, checkmate is possible in principle (with cooperation),
-    // so it is not a dead position.
-    if (totalN > 0)
-      return false;
-
-    // Only bishops remain. Dead iff all bishops are on the same color complex.
-    const bb::Bitboard bishops = whiteB | blackB;
+    // Knight-only cases that are still dead.
+    // KNNvK and KNvKN are dead positions.
+    if (totalB == 0)
+      return totalN <= 2;
 
     auto is_dark = [](Square s) -> bool
     {
       return ((int(s) ^ (int(s) >> 3)) & 1) != 0;
     };
 
-    bool anyDark = false, anyLight = false;
-    bb::Bitboard tmp = bishops;
-    while (tmp)
+    auto has_bishops_on_both_colors = [&](bb::Bitboard bishops) -> bool
     {
-      Square s = bb::pop_lsb(tmp);
-      if (is_dark(s))
-        anyDark = true;
-      else
-        anyLight = true;
-      if (anyDark && anyLight)
-        break;
-    }
+      bool anyDark = false, anyLight = false;
+      while (bishops)
+      {
+        const Square s = bb::pop_lsb(bishops);
+        if (is_dark(s))
+          anyDark = true;
+        else
+          anyLight = true;
 
-    // If bishops occupy only one color complex, mate is impossible.
-    return !(anyDark && anyLight);
+        if (anyDark && anyLight)
+          return true;
+      }
+      return false;
+    };
+
+    // Bishops only: dead unless one side owns bishops on both color complexes.
+    if (totalN == 0)
+      return !has_bishops_on_both_colors(whiteB) &&
+             !has_bishops_on_both_colors(blackB);
+
+    // KB vs KN is dead: neither side has mating material.
+    if ((wB == 1 && wN == 0 && bB == 0 && bN == 1) ||
+        (wB == 0 && wN == 1 && bB == 1 && bN == 0))
+      return true;
+
+    // Otherwise, do not claim insufficient material.
+    return false;
   }
 
   bool Position::checkMoveRule()
@@ -142,18 +158,28 @@ namespace lilia::chess
     {
     case PT::Pawn:
     {
-      const int df = (int)m.to() - (int)m.from();
+      const int from = int(m.from());
+      const int to = int(m.to());
+      const int df = to - from;
       const int fromRank = bb::rank_of(m.from());
+      const int toRank = bb::rank_of(m.to());
+      const int fileDelta = (to & 7) - (from & 7);
+      const int rankDelta = toRank - fromRank;
       const bool white = (us == Color::White);
+      const bool toLastRank = white ? (toRank == 7) : (toRank == 0);
 
-      // Promotions legal?
+      // Promotion is mandatory on the back rank, and only legal there.
       if (m.promotion() != PT::None)
       {
-        if (!((white && bb::rank_of(m.to()) == 7) || (!white && bb::rank_of(m.to()) == 0)))
+        if (!toLastRank)
           return false;
         if (!(m.promotion() == PT::Knight || m.promotion() == PT::Bishop ||
               m.promotion() == PT::Rook || m.promotion() == PT::Queen))
           return false;
+      }
+      else if (toLastRank)
+      {
+        return false;
       }
 
       // Quiet forward
@@ -163,43 +189,43 @@ namespace lilia::chess
         {
           if (df != 8 && !(df == 16 && fromRank == 1))
             return false;
-          if (occ & bb::sq_bb(static_cast<Square>(m.from() + 8)))
+          if (occ & bb::sq_bb(static_cast<Square>(from + 8)))
             return false;
-          if (df == 16 && (occ & bb::sq_bb(static_cast<Square>(m.from() + 16))))
+          if (df == 16 && (occ & bb::sq_bb(static_cast<Square>(from + 16))))
             return false;
         }
         else
         {
           if (df != -8 && !(df == -16 && fromRank == 6))
             return false;
-          if (occ & bb::sq_bb(static_cast<Square>(m.from() - 8)))
+          if (occ & bb::sq_bb(static_cast<Square>(from - 8)))
             return false;
-          if (df == -16 && (occ & bb::sq_bb(static_cast<Square>(m.from() - 16))))
+          if (df == -16 && (occ & bb::sq_bb(static_cast<Square>(from - 16))))
             return false;
         }
         return true;
       }
 
-      // Captures (normal or EP)
+      // Captures (normal or EP): exactly one file over, exactly one rank forward.
+      const bool diagOne =
+          (rankDelta == (white ? 1 : -1)) &&
+          (fileDelta == -1 || fileDelta == 1);
+
+      if (!diagOne)
+        return false;
+
       if (m.isEnPassant())
       {
         if (m_state.enPassantSquare != m.to())
           return false;
-        // moving diagonally by one
-        if (white ? !(df == 7 || df == 9) : !(df == -7 || df == -9))
-          return false;
-        // Captured pawn must be on the EP square’s behind
+
         const Square capSq =
-            white ? static_cast<Square>(m.to() - 8) : static_cast<Square>(m.to() + 8);
+            white ? static_cast<Square>(to - 8) : static_cast<Square>(to + 8);
         const auto capP = m_board.getPiece(capSq);
         return capP && capP->color == them && capP->type == PT::Pawn;
       }
-      else
-      {
-        if (!toP || toP->color != them)
-          return false;
-        return white ? (df == 7 || df == 9) : (df == -7 || df == -9);
-      }
+
+      return toP && toP->color == them;
     }
 
     case PT::Knight:
@@ -231,26 +257,33 @@ namespace lilia::chess
     {
       // Normal king step
       if (bb::king_attacks_from(m.from()) & bb::sq_bb(m.to()))
-      {
         return (!toP || toP->color == them);
-      }
-      // Castling (rare → we can afford the full legality here)
+
+      auto rook_ok = [&](Square sq) -> bool
+      {
+        const auto rp = m_board.getPiece(sq);
+        return rp && rp->color == us && rp->type == PT::Rook;
+      };
+
+      // Castling (rare -> full pseudo-legality is fine)
       if (us == Color::White)
       {
-        if ((m_state.castlingRights & CastlingRights::WhiteKingSide) && m.from() == bb::E1 &&
-            m.to() == bb::G1)
+        if ((m_state.castlingRights & CastlingRights::WhiteKingSide) &&
+            m.from() == bb::E1 && m.to() == bb::G1)
         {
-          if ((occ & (bb::sq_bb(bb::F1) | bb::sq_bb(bb::G1))) == 0 &&
+          if (rook_ok(bb::H1) &&
+              (occ & (bb::sq_bb(bb::F1) | bb::sq_bb(bb::G1))) == 0 &&
               !attackedBy(m_board, bb::E1, them, occ) &&
               !attackedBy(m_board, bb::F1, them, occ) &&
               !attackedBy(m_board, bb::G1, them, occ))
             return true;
         }
-        if ((m_state.castlingRights & CastlingRights::WhiteQueenSide) && m.from() == bb::E1 &&
-            m.to() == bb::C1)
+
+        if ((m_state.castlingRights & CastlingRights::WhiteQueenSide) &&
+            m.from() == bb::E1 && m.to() == bb::C1)
         {
-          if ((occ & (bb::sq_bb(bb::B1) | bb::sq_bb(bb::C1) |
-                      bb::sq_bb(bb::D1))) == 0 &&
+          if (rook_ok(bb::A1) &&
+              (occ & (bb::sq_bb(bb::B1) | bb::sq_bb(bb::C1) | bb::sq_bb(bb::D1))) == 0 &&
               !attackedBy(m_board, bb::E1, them, occ) &&
               !attackedBy(m_board, bb::D1, them, occ) &&
               !attackedBy(m_board, bb::C1, them, occ))
@@ -259,26 +292,29 @@ namespace lilia::chess
       }
       else
       {
-        if ((m_state.castlingRights & CastlingRights::BlackKingSide) && m.from() == bb::E8 &&
-            m.to() == bb::G8)
+        if ((m_state.castlingRights & CastlingRights::BlackKingSide) &&
+            m.from() == bb::E8 && m.to() == bb::G8)
         {
-          if ((occ & (bb::sq_bb(bb::F8) | bb::sq_bb(bb::G8))) == 0 &&
+          if (rook_ok(bb::H8) &&
+              (occ & (bb::sq_bb(bb::F8) | bb::sq_bb(bb::G8))) == 0 &&
               !attackedBy(m_board, bb::E8, them, occ) &&
               !attackedBy(m_board, bb::F8, them, occ) &&
               !attackedBy(m_board, bb::G8, them, occ))
             return true;
         }
-        if ((m_state.castlingRights & CastlingRights::BlackQueenSide) && m.from() == bb::E8 &&
-            m.to() == bb::C8)
+
+        if ((m_state.castlingRights & CastlingRights::BlackQueenSide) &&
+            m.from() == bb::E8 && m.to() == bb::C8)
         {
-          if ((occ & (bb::sq_bb(bb::B8) | bb::sq_bb(bb::C8) |
-                      bb::sq_bb(bb::D8))) == 0 &&
+          if (rook_ok(bb::A8) &&
+              (occ & (bb::sq_bb(bb::B8) | bb::sq_bb(bb::C8) | bb::sq_bb(bb::D8))) == 0 &&
               !attackedBy(m_board, bb::E8, them, occ) &&
               !attackedBy(m_board, bb::D8, them, occ) &&
               !attackedBy(m_board, bb::C8, them, occ))
             return true;
         }
       }
+
       return false;
     }
 
@@ -290,33 +326,13 @@ namespace lilia::chess
 
   bool Position::doMove(const Move &m)
   {
-    if (LILIA_UNLIKELY(m.from() == m.to()))
+    if (LILIA_UNLIKELY(!isPseudoLegal(m)))
       return false;
 
     Color us = m_state.sideToMove;
     auto fromPiece = m_board.getPiece(m.from());
     if (LILIA_UNLIKELY(!fromPiece || fromPiece->color != us))
       return false;
-
-    if (m.promotion() != PieceType::None)
-    {
-      if (fromPiece->type != PieceType::Pawn)
-        return false;
-      const int toRank = bb::rank_of(m.to());
-      const bool onPromoRank = (us == Color::White) ? (toRank == 7) : (toRank == 0);
-      if (!onPromoRank)
-        return false;
-      switch (m.promotion())
-      {
-      case PieceType::Knight:
-      case PieceType::Bishop:
-      case PieceType::Rook:
-      case PieceType::Queen:
-        break;
-      default:
-        return false;
-      }
-    }
 
     StateInfo st{};
     st.move = m;
@@ -355,7 +371,8 @@ namespace lilia::chess
   {
     if (m_history.empty())
       return;
-    StateInfo st = m_history.back();
+
+    const StateInfo &st = m_history.back();
     unapplyMove(st);
     m_hash = st.zobristKey;
     m_state.pawnKey = st.prevPawnKey;
@@ -389,17 +406,14 @@ namespace lilia::chess
   {
     if (m_null_history.empty())
       return;
-    NullState st = m_null_history.back();
+
+    const NullState st = m_null_history.back();
     m_null_history.pop_back();
 
     m_state.sideToMove = ~m_state.sideToMove;
-    hashXorSide();
-
     m_state.fullmoveNumber = st.prevFullmoveNumber;
-    m_state.enPassantSquare = st.prevEnPassantSquare;
-    xorEPRelevant();
-
     m_state.castlingRights = st.prevCastlingRights;
+    m_state.enPassantSquare = st.prevEnPassantSquare;
     m_state.halfmoveClock = st.prevHalfmoveClock;
 
     m_hash = st.zobristKey;
@@ -574,13 +588,13 @@ namespace lilia::chess
     st.gaveCheck = gc;
 
     // 50-move rule
-    if (placed.type == PieceType::Pawn || st.captured.type != PieceType::None)
+    if (movingPawn || st.captured.type != PieceType::None)
       m_state.halfmoveClock = 0;
     else
       ++m_state.halfmoveClock;
 
     // new EP square (double push)
-    if (placed.type == PieceType::Pawn)
+    if (movingPawn)
     {
       if (us == Color::White && bb::rank_of(m.from()) == 1 && bb::rank_of(m.to()) == 3)
         m_state.enPassantSquare = static_cast<Square>(m.from() + 8);
@@ -620,15 +634,39 @@ namespace lilia::chess
     m_state.halfmoveClock = st.prevHalfmoveClock;
 
     const Move &m = st.move;
-    const Color us = m_state.sideToMove; // the side that made 'm'
+    const Color us = m_state.sideToMove; // side that made 'm'
     const Color them = ~us;
 
-    // Undo castle rook
-    if (m.castle() != CastleSide::None)
+    // Robustly re-detect castle / EP exactly because applyMove() may have inferred them
+    // even if the move flags were not set.
+    bool isCastleMove = false;
+    if ((us == Color::White && m.from() == bb::E1 && (m.to() == bb::G1 || m.to() == bb::C1)) ||
+        (us == Color::Black && m.from() == bb::E8 && (m.to() == bb::G8 || m.to() == bb::C8)))
+    {
+      if (auto moving = m_board.getPiece(m.to()); moving && moving->color == us &&
+                                                  moving->type == PieceType::King)
+        isCastleMove = true;
+    }
+
+    bool isEP = false;
+    if (st.captured.type == PieceType::Pawn)
+    {
+      if (auto moving = m_board.getPiece(m.to()); moving && moving->color == us &&
+                                                  moving->type == PieceType::Pawn &&
+                                                  st.prevEnPassantSquare == m.to())
+      {
+        const int df = int(m.to()) - int(m.from());
+        isEP = (us == Color::White) ? (df == 7 || df == 9)
+                                    : (df == -7 || df == -9);
+      }
+    }
+
+    // Undo castle rook first
+    if (isCastleMove)
     {
       if (us == Color::White)
       {
-        if (m.castle() == CastleSide::KingSide)
+        if (m.to() == bb::G1 || m.castle() == CastleSide::KingSide)
         {
           hashXorPiece(us, PieceType::Rook, bb::F1);
           m_board.movePiece_noCapture(bb::F1, bb::H1);
@@ -643,7 +681,7 @@ namespace lilia::chess
       }
       else
       {
-        if (m.castle() == CastleSide::KingSide)
+        if (m.to() == bb::G8 || m.castle() == CastleSide::KingSide)
         {
           hashXorPiece(us, PieceType::Rook, bb::F8);
           m_board.movePiece_noCapture(bb::F8, bb::H8);
@@ -658,7 +696,7 @@ namespace lilia::chess
       }
     }
 
-    // no capture & no promotion
+    // No capture, no promotion
     if (LILIA_LIKELY(m.promotion() == PieceType::None && st.captured.type == PieceType::None))
     {
       if (auto moving = m_board.getPiece(m.to()))
@@ -670,7 +708,7 @@ namespace lilia::chess
       return;
     }
 
-    // non-promotion capture
+    // Non-promotion capture
     if (m.promotion() == PieceType::None && st.captured.type != PieceType::None)
     {
       if (auto moving = m_board.getPiece(m.to()))
@@ -679,7 +717,8 @@ namespace lilia::chess
         m_board.movePiece_noCapture(m.to(), m.from());
         hashXorPiece(us, moving->type, m.from());
       }
-      if (m.isEnPassant())
+
+      if (isEP)
       {
         const Square capSq = (us == Color::White) ? static_cast<Square>(m.to() - 8)
                                                   : static_cast<Square>(m.to() + 8);
@@ -694,10 +733,11 @@ namespace lilia::chess
       return;
     }
 
-    // promotions / mixed cases
+    // Promotions / mixed cases
     if (auto moving = m_board.getPiece(m.to()))
     {
       m_board.removePiece(m.to());
+
       Piece placed = *moving;
       if (m.promotion() != PieceType::None)
         placed.type = PieceType::Pawn;
@@ -711,7 +751,7 @@ namespace lilia::chess
       return;
     }
 
-    if (m.isEnPassant())
+    if (isEP)
     {
       const Square capSq = (us == Color::White) ? static_cast<Square>(m.to() - 8)
                                                 : static_cast<Square>(m.to() + 8);

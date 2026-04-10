@@ -41,7 +41,7 @@ namespace lilia::engine
     bool checkRepetition() { return m_pos.checkRepetition(); }
 
     LILIA_ALWAYS_INLINE bool inCheck() const { return m_pos.inCheck(); }
-    LILIA_ALWAYS_INLINE bool see(const chess::Move &m) const { return see::non_negative(m_pos, m); }
+    LILIA_ALWAYS_INLINE bool see(const chess::Move &m) const { return see::see_ge_impl(m_pos, m, 0); }
     LILIA_ALWAYS_INLINE bool isPseudoLegal(const chess::Move &m) const { return m_pos.isPseudoLegal(m); }
 
     LILIA_ALWAYS_INLINE const EvalAcc &evalAcc() const noexcept { return m_eval; }

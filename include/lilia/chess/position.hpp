@@ -35,19 +35,7 @@ namespace lilia::chess
     void buildHash()
     {
       m_hash = Zobrist::compute(*this);
-
-      // Rebuild pawnKey
-      bb::Bitboard pk = 0;
-      for (auto c : {Color::White, Color::Black})
-      {
-        bb::Bitboard pawns = m_board.getPieces(c, PieceType::Pawn);
-        while (pawns)
-        {
-          Square s = bb::pop_lsb(pawns);
-          pk ^= Zobrist::piece[bb::ci(c)][static_cast<int>(PieceType::Pawn)][s];
-        }
-      }
-      m_state.pawnKey = pk;
+      m_state.pawnKey = Zobrist::computePawnKey(m_board);
     }
 
     bool doMove(const Move &m);
@@ -89,9 +77,6 @@ namespace lilia::chess
       m_hash ^= Zobrist::castling[next & 0xF];
     }
 
-    // XOR the EP hash only if en passant is relevant for the current state.
-    // Important: call this BEFORE state changes to remove the "old" value from the hash,
-    // and call it AGAIN AFTER all state changes to add the "new" value.
     LILIA_ALWAYS_INLINE void xorEPRelevant()
     {
       const auto ep = m_state.enPassantSquare;
