@@ -9,6 +9,57 @@
 
 namespace lilia::chess
 {
+  namespace
+  {
+    LILIA_ALWAYS_INLINE bool ep_square_is_canonical(const Board &board,
+                                                    const GameState &st) noexcept
+    {
+      const Square ep = st.enPassantSquare;
+      if (ep == NO_SQUARE)
+        return true;
+
+      const int epIdx = static_cast<int>(ep);
+      const Color stm = st.sideToMove;
+      const Color them = ~stm;
+
+      if (board.getPiece(ep).has_value())
+        return false;
+
+      const int rank = bb::rank_of(ep);
+      if (stm == Color::White)
+      {
+        if (rank != 5)
+          return false;
+      }
+      else
+      {
+        if (rank != 2)
+          return false;
+      }
+
+      const Square capturedPawnSq =
+          (stm == Color::White) ? static_cast<Square>(epIdx - 8)
+                                : static_cast<Square>(epIdx + 8);
+
+      const auto capturedPawn = board.getPiece(capturedPawnSq);
+      if (!capturedPawn || capturedPawn->color != them || capturedPawn->type != PieceType::Pawn)
+        return false;
+
+      const bb::Bitboard pawnsSTM = board.getPieces(stm, PieceType::Pawn);
+      return (pawnsSTM & Zobrist::epCaptureMask[bb::ci(stm)][epIdx]) != 0ULL;
+    }
+
+    LILIA_ALWAYS_INLINE void canonicalize_ep_square(Position &pos) noexcept
+    {
+      auto &st = pos.getState();
+      if (st.enPassantSquare == NO_SQUARE)
+        return;
+
+      if (!ep_square_is_canonical(pos.getBoard(), st))
+        st.enPassantSquare = NO_SQUARE;
+    }
+  }
+
   ChessGame::ChessGame()
   {
     m_pseudo_moves.reserve(256);
@@ -49,6 +100,7 @@ namespace lilia::chess
         break;
       }
     }
+
     return doMove(static_cast<Square>(from), static_cast<Square>(to), promo);
   }
 
@@ -65,13 +117,12 @@ namespace lilia::chess
 
   void ChessGame::setPosition(const std::string &fen)
   {
-    // full reset
     m_position = Position{};
     m_result = GameResult::Ongoing;
     m_pseudo_moves.clear();
     m_legal_moves.clear();
+    m_stateHistory.clear();
 
-    // Split FEN into 6 fields manually (faster than stringstream)
     std::string_view sv{fen};
     std::string_view fields[6]{};
     for (int i = 0; i < 6; ++i)
@@ -95,30 +146,25 @@ namespace lilia::chess
     const std::string_view halfmoveClock = fields[4];
     const std::string_view fullmoveNumber = fields[5];
 
-    // Board placement
     uint8_t rank = 7, file = 0;
     for (char ch : board)
     {
       if (ch == '/')
       {
-        if (rank == 0)
-        { /* ignore overflows */
-        }
-        if (file > 8)
-        { /* ignore malformed */
-        }
         file = 0;
         if (rank > 0)
           --rank;
         continue;
       }
+
       if (std::isdigit(static_cast<unsigned char>(ch)))
       {
         file = static_cast<uint8_t>(file + (ch - '0'));
         continue;
       }
+
       if (file > 7)
-        continue; // guard malformed FEN
+        continue;
 
       const char lo = protocol::uci::tolower_ascii(ch);
       PieceType type;
@@ -146,6 +192,7 @@ namespace lilia::chess
         type = PieceType::None;
         break;
       }
+
       if (type != PieceType::None)
       {
         const Square sq = static_cast<Square>(file + rank * 8);
@@ -155,11 +202,11 @@ namespace lilia::chess
       }
     }
 
-    // Active color
-    m_position.getState().sideToMove =
+    auto &st = m_position.getState();
+
+    st.sideToMove =
         (!activeColor.empty() && activeColor[0] == 'w') ? Color::White : Color::Black;
 
-    // Castling rights
     uint8_t rights = 0;
     for (char c : castling)
     {
@@ -177,43 +224,38 @@ namespace lilia::chess
       case 'q':
         rights |= CastlingRights::BlackQueenSide;
         break;
-      case '-':
       default:
         break;
       }
     }
-    m_position.getState().castlingRights = rights;
+    st.castlingRights = rights;
 
-    // En passant
     if (enPassant.size() == 2)
-    {
-      m_position.getState().enPassantSquare = protocol::uci::stringToSquare(enPassant);
-    }
+      st.enPassantSquare = protocol::uci::stringToSquare(enPassant);
     else
-    {
-      m_position.getState().enPassantSquare = NO_SQUARE;
-    }
+      st.enPassantSquare = NO_SQUARE;
 
-    // Clocks (robust parse)
     int hm = 0, fm = 1;
     if (!halfmoveClock.empty())
-    {
       hm = protocol::uci::parseInt(halfmoveClock);
-    }
+
     if (!fullmoveNumber.empty())
     {
       fm = protocol::uci::parseInt(fullmoveNumber);
-      if (fm == 0)
+      if (fm <= 0)
         fm = 1;
     }
-    m_position.getState().halfmoveClock = hm;
-    m_position.getState().fullmoveNumber = fm;
 
+    st.halfmoveClock = static_cast<std::uint16_t>(hm);
+    st.fullmoveNumber = static_cast<std::uint32_t>(fm);
+
+    canonicalize_ep_square(m_position);
     m_position.buildHash();
   }
 
   void ChessGame::buildHash()
   {
+    canonicalize_ep_square(m_position);
     m_position.buildHash();
   }
 
@@ -224,18 +266,20 @@ namespace lilia::chess
 
     m_move_gen.generatePseudoLegalMoves(m_position.getBoard(), m_position.getState(), m_pseudo_moves);
 
+    StateInfo scratch{};
     for (const auto &m : m_pseudo_moves)
     {
-      if (m_position.doMove(m))
+      if (m_position.doMove(m, scratch))
       {
         m_position.undoMove();
         m_legal_moves.push_back(m);
       }
     }
+
     return m_legal_moves;
   }
 
-  const GameState &ChessGame::getGameState()
+  const GameState &ChessGame::getGameState() const
   {
     return m_position.getState();
   }
@@ -268,15 +312,17 @@ namespace lilia::chess
       else
         m_result = GameResult::Stalemate;
     }
-    if (m_position.checkInsufficientMaterial())
+    else if (m_position.checkInsufficientMaterial())
       m_result = GameResult::InsufficientMaterial;
-    if (m_position.checkMoveRule())
+    else if (m_position.checkMoveRule())
       m_result = GameResult::MoveRule;
-    if (m_position.checkRepetition())
+    else if (m_position.checkRepetition())
       m_result = GameResult::Repetition;
+    else
+      m_result = GameResult::Ongoing;
   }
 
-  GameResult ChessGame::getResult()
+  GameResult ChessGame::getResult() const
   {
     return m_result;
   }
@@ -286,7 +332,7 @@ namespace lilia::chess
     m_result = res;
   }
 
-  Piece ChessGame::getPiece(Square sq)
+  Piece ChessGame::getPiece(Square sq) const
   {
     auto opt = m_position.getBoard().getPiece(sq);
     return opt.value_or(Piece{PieceType::None, Color::White});
@@ -299,26 +345,38 @@ namespace lilia::chess
     {
       if (m.from() == from && m.to() == to && m.promotion() == promotion)
       {
-        if (m_position.doMove(m))
+        m_stateHistory.emplace_back();
+        if (m_position.doMove(m, m_stateHistory.back()))
         {
+          m_pseudo_moves.clear();
+          m_legal_moves.clear();
           return true;
         }
-        break;
+
+        m_stateHistory.pop_back();
+        return false;
       }
     }
+
     return false;
   }
 
-  bool ChessGame::isKingInCheck(Color from) const
+  bool ChessGame::isKingInCheck(Color side) const
   {
-    const bb::Bitboard kbb = m_position.getBoard().getPieces(from, PieceType::King);
+    const bb::Bitboard kbb = m_position.getBoard().getPieces(side, PieceType::King);
     if (!kbb)
       return false;
+
     const Square ksq = static_cast<Square>(bb::ctz64(kbb));
-    return attackedBy(m_position.getBoard(), ksq, ~from, m_position.getBoard().getAllPieces());
+    return attackedBy(m_position.getBoard(), ksq, ~side, m_position.getBoard().getAllPieces());
   }
 
   Position &ChessGame::getPositionRefForBot()
+  {
+    return m_position;
+  }
+
+  const Position &ChessGame::getPositionRefForBot() const
   {
     return m_position;
   }
@@ -336,6 +394,7 @@ namespace lilia::chess
       {
         const Square sq = static_cast<Square>(rank * 8 + file);
         const auto piece = board.getPiece(sq);
+
         if (piece.has_value())
         {
           if (empty)
@@ -343,6 +402,7 @@ namespace lilia::chess
             fen.push_back(static_cast<char>('0' + empty));
             empty = 0;
           }
+
           char ch;
           switch (piece->type)
           {
@@ -368,8 +428,10 @@ namespace lilia::chess
             ch = '?';
             break;
           }
+
           if (piece->color == Color::White)
-            ch = static_cast<char>(std::toupper(ch));
+            ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+
           fen.push_back(ch);
         }
         else
@@ -377,6 +439,7 @@ namespace lilia::chess
           ++empty;
         }
       }
+
       if (empty)
         fen.push_back(static_cast<char>('0' + empty));
       if (rank)
@@ -403,8 +466,8 @@ namespace lilia::chess
     {
       fen.push_back('-');
     }
-    fen.push_back(' ');
 
+    fen.push_back(' ');
     if (st.enPassantSquare == NO_SQUARE)
     {
       fen.push_back('-');
@@ -415,6 +478,7 @@ namespace lilia::chess
       fen.push_back(static_cast<char>('a' + (sq & 7)));
       fen.push_back(static_cast<char>('1' + (sq >> 3)));
     }
+
     fen.push_back(' ');
     fen.append(std::to_string(st.halfmoveClock));
     fen.push_back(' ');

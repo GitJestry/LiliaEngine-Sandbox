@@ -932,7 +932,10 @@ namespace lilia::chess
       PinInfo pins;
       compute_pins(b, Side, occ, pins);
 
-      out = genPawnMoves_T<Side, Mode, true>(out, b, st, occ, our, opp, pins);
+      if (st.enPassantSquare == NO_SQUARE)
+        out = genPawnMoves_T<Side, Mode, false>(out, b, st, occ, our, opp, pins);
+      else
+        out = genPawnMoves_T<Side, Mode, true>(out, b, st, occ, our, opp, pins);
       out = genKnightMoves_T<Mode>(out, our, opp, occ, pins);
       out = genBishopMoves_T<Mode>(out, our, opp, occ, pins);
       out = genRookMoves_T<Mode>(out, our, opp, occ, pins);

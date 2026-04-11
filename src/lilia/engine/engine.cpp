@@ -1,14 +1,18 @@
 #include "lilia/engine/engine.hpp"
 
 #include <algorithm>
+#include <limits>
+#include <memory>
 #include <thread>
+#include <vector>
 
+#include "lilia/chess/core/magic.hpp"
+#include "lilia/chess/game_state.hpp"
 #include "lilia/engine/eval.hpp"
 #include "lilia/engine/move_order.hpp"
 #include "lilia/engine/search.hpp"
-#include "lilia/engine/thread_pool.hpp"
-#include "lilia/chess/core/magic.hpp"
 #include "lilia/engine/search_position.hpp"
+#include "lilia/engine/thread_pool.hpp"
 
 namespace lilia::engine
 {
@@ -20,10 +24,11 @@ namespace lilia::engine
 
     std::unique_ptr<Search> search;
 
-    explicit Impl(const EngineConfig &c) : cfg(c), tt(c.ttSizeMb)
+    explicit Impl(const EngineConfig &c)
+        : cfg(c), tt(c.ttSizeMb)
     {
-      unsigned hw = std::thread::hardware_concurrency();
-      int logical = (hw > 0 ? (int)hw : 1);
+      const unsigned hw = std::thread::hardware_concurrency();
+      const int logical = (hw > 0 ? static_cast<int>(hw) : 1);
 
       if (cfg.threads <= 0)
       {
@@ -35,12 +40,12 @@ namespace lilia::engine
       }
 
       ThreadPool::instance(cfg.threads);
-
       search = std::make_unique<Search>(tt, cfg);
     }
   };
 
-  Engine::Engine(const EngineConfig &cfg) : pimpl(new Impl(cfg))
+  Engine::Engine(const EngineConfig &cfg)
+      : pimpl(new Impl(cfg))
   {
     Engine::init();
   }
@@ -54,6 +59,7 @@ namespace lilia::engine
     catch (...)
     {
     }
+
     try
     {
       if (pimpl->search)
@@ -62,10 +68,12 @@ namespace lilia::engine
     catch (...)
     {
     }
+
     delete pimpl;
   }
 
-  std::optional<chess::Move> Engine::find_best_move(chess::Position &pos, int maxDepth,
+  std::optional<chess::Move> Engine::find_best_move(chess::Position &pos,
+                                                    int maxDepth,
                                                     std::shared_ptr<std::atomic<bool>> stop)
   {
     if (maxDepth <= 0)
@@ -93,25 +101,26 @@ namespace lilia::engine
     if (stats.bestMove.has_value())
       return stats.bestMove;
 
+    // TT fallback: verify the stored move is still legal under the new
+    // caller-owned StateInfo make/unmake architecture.
     try
     {
       auto &tt = pimpl->search->ttRef();
       if (auto e = tt.probe(pos.hash()))
       {
-        chess::Move ttMove = e->best;
-        if (ttMove.from() >= 0 && ttMove.to() >= 0)
-        {
-          chess::Position tmp = pos;
-          if (tmp.doMove(ttMove))
-            return ttMove;
-        }
+        const chess::Move ttMove = e->best;
+
+        chess::Position tmp = pos;
+        chess::StateInfo st{};
+        if (tmp.doMove(ttMove, st))
+          return ttMove;
       }
     }
     catch (...)
     {
     }
 
-    // Last fallback
+    // Last fallback: pick best legal tactical move, otherwise first legal move.
     try
     {
       chess::MoveGenerator mg;
@@ -123,15 +132,16 @@ namespace lilia::engine
       int bestCapScore = std::numeric_limits<int>::min();
       std::optional<chess::Move> firstLegal;
 
-      for (auto &m : pseudo)
+      for (const auto &m : pseudo)
       {
         chess::Position tmp = pos;
-        if (!tmp.doMove(m))
+        chess::StateInfo st{};
+        if (!tmp.doMove(m, st))
           continue;
 
         if (m.isCapture() || m.promotion() != chess::PieceType::None)
         {
-          int sc = mvv_lva_fast(pos, m);
+          const int sc = mvv_lva_fast(pos, m);
           if (!bestCapPromo || sc > bestCapScore)
           {
             bestCapPromo = m;

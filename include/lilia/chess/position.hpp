@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <vector>
+#include <utility>
 
 #include "board.hpp"
 #include "core/bitboard.hpp"
@@ -11,36 +11,81 @@
 namespace lilia::chess
 {
 
-  // Owns a full chess position and supports incremental make/unmake, hashing, and legality helpers.
   class Position
   {
   public:
     Position() = default;
 
+    Position(const Position &other)
+        : m_board(other.m_board),
+          m_rootState(other.stateInfo()),
+          m_st(&m_rootState)
+    {
+      m_rootState.previous = nullptr;
+    }
+
+    Position(Position &&other) noexcept
+        : m_board(std::move(other.m_board)),
+          m_rootState(other.stateInfo()),
+          m_st(&m_rootState)
+    {
+      m_rootState.previous = nullptr;
+    }
+
+    Position &operator=(const Position &other)
+    {
+      if (this == &other)
+        return *this;
+
+      m_board = other.m_board;
+      m_rootState = other.stateInfo();
+      m_rootState.previous = nullptr;
+      m_st = &m_rootState;
+      return *this;
+    }
+
+    Position &operator=(Position &&other) noexcept
+    {
+      if (this == &other)
+        return *this;
+
+      m_board = std::move(other.m_board);
+      m_rootState = other.stateInfo();
+      m_rootState.previous = nullptr;
+      m_st = &m_rootState;
+      return *this;
+    }
+
     LILIA_ALWAYS_INLINE Board &getBoard() { return m_board; }
     LILIA_ALWAYS_INLINE const Board &getBoard() const { return m_board; }
-    LILIA_ALWAYS_INLINE GameState &getState() { return m_state; }
-    LILIA_ALWAYS_INLINE const GameState &getState() const { return m_state; }
 
-    // Recompute the full hash and pawnKey from the current position
+    LILIA_ALWAYS_INLINE GameState &getState() { return *m_st; }
+    LILIA_ALWAYS_INLINE const GameState &getState() const { return *m_st; }
+
+    LILIA_ALWAYS_INLINE StateInfo &stateInfo() { return *m_st; }
+    LILIA_ALWAYS_INLINE const StateInfo &stateInfo() const { return *m_st; }
+
     [[nodiscard]] LILIA_ALWAYS_INLINE std::uint64_t hash() const noexcept
     {
-      return static_cast<std::uint64_t>(m_hash);
+      return static_cast<std::uint64_t>(m_st->zobristKey);
     }
+
     [[nodiscard]] LILIA_ALWAYS_INLINE bool lastMoveGaveCheck() const noexcept
     {
-      return !m_history.empty() && m_history.back().gaveCheck != 0;
+      return m_st->gaveCheck != 0;
     }
 
     void buildHash()
     {
-      m_hash = Zobrist::compute(*this);
-      m_state.pawnKey = Zobrist::computePawnKey(m_board);
+      m_st->zobristKey = Zobrist::compute(*this);
+      m_st->pawnKey = Zobrist::computePawnKey(m_board);
     }
 
-    bool doMove(const Move &m);
+    // Stockfish-style API: caller provides the next state node.
+    bool doMove(const Move &m, StateInfo &newState);
     void undoMove();
-    bool doNullMove();
+
+    bool doNullMove(StateInfo &newState);
     void undoNullMove();
 
     bool checkInsufficientMaterial();
@@ -52,48 +97,46 @@ namespace lilia::chess
 
   private:
     Board m_board;
-    GameState m_state;
-    std::vector<StateInfo> m_history;
-    bb::Bitboard m_hash = 0;
-    std::vector<NullState> m_null_history;
+    StateInfo m_rootState{};
+    StateInfo *m_st = &m_rootState;
 
-    // Internal helpers
     void applyMove(const Move &m, StateInfo &st);
     void unapplyMove(const StateInfo &st);
 
-    // Incremental Zobrist / pawnKey updates
-    LILIA_ALWAYS_INLINE void hashXorPiece(Color c, PieceType pt, Square s)
+    LILIA_ALWAYS_INLINE void hashXorPiece(StateInfo &st, Color c, PieceType pt, Square s) noexcept
     {
-      m_hash ^= Zobrist::piece[bb::ci(c)][static_cast<int>(pt)][s];
+      st.zobristKey ^= Zobrist::piece[bb::ci(c)][static_cast<int>(pt)][s];
       if (pt == PieceType::Pawn)
-      {
-        m_state.pawnKey ^= Zobrist::piece[bb::ci(c)][static_cast<int>(PieceType::Pawn)][s];
-      }
-    }
-    LILIA_ALWAYS_INLINE void hashXorSide() { m_hash ^= Zobrist::side; }
-    LILIA_ALWAYS_INLINE void hashSetCastling(std::uint8_t prev, std::uint8_t next)
-    {
-      m_hash ^= Zobrist::castling[prev & 0xF];
-      m_hash ^= Zobrist::castling[next & 0xF];
+        st.pawnKey ^= Zobrist::piece[bb::ci(c)][static_cast<int>(PieceType::Pawn)][s];
     }
 
-    LILIA_ALWAYS_INLINE void xorEPRelevant()
+    LILIA_ALWAYS_INLINE void hashXorSide(StateInfo &st) noexcept
     {
-      const auto ep = m_state.enPassantSquare;
+      st.zobristKey ^= Zobrist::side;
+    }
+
+    LILIA_ALWAYS_INLINE void hashSetCastling(StateInfo &st, std::uint8_t prev, std::uint8_t next) noexcept
+    {
+      st.zobristKey ^= Zobrist::castling[prev & 0xF];
+      st.zobristKey ^= Zobrist::castling[next & 0xF];
+    }
+
+    // XOR the EP file only when EP is actually capturable by sideToMove.
+    // This must match Zobrist::compute().
+    LILIA_ALWAYS_INLINE void xorEPRelevant(StateInfo &st) const noexcept
+    {
+      const auto ep = st.enPassantSquare;
       if (LILIA_UNLIKELY(ep == NO_SQUARE))
         return;
 
-      const auto stm = m_state.sideToMove;
+      const Color stm = st.sideToMove;
       const bb::Bitboard pawnsSTM = m_board.getPieces(stm, PieceType::Pawn);
       if (!pawnsSTM)
-        return; // nothing to do
+        return;
 
       const int epIdx = static_cast<int>(ep);
-      const int file = epIdx & 7;
-      const int ci = bb::ci(stm);
-
-      if (pawnsSTM & Zobrist::epCaptureMask[ci][epIdx])
-        m_hash ^= Zobrist::epFile[file];
+      if (pawnsSTM & Zobrist::epCaptureMask[bb::ci(stm)][epIdx])
+        st.zobristKey ^= Zobrist::epFile[epIdx & 7];
     }
   };
 

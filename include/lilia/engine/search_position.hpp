@@ -19,13 +19,13 @@ namespace lilia::engine
     explicit SearchPosition(const chess::Position &pos)
         : m_pos(pos)
     {
-      m_eval.build_from_board(m_pos.getBoard());
+      m_stack[0].eval.build_from_board(m_pos.getBoard());
     }
 
     explicit SearchPosition(chess::Position &&pos)
         : m_pos(std::move(pos))
     {
-      m_eval.build_from_board(m_pos.getBoard());
+      m_stack[0].eval.build_from_board(m_pos.getBoard());
     }
 
     LILIA_ALWAYS_INLINE const chess::Position &position() const noexcept { return m_pos; }
@@ -44,8 +44,8 @@ namespace lilia::engine
     LILIA_ALWAYS_INLINE bool see(const chess::Move &m) const { return see::see_ge_impl(m_pos, m, 0); }
     LILIA_ALWAYS_INLINE bool isPseudoLegal(const chess::Move &m) const { return m_pos.isPseudoLegal(m); }
 
-    LILIA_ALWAYS_INLINE const EvalAcc &evalAcc() const noexcept { return m_eval; }
-    void rebuildEvalAcc() { m_eval.build_from_board(m_pos.getBoard()); }
+    LILIA_ALWAYS_INLINE const EvalAcc &evalAcc() const noexcept { return m_stack[m_ply].eval; }
+    void rebuildEvalAcc() { m_stack[m_ply].eval.build_from_board(m_pos.getBoard()); }
 
     bool doMove(const chess::Move &m);
     void undoMove();
@@ -54,17 +54,19 @@ namespace lilia::engine
     void undoNullMove();
 
   private:
-    static void applyEvalDelta(const chess::Position &posBefore,
-                               const chess::Move &m,
-                               EvalAcc &eval);
+    struct StackEntry
+    {
+      chess::StateInfo st{};
+      EvalAcc eval{};
+    };
+
+    static void applyEvalDelta(const chess::StateInfo &st, EvalAcc &eval);
 
   private:
-    static constexpr int EVAL_STACK_CAP = MAX_PLY + 8;
+    static constexpr int STACK_CAP = MAX_PLY + 8;
 
     chess::Position m_pos;
-    EvalAcc m_eval{};
-
-    std::array<EvalAcc, EVAL_STACK_CAP> m_evalStack{};
-    int m_evalTop = 0;
+    std::array<StackEntry, STACK_CAP> m_stack{};
+    int m_ply = 0;
   };
 }
