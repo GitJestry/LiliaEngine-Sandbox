@@ -72,6 +72,8 @@ namespace lilia::engine
     return s;
   }
 
+  static constexpr int16_t TT_SE_UNSET = std::numeric_limits<int16_t>::min();
+
   namespace
   {
     // -----------------------------
@@ -823,7 +825,7 @@ namespace lilia::engine
 
   }
 
-  Search::Search(TT5 &tt_, const EngineConfig &cfg_)
+  Search::Search(TT &tt_, const EngineConfig &cfg_)
       : tt(tt_), mg(), cfg(cfg_), eval_()
   {
     for (auto &kk : killers)
@@ -981,20 +983,28 @@ namespace lilia::engine
 
     chess::Move bestMoveQ{};
 
+    int16_t ttSE = TT_SE_UNSET;
+
     // QTT probe (depth == 0)
     {
-      TTEntry5 tte{};
-      if (tt.probe_into(pos.hash(), tte))
+      TTEntry tte{};
+      if (tt.probe_into(parentKey, tte))
       {
-        const int ttVal = decode_tt_score(tte.value, kply);
-        if (tte.depth == 0)
+        ttSE = tte.staticEval;
+
+        if (tte.bound != Bound::None)
         {
-          if (tte.bound == Bound::Exact)
-            return ttVal;
-          if (tte.bound == Bound::Lower && ttVal >= beta)
-            return ttVal;
-          if (tte.bound == Bound::Upper && ttVal <= alpha)
-            return ttVal;
+          const int ttVal = decode_tt_score(tte.value, kply);
+
+          if (tte.depth == 0)
+          {
+            if (tte.bound == Bound::Exact)
+              return ttVal;
+            if (tte.bound == Bound::Lower && ttVal >= beta)
+              return ttVal;
+            if (tte.bound == Bound::Upper && ttVal <= alpha)
+              return ttVal;
+          }
         }
       }
     }
@@ -1058,9 +1068,8 @@ namespace lilia::engine
         if (score >= beta)
         {
           if (!(stopFlag && stopFlag->load()))
-            tt.store(parentKey, encode_tt_score(beta, kply), 0, Bound::Lower, m,
-                     std::numeric_limits<int16_t>::min());
-          return beta;
+            tt.store(parentKey, encode_tt_score(score, kply), 0, Bound::Lower, m, TT_SE_UNSET);
+          return score;
         }
         if (score > best)
         {
@@ -1093,16 +1102,17 @@ namespace lilia::engine
       return best;
     }
 
-    const int stand = signed_eval(pos);
+    const int stand = (ttSE != TT_SE_UNSET ? (int)ttSE : signed_eval(pos));
+
     if (stand >= beta)
     {
       if (!(stopFlag && stopFlag->load()))
       {
         constexpr int16_t SE_UNSET = std::numeric_limits<int16_t>::min();
-        tt.store(parentKey, encode_tt_score(beta, kply), 0, Bound::Lower, chess::Move{},
-                 inCheck ? SE_UNSET : (int16_t)stand);
+        tt.store(parentKey, encode_tt_score(stand, kply), 0, Bound::Lower, chess::Move{},
+                 (int16_t)stand);
       }
-      return beta;
+      return stand;
     }
     if (alpha < stand)
       alpha = stand;
@@ -1232,8 +1242,8 @@ namespace lilia::engine
       if (score >= beta)
       {
         if (!(stopFlag && stopFlag->load()))
-          tt.store(parentKey, encode_tt_score(beta, kply), 0, Bound::Lower, m, (int16_t)stand);
-        return beta;
+          tt.store(parentKey, encode_tt_score(score, kply), 0, Bound::Lower, m, (int16_t)stand);
+        return score;
       }
       if (score > alpha)
         alpha = score;
@@ -1304,9 +1314,9 @@ namespace lilia::engine
             if (score >= beta)
             {
               if (!(stopFlag && stopFlag->load()))
-                tt.store(parentKey, encode_tt_score(beta, kply), 0, Bound::Lower, m,
+                tt.store(parentKey, encode_tt_score(score, kply), 0, Bound::Lower, m,
                          (int16_t)stand);
-              return beta;
+              return score;
             }
             if (score > best)
               best = score;
@@ -1334,6 +1344,8 @@ namespace lilia::engine
   {
     bump_node_or_stop(sharedNodes, nodeLimit, stopFlag);
 
+    const std::uint64_t nodeKey = pos.hash();
+
     if (ply >= MAX_PLY - 2)
       return signed_eval(pos);
     if (pos.checkInsufficientMaterial() || pos.checkMoveRule() || pos.checkRepetition())
@@ -1360,35 +1372,66 @@ namespace lilia::engine
     chess::Move ttMove{};
     bool haveTT = false;
     int ttVal = 0;
-    Bound ttBound = Bound::Upper; // for SE trust
+    Bound ttBound = Bound::None;
     int ttStoredDepth = -1;
-    int16_t ttSE = std::numeric_limits<int16_t>::min();
+    int16_t ttSE = TT_SE_UNSET;
 
-    if (TTEntry5 tte{}; tt.probe_into(pos.hash(), tte))
+    if (TTEntry tte{}; tt.probe_into(nodeKey, tte))
     {
       haveTT = true;
       ttMove = tte.best;
-      ttVal = decode_tt_score(tte.value, cap_ply(ply));
       ttBound = tte.bound;
       ttStoredDepth = (int)tte.depth;
       ttSE = tte.staticEval;
 
-      if (tte.depth >= depth)
+      if (tte.bound != Bound::None)
       {
-        if (tte.bound == Bound::Exact)
-          return std::clamp(ttVal, -MATE + 1, MATE - 1);
-        if (tte.bound == Bound::Lower)
-          alpha = std::max(alpha, ttVal);
-        if (tte.bound == Bound::Upper)
-          beta = std::min(beta, ttVal);
-        if (alpha >= beta)
-          return std::clamp(ttVal, -MATE + 1, MATE - 1);
+        ttVal = decode_tt_score(tte.value, cap_ply(ply));
+
+        if (tte.depth >= depth)
+        {
+          if (tte.bound == Bound::Exact)
+            return std::clamp(ttVal, -MATE + 1, MATE - 1);
+
+          // do not allow non-exact hash cutoffs to
+          // terminate PV search.
+          if (!isPV)
+          {
+            if (tte.bound == Bound::Lower && ttVal >= beta)
+              return std::clamp(ttVal, -MATE + 1, MATE - 1);
+
+            if (tte.bound == Bound::Upper && ttVal <= alpha)
+              return std::clamp(ttVal, -MATE + 1, MATE - 1);
+          }
+
+          if (tte.bound == Bound::Lower)
+            alpha = std::max(alpha, ttVal);
+          else if (tte.bound == Bound::Upper)
+            beta = std::min(beta, ttVal);
+
+          if (!isPV && alpha >= beta)
+            return std::clamp(ttVal, -MATE + 1, MATE - 1);
+        }
       }
     }
 
-    // Compute staticEval (prefer TT's cached one when not in check)
-    constexpr int16_t SE_UNSET = std::numeric_limits<int16_t>::min();
-    const int staticEval = inCheck ? 0 : (ttSE != SE_UNSET ? (int)ttSE : signed_eval(pos));
+    const int staticEval = [&]() -> int
+    {
+      if (inCheck)
+        return 0;
+
+      int se = (ttSE != TT_SE_UNSET) ? (int)ttSE : signed_eval(pos);
+
+      if (haveTT && ttBound != Bound::None)
+      {
+        if (ttBound == Bound::Exact ||
+            (ttBound == Bound::Lower && ttVal > se) ||
+            (ttBound == Bound::Upper && ttVal < se))
+          se = ttVal;
+      }
+
+      return se;
+    }();
 
     const bool improving =
         !inCheck && (parentStaticEval == INF || staticEval >= parentStaticEval - IMPROVING_EVAL_MARGIN);
@@ -1446,7 +1489,7 @@ namespace lilia::engine
         if (!(stopFlag && stopFlag->load()))
         {
           constexpr int16_t SE_UNSET = std::numeric_limits<int16_t>::min();
-          tt.store(pos.hash(), encode_tt_score(staticEval, cap_ply(ply)),
+          tt.store(nodeKey, encode_tt_score(staticEval, cap_ply(ply)),
                    /*depth*/ 0, Bound::Lower, /*best*/ chess::Move{},
                    inCheck ? SE_UNSET : (int16_t)staticEval);
         }
@@ -1470,7 +1513,7 @@ namespace lilia::engine
 
       (void)negamax(pos, iidDepth, iidAlpha, iidBeta, ply, iidBest, staticEval);
       // re-probe TT to harvest best for ordering
-      if (TTEntry5 tte2{}; tt.probe_into(pos.hash(), tte2))
+      if (TTEntry tte2{}; tt.probe_into(pos.hash(), tte2))
       {
         ttMove = tte2.best;
         haveTT = true;
@@ -1548,11 +1591,21 @@ namespace lilia::engine
               int verify =
                   -negamax(pos, depth - 1, -beta, -beta + 1, ply + 1, tmpVerify, -staticEval);
               if (verify >= beta)
-                return beta;
+              {
+                if (!(stopFlag && stopFlag->load(std::memory_order_relaxed)))
+                  tt.store(nodeKey, encode_tt_score(verify, cap_ply(ply)),
+                           static_cast<int16_t>(depth), Bound::Lower, chess::Move{},
+                           inCheck ? TT_SE_UNSET : static_cast<int16_t>(staticEval));
+                return verify;
+              }
             }
             else
             {
-              return beta;
+              if (!(stopFlag && stopFlag->load(std::memory_order_relaxed)))
+                tt.store(nodeKey, encode_tt_score(nullScore, cap_ply(ply)),
+                         static_cast<int16_t>(depth), Bound::Lower, chess::Move{},
+                         inCheck ? TT_SE_UNSET : static_cast<int16_t>(staticEval));
+              return nullScore;
             }
           }
         }
@@ -1975,7 +2028,13 @@ namespace lilia::engine
           const int probe =
               -negamax(pos, pcDepth, -beta, -(beta - 1), ply + 1, childBest, -staticEval);
           if (probe >= beta)
-            return beta;
+          {
+            if (!(stopFlag && stopFlag->load(std::memory_order_relaxed)))
+              tt.store(nodeKey, encode_tt_score(probe, cap_ply(ply)),
+                       static_cast<int16_t>(depth), Bound::Lower, m,
+                       inCheck ? TT_SE_UNSET : static_cast<int16_t>(staticEval));
+            return probe;
+          }
         }
       }
 
@@ -2175,7 +2234,13 @@ namespace lilia::engine
           const int probe = -negamax(pos, depth - EARLY_PROBCUT_REDUCTION, -beta, -(beta - 1), ply + 1, tmp, INF);
           pcg.rollback();
           if (probe >= beta)
-            return beta;
+          {
+            if (!(stopFlag && stopFlag->load(std::memory_order_relaxed)))
+              tt.store(nodeKey, encode_tt_score(probe, cap_ply(ply)),
+                       static_cast<int16_t>(depth), Bound::Lower, m,
+                       inCheck ? TT_SE_UNSET : static_cast<int16_t>(staticEval));
+            return probe;
+          }
         }
         else
         {
@@ -2233,9 +2298,9 @@ namespace lilia::engine
       else
         bnd = Bound::Exact;
 
-      int16_t storeSE = inCheck ? SE_UNSET : (int16_t)staticEval;
+      int16_t storeSE = inCheck ? TT_SE_UNSET : (int16_t)staticEval;
 
-      tt.store(pos.hash(), encode_tt_score(best, cap_ply(ply)), static_cast<int16_t>(depth), bnd,
+      tt.store(nodeKey, encode_tt_score(best, cap_ply(ply)), static_cast<int16_t>(depth), bnd,
                bestLocal, storeSE);
     }
 
@@ -2252,7 +2317,7 @@ namespace lilia::engine
 
     for (int i = 0; i < max_len; ++i)
     {
-      TTEntry5 tte{};
+      TTEntry tte{};
       if (!tt.probe_into(pos.hash(), tte))
         break;
 
@@ -2273,6 +2338,7 @@ namespace lilia::engine
   int Search::search_root_single(SearchPosition &pos, int maxDepth,
                                  std::shared_ptr<std::atomic<bool>> stop, std::uint64_t maxNodes)
   {
+    // generation bump moved to the root launcher before any helpers start
     NodeFlushGuard node_guard(sharedNodes);
     this->stopFlag = stop;
     if (!this->sharedNodes)
@@ -2394,8 +2460,8 @@ namespace lilia::engine
       int lastScore = 0;
       if (cfg.useAspiration)
       {
-        TTEntry5 tte{};
-        if (tt.probe_into(pos.hash(), tte))
+        TTEntry tte{};
+        if (tt.probe_into(pos.hash(), tte) && tte.bound != Bound::None)
           lastScore = decode_tt_score(tte.value, /*ply=*/0);
       }
 
@@ -2413,7 +2479,7 @@ namespace lilia::engine
         // TT move only as soft hint
         chess::Move ttMove{};
         bool haveTT = false;
-        if (TTEntry5 tte{}; tt.probe_into(pos.hash(), tte))
+        if (TTEntry tte{}; tt.probe_into(pos.hash(), tte))
         {
           haveTT = true;
           ttMove = tte.best;
@@ -2732,14 +2798,8 @@ namespace lilia::engine
                                    std::shared_ptr<std::atomic<bool>> stop, int maxThreads,
                                    std::uint64_t maxNodes)
   {
+    tt.new_generation();
     const int threads = std::max(1, maxThreads > 0 ? std::min(maxThreads, cfg.threads) : cfg.threads);
-    try
-    {
-      tt.new_generation();
-    }
-    catch (...)
-    {
-    }
 
     if (threads <= 1)
       return search_root_single(pos, maxDepth, stop, maxNodes);

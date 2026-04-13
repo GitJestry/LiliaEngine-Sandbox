@@ -20,7 +20,7 @@ namespace lilia::engine
   struct Engine::Impl
   {
     EngineConfig cfg;
-    TT5 tt;
+    TT tt;
 
     std::unique_ptr<Search> search;
 

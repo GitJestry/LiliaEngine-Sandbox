@@ -12,7 +12,7 @@
 #include "lilia/chess/move_generator.hpp"
 #include "lilia/engine/search_position.hpp"
 #include "lilia/chess/chess_types.hpp"
-#include "tt5.hpp"
+#include "transposition_table.hpp"
 #include "config.hpp"
 #include "eval.hpp"
 #include "lilia/chess/compiler.hpp"
@@ -40,7 +40,7 @@ namespace lilia::engine
   class Search
   {
   public:
-    Search(TT5 &tt, const EngineConfig &cfg);
+    Search(TT &tt, const EngineConfig &cfg);
     ~Search() = default;
 
     // Non-copyable / non-movable
@@ -66,7 +66,7 @@ namespace lilia::engine
     [[nodiscard]] LILIA_ALWAYS_INLINE const SearchStats &getStats() const noexcept { return stats; }
     void clearSearchState(); // Killers/History reset
 
-    LILIA_ALWAYS_INLINE TT5 &ttRef() noexcept { return tt; }
+    LILIA_ALWAYS_INLINE TT &ttRef() noexcept { return tt; }
 
     // Killers: 2 every Ply
     alignas(64) std::array<std::array<chess::Move, 2>, MAX_PLY> killers{};
@@ -134,7 +134,7 @@ namespace lilia::engine
         sharedNodes->fetch_add(rem, std::memory_order_relaxed);
     }
 
-    TT5 &tt;
+    TT &tt;
     chess::MoveGenerator mg;
     const EngineConfig &cfg;
     Evaluator eval_;
