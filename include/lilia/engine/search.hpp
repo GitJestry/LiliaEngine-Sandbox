@@ -140,6 +140,7 @@ namespace lilia::engine
     Evaluator eval_;
 
     std::array<chess::Move, MAX_PLY> prevMove{};
+    std::array<chess::PieceType, MAX_PLY> prevMovedPiece{};
 
     chess::Move genArr_[MAX_PLY][MAX_MOVES];
     int genN_[MAX_PLY]{};

@@ -8,37 +8,62 @@
 namespace lilia::engine
 {
 
-  LILIA_ALWAYS_INLINE int mvv_lva_fast(const chess::Position &pos, const chess::Move &m)
+  LILIA_ALWAYS_INLINE int mvv_lva(const chess::Position &pos, const chess::Move &m)
   {
-    if (!m.isCapture() && m.promotion() == chess::PieceType::None)
+    const bool isCap = m.isCapture();
+    const chess::PieceType promo = m.promotion();
+
+    if (!isCap && promo == chess::PieceType::None)
       return 0;
+
     const auto &b = pos.getBoard();
 
-    chess::PieceType victimType = chess::PieceType::Pawn;
-    if (m.isEnPassant())
+    auto ap = b.getPiece(m.from());
+    if (!ap)
+      return 0;
+
+    const chess::PieceType attackerType = ap->type;
+    const int attackerValue = base_value[static_cast<int>(attackerType)];
+
+    int score = 0;
+
+    if (isCap)
     {
-      victimType = chess::PieceType::Pawn;
-    }
-    else if (auto vp = b.getPiece(m.to()))
-    {
-      victimType = vp->type;
+      chess::PieceType victimType = chess::PieceType::Pawn;
+
+      if (m.isEnPassant())
+      {
+        victimType = chess::PieceType::Pawn;
+      }
+      else if (auto vp = b.getPiece(m.to()))
+      {
+        victimType = vp->type;
+      }
+      else
+      {
+        return 0;
+      }
+
+      const int victimValue = base_value[static_cast<int>(victimType)];
+
+      // MVV-LVA core: large victim first, small attacker preferred
+      score += (victimValue << 6) - attackerValue;
+
+      if (m.isEnPassant())
+        score += 1;
     }
 
-    chess::PieceType attackerType = chess::PieceType::Pawn;
-    if (auto ap = b.getPiece(m.from()))
-      attackerType = ap->type;
-
-    const int vVictim = base_value[static_cast<int>(victimType)];
-    const int vAttacker = base_value[static_cast<int>(attackerType)];
-
-    int score = (vVictim << 5) - vAttacker;
-    if (m.promotion() != chess::PieceType::None)
+    if (promo != chess::PieceType::None)
     {
-      static constexpr int promo_order[7] = {0, 40, 40, 60, 120, 0, 0};
-      score += promo_order[static_cast<int>(m.promotion())];
+      // Promotion bonus should reflect net material gain,
+      // not a fake captured victim.
+      const int promoGain =
+          base_value[static_cast<int>(promo)] -
+          base_value[static_cast<int>(chess::PieceType::Pawn)];
+
+      score += (promoGain << 5);
     }
-    if (m.isEnPassant())
-      score += 5;
+
     return score;
   }
 

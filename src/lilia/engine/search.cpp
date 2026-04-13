@@ -26,54 +26,6 @@
 
 namespace lilia::engine
 {
-
-  using steady_clock = std::chrono::steady_clock;
-
-  LILIA_ALWAYS_INLINE int16_t clamp16(int x)
-  {
-    if (x > 32767)
-      return 32767;
-    if (x < -32768)
-      return -32768;
-    return (int16_t)x;
-  }
-
-  LILIA_ALWAYS_INLINE int mate_in(int ply)
-  {
-    return MATE - ply;
-  }
-  LILIA_ALWAYS_INLINE int mated_in(int ply)
-  {
-    return -MATE + ply;
-  }
-  LILIA_ALWAYS_INLINE bool is_mate_score(int s)
-  {
-    return std::abs(s) >= MATE_THR;
-  }
-  LILIA_ALWAYS_INLINE int cap_ply(int ply)
-  {
-    return ply < 0 ? 0 : (ply >= MAX_PLY ? (MAX_PLY - 1) : ply);
-  }
-
-  LILIA_ALWAYS_INLINE int encode_tt_score(int s, int ply)
-  {
-    if (s >= MATE_THR)
-      return s + ply;
-    if (s <= -MATE_THR)
-      return s - ply;
-    return s;
-  }
-  LILIA_ALWAYS_INLINE int decode_tt_score(int s, int ply)
-  {
-    if (s >= MATE_THR)
-      return s - ply;
-    if (s <= -MATE_THR)
-      return s + ply;
-    return s;
-  }
-
-  static constexpr int16_t TT_SE_UNSET = std::numeric_limits<int16_t>::min();
-
   namespace
   {
     // -----------------------------
@@ -261,6 +213,188 @@ namespace lilia::engine
 
   namespace
   {
+    using steady_clock = std::chrono::steady_clock;
+
+    LILIA_ALWAYS_INLINE int16_t clamp16(int x)
+    {
+      if (x > 32767)
+        return 32767;
+      if (x < -32768)
+        return -32768;
+      return (int16_t)x;
+    }
+
+    LILIA_ALWAYS_INLINE int mate_in(int ply)
+    {
+      return MATE - ply;
+    }
+    LILIA_ALWAYS_INLINE int mated_in(int ply)
+    {
+      return -MATE + ply;
+    }
+    LILIA_ALWAYS_INLINE bool is_mate_score(int s)
+    {
+      return std::abs(s) >= MATE_THR;
+    }
+    LILIA_ALWAYS_INLINE int cap_ply(int ply)
+    {
+      return ply < 0 ? 0 : (ply >= MAX_PLY ? (MAX_PLY - 1) : ply);
+    }
+
+    LILIA_ALWAYS_INLINE int encode_tt_score(int s, int ply)
+    {
+      if (s >= MATE_THR)
+        return s + ply;
+      if (s <= -MATE_THR)
+        return s - ply;
+      return s;
+    }
+    LILIA_ALWAYS_INLINE int decode_tt_score(int s, int ply)
+    {
+      if (s >= MATE_THR)
+        return s - ply;
+      if (s <= -MATE_THR)
+        return s + ply;
+      return s;
+    }
+
+    static LILIA_ALWAYS_INLINE int ilog2_u32(unsigned v)
+    {
+#if defined(__GNUC__) || defined(__clang__)
+      return v ? 31 - __builtin_clz(v) : 0;
+#else
+      int r = 0;
+      while (v >>= 1)
+        ++r;
+      return r;
+#endif
+    }
+    static LILIA_ALWAYS_INLINE int iabs_int(int x)
+    {
+      return x < 0 ? -x : x;
+    }
+
+    static LILIA_ALWAYS_INLINE int hist_bonus(int depth)
+    {
+      unsigned x = (unsigned)(depth * depth) + 1u;
+      int lg = ilog2_u32(x);
+      return HIST_BONUS_BASE + HIST_BONUS_LOG_STEP * lg;
+    }
+
+    template <typename T>
+    static LILIA_ALWAYS_INLINE void hist_update(T &h, int bonus)
+    {
+      int x = (int)h;
+      x += bonus - (x * iabs_int(bonus)) / 32768;
+      if (x > 32767)
+        x = 32767;
+      if (x < -32768)
+        x = -32768;
+      h = (T)x;
+    }
+
+    static LILIA_ALWAYS_INLINE chess::PieceType moved_piece_after(const SearchPosition &pos,
+                                                                  const chess::Move &m)
+    {
+      if (m.promotion() != chess::PieceType::None)
+        return m.promotion();
+
+      if (auto p = pos.getBoard().getPiece(m.from()))
+        return p->type;
+
+      return chess::PieceType::Pawn;
+    }
+
+    struct SearchedQuiet
+    {
+      chess::Move m{};
+      chess::PieceType moverPt = chess::PieceType::Pawn;
+    };
+
+    struct SearchedCapture
+    {
+      chess::PieceType moverPt = chess::PieceType::Pawn;
+      chess::PieceType capPt = chess::PieceType::Pawn;
+      int to = 0;
+    };
+
+    static LILIA_ALWAYS_INLINE void reward_quiet_cutoff(
+        Search &S, int ply, int depth, const chess::Move &m, chess::PieceType moverPt,
+        const chess::Move &prev, bool prevOk,
+        int pm1_to, int pm2_to, int pm3_to,
+        int pm1_pt, int pm2_pt, int pm3_pt)
+    {
+      const int B = hist_bonus(depth);
+      const int mp = chess::bb::type_index(moverPt);
+
+      S.killers[cap_ply(ply)][1] = S.killers[cap_ply(ply)][0];
+      S.killers[cap_ply(ply)][0] = m;
+
+      hist_update(S.history[m.from()][m.to()], +B);
+      hist_update(S.quietHist[mp][m.to()], +B);
+
+      if (pm1_to >= 0 && pm1_pt >= 0)
+        hist_update(S.contHist[0][pm1_pt][pm1_to][mp][m.to()], +B);
+      if (pm2_to >= 0 && pm2_pt >= 0)
+        hist_update(S.contHist[1][pm2_pt][pm2_to][mp][m.to()], +(B >> CONTHIST_BONUS_SHIFT_L1));
+      if (pm3_to >= 0 && pm3_pt >= 0)
+        hist_update(S.contHist[2][pm3_pt][pm3_to][mp][m.to()], +(B >> CONTHIST_BONUS_SHIFT_L2));
+
+      if (prevOk)
+      {
+        S.counterMove[prev.from()][prev.to()] = m;
+        hist_update(S.counterHist[prev.from()][prev.to()], +B);
+      }
+    }
+
+    static LILIA_ALWAYS_INLINE void reward_capture_cutoff(
+        Search &S, int depth, chess::PieceType moverPt, chess::PieceType capPt, int to)
+    {
+      const int B = hist_bonus(depth);
+      hist_update(S.captureHist[chess::bb::type_index(moverPt)][to][chess::bb::type_index(capPt)], +B);
+    }
+
+    static LILIA_ALWAYS_INLINE void penalize_preceding_quiets(
+        Search &S, int depth, const SearchedQuiet *quiets, int count,
+        int pm1_to, int pm2_to, int pm3_to,
+        int pm1_pt, int pm2_pt, int pm3_pt)
+    {
+      const int M = std::max(1, hist_bonus(depth) >> 1);
+
+      for (int i = 0; i < count; ++i)
+      {
+        const auto &q = quiets[i];
+        const int mp = chess::bb::type_index(q.moverPt);
+
+        hist_update(S.history[q.m.from()][q.m.to()], -M);
+        hist_update(S.quietHist[mp][q.m.to()], -M);
+
+        if (pm1_to >= 0 && pm1_pt >= 0)
+          hist_update(S.contHist[0][pm1_pt][pm1_to][mp][q.m.to()], -M);
+        if (pm2_to >= 0 && pm2_pt >= 0)
+          hist_update(S.contHist[1][pm2_pt][pm2_to][mp][q.m.to()], -(M >> CONTHIST_MALUS_SHIFT_L1));
+        if (pm3_to >= 0 && pm3_pt >= 0)
+          hist_update(S.contHist[2][pm3_pt][pm3_to][mp][q.m.to()], -(M >> CONTHIST_MALUS_SHIFT_L2));
+      }
+    }
+
+    static LILIA_ALWAYS_INLINE void penalize_preceding_captures(
+        Search &S, int depth, const SearchedCapture *caps, int count)
+    {
+      const int M = std::max(1, hist_bonus(depth) >> 1);
+
+      for (int i = 0; i < count; ++i)
+      {
+        const auto &c = caps[i];
+        hist_update(S.captureHist[chess::bb::type_index(c.moverPt)][c.to][chess::bb::type_index(c.capPt)], -M);
+      }
+    }
+
+    static constexpr int16_t TT_SE_UNSET = std::numeric_limits<int16_t>::min();
+  }
+
+  namespace
+  {
 
     struct MoveUndoGuard
     {
@@ -316,41 +450,6 @@ namespace lilia::engine
     {
       if (LILIA_UNLIKELY(stopFlag && stopFlag->load(std::memory_order_relaxed)))
         throw SearchStoppedException();
-    }
-
-    static LILIA_ALWAYS_INLINE int ilog2_u32(unsigned v)
-    {
-#if defined(__GNUC__) || defined(__clang__)
-      return v ? 31 - __builtin_clz(v) : 0;
-#else
-      int r = 0;
-      while (v >>= 1)
-        ++r;
-      return r;
-#endif
-    }
-    static LILIA_ALWAYS_INLINE int iabs_int(int x)
-    {
-      return x < 0 ? -x : x;
-    }
-
-    static LILIA_ALWAYS_INLINE int hist_bonus(int depth)
-    {
-      unsigned x = (unsigned)(depth * depth) + 1u;
-      int lg = ilog2_u32(x);
-      return HIST_BONUS_BASE + HIST_BONUS_LOG_STEP * lg;
-    }
-
-    template <typename T>
-    static LILIA_ALWAYS_INLINE void hist_update(T &h, int bonus)
-    {
-      int x = (int)h;
-      x += bonus - (x * iabs_int(bonus)) / 32768;
-      if (x > 32767)
-        x = 32767;
-      if (x < -32768)
-        x = -32768;
-      h = (T)x;
     }
 
     static LILIA_ALWAYS_INLINE int gen_all(chess::MoveGenerator &mg, SearchPosition &pos, chess::Move *out,
@@ -845,6 +944,7 @@ namespace lilia::engine
     for (auto &pm : prevMove)
       pm = chess::Move{};
 
+    prevMovedPiece.fill(chess::PieceType::None);
     stopFlag.reset();
     sharedNodes.reset();
     nodeLimit = 0;
@@ -1037,7 +1137,7 @@ namespace lilia::engine
         if (prevOk && m == cm)
           s += QS_INCHECK_COUNTERMOVE_BONUS;
         if (m.isCapture())
-          s += QS_INCHECK_CAPTURE_BONUS + mvv_lva_fast(pos.position(), m);
+          s += QS_INCHECK_CAPTURE_BONUS + mvv_lva(pos.position(), m);
         if (m.promotion() != chess::PieceType::None)
           s += QS_INCHECK_PROMO_BONUS;
         s += history[m.from()][m.to()];
@@ -1055,12 +1155,16 @@ namespace lilia::engine
           check_stop(stopFlag);
         const chess::Move m = ordered[i];
 
+        const chess::PieceType movedPt = moved_piece_after(pos, m);
+
         MoveUndoGuard g(pos);
         if (!g.doMove(m))
           continue;
-        anyLegal = true;
 
         prevMove[cap_ply(ply)] = m;
+        prevMovedPiece[cap_ply(ply)] = movedPt;
+        anyLegal = true;
+
         tt.prefetch(pos.hash());
         int score = -quiescence(pos, -beta, -alpha, ply + 1);
         score = std::clamp(score, -MATE + 1, MATE - 1);
@@ -1132,7 +1236,28 @@ namespace lilia::engine
     for (int i = 0; i < qn; ++i)
     {
       const auto &m = capArr_[kply][i];
-      qs[i] = mvv_lva_fast(pos.position(), m);
+      int s = mvv_lva(pos.position(), m);
+
+      if (m.isCapture())
+      {
+        chess::PieceType moverPt = chess::PieceType::Pawn;
+        if (auto mo = pos.getBoard().getPiece(m.from()))
+          moverPt = mo->type;
+
+        chess::PieceType capPt = chess::PieceType::Pawn;
+        if (m.isEnPassant())
+          capPt = chess::PieceType::Pawn;
+        else if (auto cp = pos.getBoard().getPiece(m.to()))
+          capPt = cp->type;
+
+        s += (captureHist[chess::bb::type_index(moverPt)][m.to()][chess::bb::type_index(capPt)] >> 1);
+      }
+      else if (m.promotion() != chess::PieceType::None)
+      {
+        s += ORDER_PROMO_BASE;
+      }
+
+      qs[i] = s;
       qord[i] = m;
     }
     sort_by_score_desc(qs, qord, qn);
@@ -1147,7 +1272,7 @@ namespace lilia::engine
 
       const bool isCap = m.isCapture();
       const bool isPromo = (m.promotion() != chess::PieceType::None);
-      const int mvv = (isCap || isPromo) ? mvv_lva_fast(pos.position(), m) : 0;
+      const int mvv = (isCap || isPromo) ? mvv_lva(pos.position(), m) : 0;
 
       // --- 3) stricter low-MVV negative-SEE prune ---
       if (isCap && !isPromo && mvv < LOW_MVV_MARGIN)
@@ -1230,11 +1355,14 @@ namespace lilia::engine
         }
       }
 
+      const chess::PieceType movedPt = moved_piece_after(pos, m);
+
       MoveUndoGuard g(pos);
       if (!g.doMove(m))
         continue;
 
       prevMove[cap_ply(ply)] = m;
+      prevMovedPiece[cap_ply(ply)] = movedPt;
       tt.prefetch(pos.hash());
       int score = -quiescence(pos, -beta, -alpha, ply + 1);
       score = std::clamp(score, -MATE + 1, MATE - 1);
@@ -1302,11 +1430,14 @@ namespace lilia::engine
           {
             const chess::Move m = candM[i];
 
+            const chess::PieceType movedPt = moved_piece_after(pos, m);
+
             MoveUndoGuard g(pos);
             if (!g.doMove(m))
               continue;
 
             prevMove[cap_ply(ply)] = m;
+            prevMovedPiece[cap_ply(ply)] = movedPt;
             int score = -quiescence(pos, -beta, -alpha, ply + 1);
             score = std::clamp(score, -MATE + 1, MATE - 1);
             ++tried;
@@ -1631,6 +1762,38 @@ namespace lilia::engine
     const bool prevOk = !prev.isNull() && prev.from() != prev.to();
     const chess::Move cm = prevOk ? counterMove[prev.from()][prev.to()] : chess::Move{};
 
+    // predecessor context: compute once, use both for ordering and history updates
+    int pm1_to = -1, pm2_to = -1, pm3_to = -1;
+    int pm1_pt = -1, pm2_pt = -1, pm3_pt = -1;
+
+    if (ply >= 1)
+    {
+      const int p = cap_ply(ply - 1);
+      if (!prevMove[p].isNull() && prevMovedPiece[p] != chess::PieceType::None)
+      {
+        pm1_to = prevMove[p].to();
+        pm1_pt = chess::bb::type_index(prevMovedPiece[p]);
+      }
+    }
+    if (ply >= 2)
+    {
+      const int p = cap_ply(ply - 2);
+      if (!prevMove[p].isNull() && prevMovedPiece[p] != chess::PieceType::None)
+      {
+        pm2_to = prevMove[p].to();
+        pm2_pt = chess::bb::type_index(prevMovedPiece[p]);
+      }
+    }
+    if (ply >= 3)
+    {
+      const int p = cap_ply(ply - 3);
+      if (!prevMove[p].isNull() && prevMovedPiece[p] != chess::PieceType::None)
+      {
+        pm3_to = prevMove[p].to();
+        pm3_pt = chess::bb::type_index(prevMovedPiece[p]);
+      }
+    }
+
     // --------- Staged move ordering ---------
     int *scores = ordScore_[kply];
     chess::Move *ordered = ordArr_[kply];
@@ -1641,96 +1804,89 @@ namespace lilia::engine
     {
       const auto &m = genArr_[kply][i];
 
-      // Skip duplicates of TT later by just giving TT the best bucket;
-      // search loop will naturally attempt TT first anyway.
-      int stage = ORDER_STAGE_QUIET; // default
+      int stage = ORDER_STAGE_QUIET;
       int base = 0;
 
       const bool isCap = m.isCapture();
       const bool isPromo = (m.promotion() != chess::PieceType::None);
-      const bool isQuiet = !isCap && !isPromo;
 
-      // recapture detection (useful to treat as "good cap")
-      const chess::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : chess::Move{});
-      const bool isRecap = (!pm.isNull() && pm.to() == m.to());
+      auto moverOpt = board.getPiece(m.from());
+      const chess::PieceType moverPt = moverOpt ? moverOpt->type : chess::PieceType::Pawn;
+      const int mp = chess::bb::type_index(moverPt);
 
-      // classify captures now: good vs bad (seeGood computed later per-move too,
-      // but we also need a quick pre-pass; we can recompute here cheaply)
-      bool seeGoodLocal = true;
       chess::PieceType capPt = chess::PieceType::Pawn;
       if (m.isEnPassant())
-      {
         capPt = chess::PieceType::Pawn;
-      }
       else if (isCap)
       {
         if (auto cap = board.getPiece(m.to()))
           capPt = cap->type;
       }
-      if (isCap && m.promotion() == chess::PieceType::None)
-      {
-        seeGoodLocal = pos.see(m);
-      }
 
-      // TT move first
+      const chess::Move pm = (ply > 0 ? prevMove[cap_ply(ply - 1)] : chess::Move{});
+      const bool isRecap = (!pm.isNull() && pm.to() == m.to());
+
+      bool seeGoodLocal = true;
+      if (isCap && !isPromo)
+        seeGoodLocal = pos.see(m);
+
       if (haveTT && m == ttMove)
       {
         stage = ORDER_STAGE_TT;
         base = ORDER_TT_BONUS;
       }
-      // Captures next (good first)
       else if (isCap)
       {
-        const int mvv = mvv_lva_fast(pos.position(), m);
-        // treat recaptures or big victims as "good", even if SEE<0
+        const int mvv = mvv_lva(pos.position(), m);
+        const int ch = captureHist[mp][m.to()][chess::bb::type_index(capPt)];
         const bool bigVictim = (capPt == chess::PieceType::Rook || capPt == chess::PieceType::Queen);
         const bool good = seeGoodLocal || isRecap || bigVictim || isPromo;
 
         if (good)
         {
           stage = ORDER_STAGE_GOOD_CAP;
-          // lightweight capture history used here is optional; keep MVV as core
-          base = ORDER_GOOD_CAPTURE_BASE + mvv;
+          base = ORDER_GOOD_CAPTURE_BASE + mvv + (ch >> 1);
         }
         else
         {
           stage = ORDER_STAGE_BAD_CAP;
-          base = ORDER_BAD_CAPTURE_BASE + mvv;
+          base = ORDER_BAD_CAPTURE_BASE + mvv + (ch >> 2);
         }
       }
-      // Quiet promotions are high-priority quiets
       else if (isPromo)
       {
         stage = ORDER_STAGE_KILLER_CM_QP;
         base = ORDER_PROMO_BASE;
       }
-      // Killers & countermove
       else if (m == killers[kply][0] || m == killers[kply][1])
       {
         stage = ORDER_STAGE_KILLER_CM_QP;
         base = ORDER_KILLER_BASE;
       }
+      else if (prevOk && m == cm)
+      {
+        stage = ORDER_STAGE_KILLER_CM_QP;
+        base = ORDER_COUNTERMOVE_BASE +
+               (counterHist[prev.from()][prev.to()] >> COUNTERMOVE_HIST_BLEND_SHIFT);
+      }
       else
       {
-        const chess::Move cm = (prevOk ? counterMove[prev.from()][prev.to()] : chess::Move{});
-        if (prevOk && m == cm)
-        {
-          stage = ORDER_STAGE_KILLER_CM_QP;
-          base = ORDER_COUNTERMOVE_BASE + (counterHist[prev.from()][prev.to()] >> COUNTERMOVE_HIST_BLEND_SHIFT);
-        }
-        else
-        {
-          // regular quiet: history + quietHist + a tiny malus for heavy non-tactical shuffles
-          auto moverOpt = board.getPiece(m.from());
-          const chess::PieceType moverPt = moverOpt ? moverOpt->type : chess::PieceType::Pawn;
-          base = history[m.from()][m.to()] + (quietHist[chess::bb::type_index(moverPt)][m.to()] >> QUIET_HIST_BLEND_SHIFT);
+        int cont = 0;
+        if (pm1_to >= 0 && pm1_pt >= 0)
+          cont += contHist[0][pm1_pt][pm1_to][mp][m.to()];
+        if (pm2_to >= 0 && pm2_pt >= 0)
+          cont += (contHist[1][pm2_pt][pm2_to][mp][m.to()] >> 1);
+        if (pm3_to >= 0 && pm3_pt >= 0)
+          cont += (contHist[2][pm3_pt][pm3_to][mp][m.to()] >> 1);
 
-          if (moverPt == chess::PieceType::Queen || moverPt == chess::PieceType::Rook)
-          {
-            base -= ORDER_HEAVY_QUIET_MALUS;
-          }
-          stage = ORDER_STAGE_QUIET;
-        }
+        base = history[m.from()][m.to()] +
+               (quietHist[mp][m.to()] >> QUIET_HIST_BLEND_SHIFT) +
+               cont;
+
+        if (moverPt == chess::PieceType::Queen || moverPt == chess::PieceType::Rook)
+          base -= ORDER_HEAVY_QUIET_MALUS;
+
+        stage = ORDER_STAGE_QUIET;
       }
 
       {
@@ -1758,6 +1914,11 @@ namespace lilia::engine
     const bool allowFutility = !inCheck && !isPV;
     int moveCount = 0;
     bool searchedAny = false;
+
+    SearchedQuiet searchedQuiets[MAX_MOVES];
+    SearchedCapture searchedCaptures[MAX_MOVES];
+    int searchedQuietCount = 0;
+    int searchedCaptureCount = 0;
 
     for (int idx = 0; idx < n; ++idx)
     {
@@ -1851,15 +2012,8 @@ namespace lilia::engine
         int hist = history[m.from()][m.to()] + (quietHist[chess::bb::type_index(moverPt)][m.to()] >> QUIET_HIST_BLEND_SHIFT);
 
         int ch = 0;
-        if (ply >= 1)
-        {
-          const auto pm1 = prevMove[cap_ply(ply - 1)];
-          if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64)
-          {
-            if (auto po1 = board.getPiece(pm1.to()))
-              ch = contHist[0][chess::bb::type_index(po1->type)][pm1.to()][chess::bb::type_index(moverPt)][m.to()];
-          }
-        }
+        if (pm1_to >= 0 && pm1_pt >= 0)
+          ch = contHist[0][pm1_pt][pm1_to][chess::bb::type_index(moverPt)][m.to()];
 
         int limit = LMP_LIMIT[depth];
         if (hist < BAD_HISTORY_THRESHOLD)
@@ -1938,7 +2092,7 @@ namespace lilia::engine
       }
 
       const int mvvBefore =
-          (m.isCapture() || m.promotion() != chess::PieceType::None) ? mvv_lva_fast(pos.position(), m) : 0;
+          (m.isCapture() || m.promotion() != chess::PieceType::None) ? mvv_lva(pos.position(), m) : 0;
       int newDepth = depth - 1;
 
       // ----- Singular Extension -----
@@ -1966,44 +2120,9 @@ namespace lilia::engine
       }
       newDepth += seExt;
 
-      int pm1_to = -1, pm2_to = -1, pm3_to = -1;
-      int pm1_pt = -1, pm2_pt = -1, pm3_pt = -1;
-      if (ply >= 1)
-      {
-        const chess::Move pm1 = prevMove[cap_ply(ply - 1)];
-        if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.from() < 64 && pm1.to() < 64)
-        {
-          if (auto p = board.getPiece(pm1.to()))
-          {
-            pm1_to = pm1.to();
-            pm1_pt = chess::bb::type_index(p->type);
-          }
-        }
-      }
-      if (ply >= 2)
-      {
-        const chess::Move pm2 = prevMove[cap_ply(ply - 2)];
-        if (pm2.from() >= 0 && pm2.to() >= 0 && pm2.from() < 64 && pm2.to() < 64)
-        {
-          if (auto p = board.getPiece(pm2.to()))
-          {
-            pm2_to = pm2.to();
-            pm2_pt = chess::bb::type_index(p->type);
-          }
-        }
-      }
-      if (ply >= 3)
-      {
-        const chess::Move pm3 = prevMove[cap_ply(ply - 3)];
-        if (pm3.from() >= 0 && pm3.to() >= 0 && pm3.from() < 64 && pm3.to() < 64)
-        {
-          if (auto p = board.getPiece(pm3.to()))
-          {
-            pm3_to = pm3.to();
-            pm3_pt = chess::bb::type_index(p->type);
-          }
-        }
-      }
+      const chess::PieceType movedPt = (m.promotion() != chess::PieceType::None)
+                                           ? m.promotion()
+                                           : moverPt;
 
       MoveUndoGuard g(pos);
       if (!g.doMove(m))
@@ -2013,6 +2132,7 @@ namespace lilia::engine
       }
 
       prevMove[cap_ply(ply)] = m;
+      prevMovedPiece[cap_ply(ply)] = movedPt;
       tt.prefetch(pos.hash());
 
       int value;
@@ -2099,16 +2219,10 @@ namespace lilia::engine
           if (isQuietHeavy)
             r = std::max(0, r - 1);
           const int h = history[m.from()][m.to()] + (quietHist[chess::bb::type_index(moverPt)][m.to()] >> QUIET_HIST_BLEND_SHIFT);
+
           int ch = 0;
-          if (ply >= 1)
-          {
-            const auto pm1 = prevMove[cap_ply(ply - 1)];
-            if (pm1.from() >= 0 && pm1.to() >= 0 && pm1.to() < 64)
-            {
-              if (auto po1 = board.getPiece(pm1.to()))
-                ch = contHist[0][chess::bb::type_index(po1->type)][pm1.to()][chess::bb::type_index(moverPt)][m.to()];
-            }
-          }
+          if (pm1_to >= 0 && pm1_pt >= 0)
+            ch = contHist[0][pm1_pt][pm1_to][chess::bb::type_index(moverPt)][m.to()];
 
           if (h > LMR_GOOD_HISTORY_THRESHOLD)
             r -= 1;
@@ -2179,34 +2293,22 @@ namespace lilia::engine
       if (alpha >= beta)
       {
         if (isQuiet)
-        {
-          killers[kply][1] = killers[kply][0];
-          killers[kply][0] = m;
+          reward_quiet_cutoff(*this, ply, depth, m, moverPt, prev, prevOk,
+                              pm1_to, pm2_to, pm3_to, pm1_pt, pm2_pt, pm3_pt);
+        else if (m.isCapture())
+          reward_capture_cutoff(*this, depth, moverPt, capPt, m.to());
 
-          const int B = hist_bonus(depth);
-
-          hist_update(history[m.from()][m.to()], +B);
-          hist_update(quietHist[chess::bb::type_index(moverPt)][m.to()], +B);
-
-          if (pm1_to >= 0 && pm1_pt >= 0)
-            hist_update(contHist[0][pm1_pt][pm1_to][chess::bb::type_index(moverPt)][m.to()], +B);
-          if (pm2_to >= 0 && pm2_pt >= 0)
-            hist_update(contHist[1][pm2_pt][pm2_to][chess::bb::type_index(moverPt)][m.to()], +(B >> CONTHIST_BONUS_SHIFT_L1));
-          if (pm3_to >= 0 && pm3_pt >= 0)
-            hist_update(contHist[2][pm3_pt][pm3_to][chess::bb::type_index(moverPt)][m.to()], +(B >> CONTHIST_BONUS_SHIFT_L2));
-
-          if (prevOk)
-          {
-            counterMove[prev.from()][prev.to()] = m;
-            hist_update(counterHist[prev.from()][prev.to()], +B);
-          }
-        }
-        else
-        {
-          hist_update(captureHist[chess::bb::type_index(moverPt)][m.to()][chess::bb::type_index(capPt)], +hist_bonus(depth));
-        }
+        penalize_preceding_quiets(*this, depth, searchedQuiets, searchedQuietCount,
+                                  pm1_to, pm2_to, pm3_to, pm1_pt, pm2_pt, pm3_pt);
+        penalize_preceding_captures(*this, depth, searchedCaptures, searchedCaptureCount);
         break;
       }
+
+      if (isQuiet)
+        searchedQuiets[searchedQuietCount++] = {m, moverPt};
+      else if (m.isCapture())
+        searchedCaptures[searchedCaptureCount++] = {moverPt, capPt, m.to()};
+
       ++moveCount;
     }
 
@@ -2220,7 +2322,7 @@ namespace lilia::engine
         const chess::Move m = ordered[idx];
         if (!m.isCapture())
           continue;
-        if (mvv_lva_fast(pos.position(), m) < PROBCUT_MIN_MVV)
+        if (mvv_lva(pos.position(), m) < PROBCUT_MIN_MVV)
           continue;
 
         MoveUndoGuard pcg(pos);
@@ -2405,7 +2507,7 @@ namespace lilia::engine
         }
         else if (m.isCapture())
         {
-          s += ROOT_ORDER_CAPTURE_BASE + mvv_lva_fast(pos.position(), m);
+          s += ROOT_ORDER_CAPTURE_BASE + mvv_lva(pos.position(), m);
         }
         else
         {
@@ -2543,6 +2645,7 @@ namespace lilia::engine
             const QuietSignals rootSignals =
                 isQuietRoot ? compute_quiet_signals(pos, m) : QuietSignals{};
             const bool quietCheckRoot = isQuietRoot && rootSignals.givesCheck;
+            const chess::PieceType rootMovedPt = moved_piece_after(pos, m);
 
             MoveUndoGuard rg(pos);
             if (!rg.doMove(m))
@@ -2550,6 +2653,10 @@ namespace lilia::engine
               ++moveIdx;
               continue;
             }
+
+            prevMove[0] = m;
+            prevMovedPiece[0] = rootMovedPt;
+
             tt.prefetch(pos.hash());
 
             chess::Move childBest{};
@@ -2628,6 +2735,8 @@ namespace lilia::engine
             if (s > alpha)
               alpha = s;
 
+            prevMove[0] = chess::Move{};
+            prevMovedPiece[0] = chess::PieceType::None;
             rg.rollback();
             ++moveIdx;
             if (alpha >= beta)
@@ -2639,11 +2748,20 @@ namespace lilia::engine
           {
             auto full_rescore = [&](RootLine &rl)
             {
+              const chess::PieceType rootMovedPt = moved_piece_after(pos, rl.m);
+
               MoveUndoGuard rg(pos);
               if (!rg.doMove(rl.m))
                 return;
+
+              prevMove[0] = rl.m;
+              prevMovedPiece[0] = rootMovedPt;
+
               chess::Move dummy{};
               int exact = -negamax(pos, depth - 1, -INF + 1, INF - 1, 1, dummy, INF);
+
+              prevMove[0] = chess::Move{};
+              prevMovedPiece[0] = chess::PieceType::None;
               rl.score = std::clamp(exact, -MATE + 1, MATE - 1);
               rl.bound = Bound::Exact;
               rl.exactFull = true;
@@ -2893,6 +3011,7 @@ namespace lilia::engine
         m = chess::Move{};
     for (auto &pm : prevMove)
       pm = chess::Move{};
+    prevMovedPiece.fill(chess::PieceType::None);
     stats = SearchStats{};
   }
 
@@ -2913,6 +3032,7 @@ namespace lilia::engine
 
     for (auto &pm : prevMove)
       pm = chess::Move{};
+    prevMovedPiece.fill(chess::PieceType::None);
   }
 
   // EMA merge toward the worker's values: G += (L - G) / K

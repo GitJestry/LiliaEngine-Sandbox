@@ -141,7 +141,7 @@ namespace lilia::engine
 
         if (m.isCapture() || m.promotion() != chess::PieceType::None)
         {
-          const int sc = mvv_lva_fast(pos, m);
+          const int sc = mvv_lva(pos, m);
           if (!bestCapPromo || sc > bestCapScore)
           {
             bestCapPromo = m;
